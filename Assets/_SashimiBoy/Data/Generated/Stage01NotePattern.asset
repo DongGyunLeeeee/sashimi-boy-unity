@@ -1,0 +1,201 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4fd68e19a0ae4c6c837d3878e1b9d0c2, type: 3}
+  m_Name: Stage01NotePattern
+  m_EditorClassIdentifier: Assembly-CSharp::SashimiBoy.Stage01NotePatternDefinition
+  manualBarCount: 16
+  repeatFromBar: 9
+  subdivisionsPerBeat: 2
+  notes:
+  - barIndex: 1
+    eighthStepInBar: 0
+    label: 1
+  - barIndex: 1
+    eighthStepInBar: 2
+    label: 2
+  - barIndex: 1
+    eighthStepInBar: 4
+    label: 3
+  - barIndex: 1
+    eighthStepInBar: 6
+    label: 4
+  - barIndex: 2
+    eighthStepInBar: 0
+    label: 1
+  - barIndex: 2
+    eighthStepInBar: 2
+    label: 2
+  - barIndex: 2
+    eighthStepInBar: 4
+    label: 3
+  - barIndex: 2
+    eighthStepInBar: 6
+    label: 4
+  - barIndex: 3
+    eighthStepInBar: 0
+    label: 1
+  - barIndex: 3
+    eighthStepInBar: 2
+    label: 2
+  - barIndex: 3
+    eighthStepInBar: 4
+    label: 3
+  - barIndex: 3
+    eighthStepInBar: 6
+    label: 4
+  - barIndex: 4
+    eighthStepInBar: 0
+    label: 1
+  - barIndex: 4
+    eighthStepInBar: 2
+    label: 2
+  - barIndex: 4
+    eighthStepInBar: 4
+    label: 3
+  - barIndex: 4
+    eighthStepInBar: 6
+    label: 4
+  - barIndex: 5
+    eighthStepInBar: 0
+    label: 1
+  - barIndex: 5
+    eighthStepInBar: 2
+    label: 2
+  - barIndex: 5
+    eighthStepInBar: 6
+    label: 4
+  - barIndex: 6
+    eighthStepInBar: 0
+    label: 1
+  - barIndex: 6
+    eighthStepInBar: 3
+    label: 2&
+  - barIndex: 6
+    eighthStepInBar: 6
+    label: 4
+  - barIndex: 7
+    eighthStepInBar: 0
+    label: 1
+  - barIndex: 7
+    eighthStepInBar: 4
+    label: 3
+  - barIndex: 7
+    eighthStepInBar: 6
+    label: 4
+  - barIndex: 8
+    eighthStepInBar: 1
+    label: 1&
+  - barIndex: 8
+    eighthStepInBar: 2
+    label: 2
+  - barIndex: 8
+    eighthStepInBar: 5
+    label: 3&
+  - barIndex: 8
+    eighthStepInBar: 6
+    label: 4
+  - barIndex: 9
+    eighthStepInBar: 0
+    label: 1
+  - barIndex: 9
+    eighthStepInBar: 3
+    label: 2&
+  - barIndex: 9
+    eighthStepInBar: 4
+    label: 3
+  - barIndex: 9
+    eighthStepInBar: 6
+    label: 4
+  - barIndex: 10
+    eighthStepInBar: 0
+    label: 1
+  - barIndex: 10
+    eighthStepInBar: 2
+    label: 2
+  - barIndex: 10
+    eighthStepInBar: 3
+    label: 2&
+  - barIndex: 10
+    eighthStepInBar: 6
+    label: 4
+  - barIndex: 11
+    eighthStepInBar: 1
+    label: 1&
+  - barIndex: 11
+    eighthStepInBar: 2
+    label: 2
+  - barIndex: 11
+    eighthStepInBar: 4
+    label: 3
+  - barIndex: 11
+    eighthStepInBar: 5
+    label: 3&
+  - barIndex: 12
+    eighthStepInBar: 0
+    label: 1
+  - barIndex: 12
+    eighthStepInBar: 4
+    label: 3
+  - barIndex: 12
+    eighthStepInBar: 7
+    label: 4&
+  - barIndex: 13
+    eighthStepInBar: 0
+    label: 1
+  - barIndex: 13
+    eighthStepInBar: 1
+    label: 1&
+  - barIndex: 13
+    eighthStepInBar: 4
+    label: 3
+  - barIndex: 13
+    eighthStepInBar: 6
+    label: 4
+  - barIndex: 14
+    eighthStepInBar: 0
+    label: 1
+  - barIndex: 14
+    eighthStepInBar: 3
+    label: 2&
+  - barIndex: 14
+    eighthStepInBar: 5
+    label: 3&
+  - barIndex: 14
+    eighthStepInBar: 6
+    label: 4
+  - barIndex: 15
+    eighthStepInBar: 1
+    label: 1&
+  - barIndex: 15
+    eighthStepInBar: 2
+    label: 2
+  - barIndex: 15
+    eighthStepInBar: 4
+    label: 3
+  - barIndex: 15
+    eighthStepInBar: 7
+    label: 4&
+  - barIndex: 16
+    eighthStepInBar: 0
+    label: 1
+  - barIndex: 16
+    eighthStepInBar: 2
+    label: 2
+  - barIndex: 16
+    eighthStepInBar: 3
+    label: 2&
+  - barIndex: 16
+    eighthStepInBar: 5
+    label: 3&
+  - barIndex: 16
+    eighthStepInBar: 6
+    label: 4

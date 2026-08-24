@@ -17,7 +17,7 @@ namespace SashimiBoy
         {
             if (targetLight == null)
             {
-                targetLight = FindObjectOfType<Light>();
+                targetLight = Object.FindAnyObjectByType<Light>();
             }
 
             if (targetLight != null)

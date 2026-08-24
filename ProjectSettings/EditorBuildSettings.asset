@@ -4,5 +4,23 @@
 EditorBuildSettings:
   m_ObjectHideFlags: 0
   serializedVersion: 2
-  m_Scenes: []
+  m_Scenes:
+  - enabled: 1
+    path: Assets/_SashimiBoy/Scenes/Bootstrap.unity
+    guid: b8910dbb45f6a436fb42a0ea1ca9c622
+  - enabled: 1
+    path: Assets/_SashimiBoy/Scenes/Street.unity
+    guid: fbfafbf7bf2c245bf9cbb3c6e5f5ba9c
+  - enabled: 1
+    path: Assets/_SashimiBoy/Scenes/FishShopDialogue.unity
+    guid: ccce690b5bc31426095852ea3b62206d
+  - enabled: 1
+    path: Assets/_SashimiBoy/Scenes/EquipmentShop.unity
+    guid: 42bfd42ab4eb445fcb2b0d0815ee116e
+  - enabled: 1
+    path: Assets/_SashimiBoy/Scenes/Club.unity
+    guid: 3238baeb5e8714083a4000358ddd5e30
+  - enabled: 1
+    path: Assets/_SashimiBoy/Scenes/Stage01_Salmon.unity
+    guid: 165e6eb49a0df4272b44d1ff9ea2eab3
   m_configObjects: {}

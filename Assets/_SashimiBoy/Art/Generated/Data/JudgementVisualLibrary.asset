@@ -1,0 +1,27 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 37bc5c84d4f2944cba363f7d8f297904, type: 3}
+  m_Name: JudgementVisualLibrary
+  m_EditorClassIdentifier: Assembly-CSharp::SashimiBoy.JudgementVisualLibrary
+  visuals:
+  - grade: 0
+    displayLabel: NASTY
+    sprite: {fileID: 21300000, guid: 9d52d94d70e4d4051bd781ffa12630c2, type: 3}
+  - grade: 1
+    displayLabel: CLEAN
+    sprite: {fileID: 21300000, guid: 60c2f67e47d6c46eeaa4a378bbc545da, type: 3}
+  - grade: 2
+    displayLabel: SLIPPED
+    sprite: {fileID: 21300000, guid: 166c7adb3fe104f45978cd99a4072efd, type: 3}
+  - grade: 3
+    displayLabel: WHACK
+    sprite: {fileID: 21300000, guid: 83411e25e6b2d4d60bed985e7342187d, type: 3}

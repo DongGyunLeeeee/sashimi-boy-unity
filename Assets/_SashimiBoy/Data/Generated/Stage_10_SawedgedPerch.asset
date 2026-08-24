@@ -1,0 +1,39 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 97c8584ffb5314a7f8c6e0419016b345, type: 3}
+  m_Name: Stage_10_SawedgedPerch
+  m_EditorClassIdentifier: Assembly-CSharp::SashimiBoy.StageDefinition
+  stageId: STAGE_10_SAWEDGED_PERCH
+  displayName: "\uB2E4\uAE08\uBC14\uB9AC"
+  order: 10
+  fishType: 9
+  hiphopGenre: Rage / Hyper Trap
+  bpm: 152
+  defaultDifficulty: 1
+  sceneName: FishStageTemplate
+  requiredPreviousStageId: STAGE_09_TUNA
+  nextStageId: 
+  rewardEquipment: 9
+  rewardPlates: 1
+  requiredPlatesForExchange: 1
+  implementedInPrototype: 1
+  inspirationPopup: "\uBB34\uB300\uC5D0 \uC624\uB974\uAE38 \uC6D0\uD574?"
+  kevinShopRequest: "\uBB34\uB300\uC5D0 \uC624\uB974\uACE0 \uC2F6\uC2B5\uB2C8\uB2E4."
+  shopkeeperRecommendation: "\uADF8\uB7FC \uC774\uC81C \uB124 \uBAA9\uC18C\uB9AC\uB97C
+    \uB4E4\uB824\uC904 \uCC28\uB840\uC9C0. \uB2E4\uC774\uB0B4\uBBF9 \uB9C8\uC774\uD06C\uB97C
+    \uAC00\uC838\uAC00\uAC8C."
+  distractionCues:
+  - type: 7
+    beat: 64
+    durationBeats: 8
+    intensity: 1
+    label: final-stage performance pressure

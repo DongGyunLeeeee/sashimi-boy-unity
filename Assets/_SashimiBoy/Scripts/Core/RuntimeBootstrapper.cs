@@ -20,6 +20,7 @@ namespace SashimiBoy
             root.AddComponent<SaveManager>();
             root.AddComponent<GameFlowManager>();
             root.AddComponent<SceneTransitionService>();
+            root.AddComponent<PrototypeDebugPanel>();
         }
     }
 }

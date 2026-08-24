@@ -1,0 +1,45 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 97c8584ffb5314a7f8c6e0419016b345, type: 3}
+  m_Name: Stage_03_Sole
+  m_EditorClassIdentifier: Assembly-CSharp::SashimiBoy.StageDefinition
+  stageId: STAGE_03_SOLE
+  displayName: "\uAC00\uC790\uBBF8"
+  order: 3
+  fishType: 2
+  hiphopGenre: Jazz Rap
+  bpm: 98
+  defaultDifficulty: 1
+  sceneName: FishStageTemplate
+  requiredPreviousStageId: STAGE_02_ROCKFISH
+  nextStageId: STAGE_04_MULLET
+  rewardEquipment: 2
+  rewardPlates: 1
+  requiredPlatesForExchange: 1
+  implementedInPrototype: 1
+  inspirationPopup: "\uC18C\uB9AC\uB97C \uB354 \uB69C\uB837\uD558\uAC8C \uAD6C\uBCC4\uD558\uAE38
+    \uC6D0\uD574?"
+  kevinShopRequest: "\uC18C\uB9AC\uAC00 \uB354 \uB69C\uB837\uD558\uAC8C \uAD6C\uBCC4\uB418\uAE38
+    \uC6D0\uD569\uB2C8\uB2E4."
+  shopkeeperRecommendation: "\uACB9\uCCD0 \uB4E4\uB9AC\uB294 \uC18C\uB9AC\uB97C \uB098\uB204\uB824\uBA74
+    \uAE30\uBCF8 \uD50C\uB7EC\uADF8\uC778\uC774 \uD544\uC694\uD558\uC9C0."
+  distractionCues:
+  - type: 2
+    beat: 24
+    durationBeats: 4
+    intensity: 1
+    label: left right confusion
+  - type: 8
+    beat: 40
+    durationBeats: 4
+    intensity: 1
+    label: reverse visual sign

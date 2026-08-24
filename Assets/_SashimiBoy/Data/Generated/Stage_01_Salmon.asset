@@ -1,0 +1,34 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 97c8584ffb5314a7f8c6e0419016b345, type: 3}
+  m_Name: Stage_01_Salmon
+  m_EditorClassIdentifier: Assembly-CSharp::SashimiBoy.StageDefinition
+  stageId: STAGE_01_SALMON
+  displayName: "\uC5F0\uC5B4"
+  order: 1
+  fishType: 0
+  hiphopGenre: Lo-fi hip hop
+  bpm: 90
+  defaultDifficulty: 1
+  sceneName: FishStageTemplate
+  requiredPreviousStageId: 
+  nextStageId: STAGE_02_ROCKFISH
+  rewardEquipment: 0
+  rewardPlates: 1
+  requiredPlatesForExchange: 1
+  implementedInPrototype: 0
+  inspirationPopup: "\uB2E4\uCC44\uB85C\uC6B4 \uBE44\uD2B8\uB97C \uC6D0\uD574?"
+  kevinShopRequest: "\uB2E4\uCC44\uB85C\uC6B4 \uBE44\uD2B8\uB97C \uC6D0\uD569\uB2C8\uB2E4."
+  shopkeeperRecommendation: "\uD760\u2026 \uC790\uB124 \uAC19\uC740 \uD48B\uB0B4\uAE30\uC5D0\uAC90
+    \uC774 \uC0D8\uD50C\uD329\uC774 \uB531\uC774\uB124. \uD0A5\uC774\uB791 \uC2A4\uB124\uC5B4\uBD80\uD130
+    \uB610\uB837\uD558\uAC8C \uB4E4\uC5B4\uBCF4\uAC8C."
+  distractionCues: []

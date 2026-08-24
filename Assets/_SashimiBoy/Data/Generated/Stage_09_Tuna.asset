@@ -1,0 +1,48 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 97c8584ffb5314a7f8c6e0419016b345, type: 3}
+  m_Name: Stage_09_Tuna
+  m_EditorClassIdentifier: Assembly-CSharp::SashimiBoy.StageDefinition
+  stageId: STAGE_09_TUNA
+  displayName: "\uCC38\uCE58"
+  order: 9
+  fishType: 8
+  hiphopGenre: Drill
+  bpm: 140
+  defaultDifficulty: 1
+  sceneName: FishStageTemplate
+  requiredPreviousStageId: STAGE_08_CONVICT_GROUPER
+  nextStageId: STAGE_10_SAWEDGED_PERCH
+  rewardEquipment: 8
+  rewardPlates: 1
+  requiredPlatesForExchange: 1
+  implementedInPrototype: 1
+  inspirationPopup: "\uB514\uD14C\uC77C\uC744 \uC7A1\uC544\uBCF4\uC790"
+  kevinShopRequest: "\uB514\uD14C\uC77C\uC744 \uC7A1\uACE0 \uC2F6\uC2B5\uB2C8\uB2E4."
+  shopkeeperRecommendation: "\uB179\uC74C \uC9C1\uC804\uC5D4 \uC791\uC740 \uC18C\uB9AC\uB3C4
+    \uAC70\uC2AC\uB9AC\uC9C0. \uD31D\uD544\uD130 \uD558\uB098 \uCC59\uAE30\uAC8C."
+  distractionCues:
+  - type: 4
+    beat: 16
+    durationBeats: 8
+    intensity: 0.7
+    label: long pressure
+  - type: 5
+    beat: 32
+    durationBeats: 2
+    intensity: 1
+    label: strong view block
+  - type: 2
+    beat: 48
+    durationBeats: 4
+    intensity: 1
+    label: late-stage confusion

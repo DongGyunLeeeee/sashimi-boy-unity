@@ -47,6 +47,48 @@ namespace SashimiBoy
             return new JudgeResult(grade, side, adjustedOffsetMs, y);
         }
 
+        public static JudgeResult JudgeFixedWindows(
+            double adjustedOffsetMs,
+            double nastyWindowMs,
+            double smoothWindowMs,
+            double slippedWindowMs)
+        {
+            double absoluteOffset = Math.Abs(adjustedOffsetMs);
+            JudgeGrade grade;
+            if (absoluteOffset <= nastyWindowMs)
+            {
+                grade = JudgeGrade.Nasty;
+            }
+            else if (absoluteOffset <= smoothWindowMs)
+            {
+                grade = JudgeGrade.Smooth;
+            }
+            else if (absoluteOffset <= slippedWindowMs)
+            {
+                grade = JudgeGrade.Slipped;
+            }
+            else
+            {
+                grade = JudgeGrade.Whack;
+            }
+
+            TimingSide side = TimingSide.Center;
+            if (adjustedOffsetMs < -0.0001d)
+            {
+                side = TimingSide.Early;
+            }
+            else if (adjustedOffsetMs > 0.0001d)
+            {
+                side = TimingSide.Late;
+            }
+
+            return new JudgeResult(
+                grade,
+                side,
+                adjustedOffsetMs,
+                (float)slippedWindowMs);
+        }
+
         public static float GetMaxWindowMs(float bpm, RhythmDifficulty difficulty)
         {
             float clamped = Mathf.Clamp(bpm, 120f, 160f);

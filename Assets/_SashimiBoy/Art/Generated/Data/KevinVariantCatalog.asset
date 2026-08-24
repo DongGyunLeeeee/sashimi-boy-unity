@@ -1,0 +1,64 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9ef921df50f6d4415ab83a3afc6336fd, type: 3}
+  m_Name: KevinVariantCatalog
+  m_EditorClassIdentifier: Assembly-CSharp::SashimiBoy.KevinVariantCatalog
+  provisionalDefaultVariantId: AmbiguousFace
+  variants:
+  - variantId: AmbiguousFace
+    displayName: Ambiguous Face
+    prefab: {fileID: 3296821857989515310, guid: 98277ebbea1bb4f889ad14588fdffd71, type: 3}
+    avatar: {fileID: 0}
+    heightMeters: 0.9800416
+    defaultScale: 1.7856385
+    isHumanoid: 0
+    hasAnimationClips: 0
+    idleClip: {fileID: 0}
+    walkClip: {fileID: 0}
+    notes: No usable animation clips; visual remains static while the player root
+      moves.
+  - variantId: PlainFace
+    displayName: Plain Face
+    prefab: {fileID: 4541657079874603286, guid: a6e76dcb757c942e0ac633d4960c2b8f, type: 3}
+    avatar: {fileID: 0}
+    heightMeters: 0.9791261
+    defaultScale: 1.7873081
+    isHumanoid: 0
+    hasAnimationClips: 0
+    idleClip: {fileID: 0}
+    walkClip: {fileID: 0}
+    notes: No usable animation clips; visual remains static while the player root
+      moves.
+  - variantId: CuteFace
+    displayName: Cute Face
+    prefab: {fileID: 4041816447285037233, guid: bdbc73dc63ce542e6bcefd6722c70480, type: 3}
+    avatar: {fileID: 0}
+    heightMeters: 0.9800416
+    defaultScale: 1.7856385
+    isHumanoid: 0
+    hasAnimationClips: 0
+    idleClip: {fileID: 0}
+    walkClip: {fileID: 0}
+    notes: No usable animation clips; visual remains static while the player root
+      moves.
+  - variantId: WesternFace
+    displayName: Western Face
+    prefab: {fileID: 4946303980023332905, guid: 6c464cd6708984b4c830dcb19982e337, type: 3}
+    avatar: {fileID: 0}
+    heightMeters: 0.98016375
+    defaultScale: 1.785416
+    isHumanoid: 0
+    hasAnimationClips: 0
+    idleClip: {fileID: 0}
+    walkClip: {fileID: 0}
+    notes: No usable animation clips; visual remains static while the player root
+      moves.

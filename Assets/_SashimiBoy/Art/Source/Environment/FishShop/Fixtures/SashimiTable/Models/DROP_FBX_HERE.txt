@@ -1,0 +1,3 @@
+Drop the matching FBX for source folder "sashimi table" into this directory before opening Unity.
+Recommended normalized filename: SashimiTable.fbx
+The Codex import prompt can also locate an FBX with the original folder-matching name.

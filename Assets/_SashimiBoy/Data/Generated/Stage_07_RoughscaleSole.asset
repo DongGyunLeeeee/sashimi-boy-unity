@@ -1,0 +1,34 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 97c8584ffb5314a7f8c6e0419016b345, type: 3}
+  m_Name: Stage_07_RoughscaleSole
+  m_EditorClassIdentifier: Assembly-CSharp::SashimiBoy.StageDefinition
+  stageId: STAGE_07_ROUGHSCALE_SOLE
+  displayName: "\uC904\uAC00\uC790\uBBF8"
+  order: 7
+  fishType: 6
+  hiphopGenre: High-tempo Boom bap / New York BoomBap
+  bpm: 116
+  defaultDifficulty: 1
+  sceneName: FishStageTemplate
+  requiredPreviousStageId: STAGE_06_YELLOWTAIL
+  nextStageId: STAGE_08_CONVICT_GROUPER
+  rewardEquipment: 6
+  rewardPlates: 1
+  requiredPlatesForExchange: 1
+  implementedInPrototype: 1
+  inspirationPopup: "\uC2AC\uC2AC \uB179\uC74C\uC744 \uC2DC\uC791\uD560\uAE4C"
+  kevinShopRequest: "\uC2AC\uC2AC \uB179\uC74C\uC744 \uC2DC\uC791\uD560\uAE4C \uD569\uB2C8\uB2E4."
+  shopkeeperRecommendation: "\uC7A5\uBE44\uAC00 \uC788\uC5B4\uB3C4 \uC5F0\uACB0\uC774
+    \uC548 \uB418\uBA74 \uC18C\uB9AC\uB294 \uBABB \uAC00\uC9C0. XLR \uCF00\uC774\uBE14\uC744
+    \uAC00\uC838\uAC00\uAC8C."
+  distractionCues: []

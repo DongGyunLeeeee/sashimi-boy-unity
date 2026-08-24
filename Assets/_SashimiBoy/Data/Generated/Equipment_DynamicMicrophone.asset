@@ -1,0 +1,22 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 14988d836245149a7b70d8ee4d54ae89, type: 3}
+  m_Name: Equipment_DynamicMicrophone
+  m_EditorClassIdentifier: Assembly-CSharp::SashimiBoy.EquipmentDefinition
+  equipmentId: 9
+  displayName: "\uB2E4\uC774\uB0B4\uBBF9 \uB9C8\uC774\uD06C"
+  role: "\uAE30\uBCF8 \uBCF4\uCEEC \uB179\uC74C \uC2DC\uC791"
+  experienceChange: "\uD50C\uB808\uC774\uAC00 \uACF5\uC5F0\uC73C\uB85C \uC804\uD658\uB420
+    \uC900\uBE44\uAC00 \uB05D\uB09C\uB2E4."
+  visualFeedback: "\uAD00\uAC1D \uBC18\uC751\uACFC \uC870\uBA85\uC774 \uD788\uD2B8\uC5D0
+    \uBC18\uC751\uD55C\uB2E4."
+  icon: {fileID: 0}

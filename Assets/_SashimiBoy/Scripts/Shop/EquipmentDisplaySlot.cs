@@ -44,7 +44,7 @@ namespace SashimiBoy
 
             if (labelText != null)
             {
-                labelText.text = owned ? data.displayName : "???";
+                labelText.text = owned ? GetEquipmentName(data, equipmentId) : "???";
             }
 
             if (lockedVisual != null)
@@ -56,6 +56,11 @@ namespace SashimiBoy
             {
                 ownedVisual.SetActive(owned);
             }
+        }
+
+        private string GetEquipmentName(EquipmentRuntimeData data, EquipmentId fallback)
+        {
+            return string.IsNullOrWhiteSpace(data.displayName) ? fallback.ToString() : data.displayName;
         }
     }
 }

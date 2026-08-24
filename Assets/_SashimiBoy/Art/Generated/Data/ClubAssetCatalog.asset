@@ -1,0 +1,126 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7bb4566c377434b94a62cbe411dc4fd6, type: 3}
+  m_Name: ClubAssetCatalog
+  m_EditorClassIdentifier: Assembly-CSharp::SashimiBoy.ClubAssetCatalog
+  assets:
+  - assetId: BarTable
+    displayName: BarTable
+    sourceModel: {fileID: 919132149155446097, guid: 902af6e9337964820a93c4db2572f212, type: 3}
+    generatedPrefab: {fileID: 9049627637851536629, guid: 175154dbad14b4687ba1e22f895c457a, type: 3}
+    defaultScale: {x: 1.0489597, y: 1.0489597, z: 1.0489597}
+    defaultRotation: {x: 0, y: 0, z: 0}
+    hasExternalTextures: 0
+    materialStatus: Fallback material
+    notes: No external textures found; neutral fallback material used.
+  - assetId: Beer
+    displayName: Beer
+    sourceModel: {fileID: 919132149155446097, guid: 41b55a3561ee946749a2acff04f66d85, type: 3}
+    generatedPrefab: {fileID: 5000610898442640404, guid: 356888290d6fa4df0b1f18834ff56397, type: 3}
+    defaultScale: {x: 0.28581783, y: 0.28581783, z: 0.28581783}
+    defaultRotation: {x: 0, y: 0, z: 0}
+    hasExternalTextures: 1
+    materialStatus: Mapped 1/1 slots
+    notes: 
+  - assetId: Bucket
+    displayName: Bucket
+    sourceModel: {fileID: 919132149155446097, guid: b1a4f46a0638e432e85d67fe3002e15b, type: 3}
+    generatedPrefab: {fileID: 5392044716695454959, guid: d56f0e094b7684eaf82705ba1cff4905, type: 3}
+    defaultScale: {x: 0.45912126, y: 0.45912126, z: 0.45912126}
+    defaultRotation: {x: 0, y: 0, z: 0}
+    hasExternalTextures: 1
+    materialStatus: Mapped 1/1 slots
+    notes: 
+  - assetId: ClubDoorFrame
+    displayName: ClubDoorFrame
+    sourceModel: {fileID: 919132149155446097, guid: cc82ec951c7834108a50fc306cecab09, type: 3}
+    generatedPrefab: {fileID: 1421359622807722159, guid: 2a477a6fb99e54dc2a2b73846de65a01, type: 3}
+    defaultScale: {x: 3.0000544, y: 3.0000544, z: 3.0000544}
+    defaultRotation: {x: 0, y: 0, z: 0}
+    hasExternalTextures: 0
+    materialStatus: Fallback material
+    notes: No external textures found; neutral fallback material used.
+  - assetId: DJController
+    displayName: DJController
+    sourceModel: {fileID: 919132149155446097, guid: f50fe88bc2cf34dec8c930dd0b9ac4b3, type: 3}
+    generatedPrefab: {fileID: 2230000536630170428, guid: 37c401820749e477da0147210ace3fd9, type: 3}
+    defaultScale: {x: 1.2246286, y: 1.2246286, z: 1.2246286}
+    defaultRotation: {x: 0, y: 0, z: 0}
+    hasExternalTextures: 1
+    materialStatus: Mapped 1/1 slots
+    notes: Wrapper Model rotation (-90.00, 0.00, 0.00) aligns the control surface
+      with the tabletop.
+  - assetId: DJMixer
+    displayName: DJMixer
+    sourceModel: {fileID: 919132149155446097, guid: a7e1ede90409741ce85cd017cbaaf2ec, type: 3}
+    generatedPrefab: {fileID: 5697439276302101283, guid: 55dd4fe4c1ba8467e95231c8c8250d71, type: 3}
+    defaultScale: {x: 0.8169533, y: 0.8169533, z: 0.8169533}
+    defaultRotation: {x: 0, y: 0, z: 0}
+    hasExternalTextures: 1
+    materialStatus: Mapped 1/1 slots
+    notes: 
+  - assetId: DJStand
+    displayName: DJStand
+    sourceModel: {fileID: 919132149155446097, guid: 9fca8b9c1f020491e98c532b540518b0, type: 3}
+    generatedPrefab: {fileID: 6645150650445696166, guid: 699594093c8264aa1b4a10c2822612c4, type: 3}
+    defaultScale: {x: 1.2947096, y: 1.2947096, z: 1.2947096}
+    defaultRotation: {x: 0, y: 0, z: 0}
+    hasExternalTextures: 1
+    materialStatus: Mapped 12/12 slots
+    notes: 
+  - assetId: Ice
+    displayName: Ice
+    sourceModel: {fileID: 919132149155446097, guid: 1a32e85753fae4199a05ec6b4ab0ea03, type: 3}
+    generatedPrefab: {fileID: 3032836963883593529, guid: 68b189532e9e14d82ab0f993d9098cd3, type: 3}
+    defaultScale: {x: 0.16329902, y: 0.16329902, z: 0.16329902}
+    defaultRotation: {x: 0, y: 0, z: 0}
+    hasExternalTextures: 1
+    materialStatus: Mapped 1/1 slots
+    notes: 
+  - assetId: LongIslandIcedTea
+    displayName: LongIslandIcedTea
+    sourceModel: {fileID: 919132149155446097, guid: 6303a6caed9834cc7ac7c1040a807e14, type: 3}
+    generatedPrefab: {fileID: 8539597647050468258, guid: 3ca9a91dde03840ca807f1bea7d3ee3a, type: 3}
+    defaultScale: {x: 0.30596653, y: 0.30596653, z: 0.30596653}
+    defaultRotation: {x: 0, y: 0, z: 0}
+    hasExternalTextures: 1
+    materialStatus: Mapped 1/1 slots
+    notes: 
+  - assetId: NeonSign
+    displayName: NeonSign
+    sourceModel: {fileID: 919132149155446097, guid: 9a9bc4593c2354a6aab27a173187bf30, type: 3}
+    generatedPrefab: {fileID: 8353122721634464749, guid: 230ce3258780d45bca26913849942215, type: 3}
+    defaultScale: {x: 2.1349227, y: 2.1349227, z: 2.1349227}
+    defaultRotation: {x: 0, y: 0, z: 0}
+    hasExternalTextures: 1
+    materialStatus: Mapped 7/7 slots
+    notes: 'Emission remains disabled: tripo_part names do not identify a neon tube
+      with sufficient confidence.'
+  - assetId: SignBoard
+    displayName: SignBoard
+    sourceModel: {fileID: 919132149155446097, guid: 9c74df15efc9541b2b7c2ae1c2cef3bc, type: 3}
+    generatedPrefab: {fileID: 3175875702084575333, guid: 247c9a0a3761941ad9eff19213a0435a, type: 3}
+    defaultScale: {x: 2.1999998, y: 2.1999998, z: 2.1999998}
+    defaultRotation: {x: 0, y: 0, z: 0}
+    hasExternalTextures: 1
+    materialStatus: Mapped 14/14 slots
+    notes: 
+  - assetId: Turntable
+    displayName: Turntable
+    sourceModel: {fileID: 919132149155446097, guid: 0c0c3699efe29438e8eb17ddd7e1dd05, type: 3}
+    generatedPrefab: {fileID: 115133796245549714, guid: cbcfad562ab744fe1aa204bb07884c7e, type: 3}
+    defaultScale: {x: 0.5616379, y: 0.5616379, z: 0.5616379}
+    defaultRotation: {x: 0, y: 0, z: 0}
+    hasExternalTextures: 1
+    materialStatus: Mapped 1/1 slots
+    notes: Wrapper Model rotation (-90.00, 0.00, 0.00) aligns the control surface
+      with the tabletop.

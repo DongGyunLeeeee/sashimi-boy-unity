@@ -1,0 +1,21 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 14988d836245149a7b70d8ee4d54ae89, type: 3}
+  m_Name: Equipment_MicStand
+  m_EditorClassIdentifier: Assembly-CSharp::SashimiBoy.EquipmentDefinition
+  equipmentId: 7
+  displayName: "\uB9C8\uC774\uD06C \uC2A4\uD0E0\uB4DC"
+  role: "\uB9C8\uC774\uD06C \uACE0\uC815"
+  experienceChange: "\uB179\uC74C \uC790\uC138\uAC00 \uC7A1\uD78C\uB2E4."
+  visualFeedback: "\uC7A5\uBE44\uB8F8\uC5D0 \uC138\uC6CC\uC9C0\uB294 \uC624\uBE0C\uC81D\uD2B8\uB85C
+    \uD45C\uD604\uD55C\uB2E4."
+  icon: {fileID: 0}

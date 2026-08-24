@@ -17,7 +17,7 @@ namespace SashimiBoy
         {
             if (runner == null)
             {
-                runner = FindObjectOfType<DialogueRunner>();
+                runner = Object.FindAnyObjectByType<DialogueRunner>();
             }
 
             if (runner == null)

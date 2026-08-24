@@ -1,0 +1,22 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 14988d836245149a7b70d8ee4d54ae89, type: 3}
+  m_Name: Equipment_XlrCable
+  m_EditorClassIdentifier: Assembly-CSharp::SashimiBoy.EquipmentDefinition
+  equipmentId: 6
+  displayName: "XLR \uCF00\uC774\uBE14"
+  role: "\uB9C8\uC774\uD06C \uC2E0\uD638 \uC804\uB2EC"
+  experienceChange: "\uC18C\uB9AC \uD750\uB984\uC774 \uB04A\uAE30\uC9C0 \uC54A\uACE0
+    \uC774\uC5B4\uC9C4\uB2E4."
+  visualFeedback: "\uC624\uB514\uC624 \uC778\uD130\uD398\uC774\uC2A4 \uC5F0\uACB0
+    \uC5F0\uCD9C\uC774 \uAC15\uD574\uC9C4\uB2E4."
+  icon: {fileID: 0}

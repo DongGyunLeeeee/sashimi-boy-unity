@@ -15,9 +15,20 @@ namespace SashimiBoy.EditorTools
         private const string Root = "Assets/_SashimiBoy";
         private const string ScenesPath = Root + "/Scenes";
         private const string DataPath = Root + "/Data/Generated";
+        private const string Stage01SalmonMusicPath = Root + "/Audio/Music/Stage_01_Salmon/stage01_salmon_main.mp3";
 
         [MenuItem("Sashimi Boy/Generate Non-Stage Prototype")]
         public static void GenerateNonStagePrototype()
+        {
+            GenerateNonStagePrototypeInternal(true);
+        }
+
+        public static void GenerateNonStagePrototypeNoDialog()
+        {
+            GenerateNonStagePrototypeInternal(false);
+        }
+
+        private static void GenerateNonStagePrototypeInternal(bool showDialog)
         {
             EnsureFolders();
             CreateDefaultDataAssets();
@@ -26,10 +37,49 @@ namespace SashimiBoy.EditorTools
             CreateFishShopDialogueScene();
             CreateEquipmentShopScene();
             CreateClubScene();
+            CreateStage01SalmonScene();
+            Stage01SalmonPresentationPipeline.
+                RebuildGeneratedPresentationForPrototypeGenerator();
+            VerticalSlicePresentationPipeline.
+                RebuildForPrototypeGenerator();
+            NewAssetsKevinCameraPipeline.
+                RebuildForPrototypeGenerator();
             AddScenesToBuildSettings();
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
-            EditorUtility.DisplayDialog("Sashimi Boy", "Non-stage prototype scenes and data were generated.", "OK");
+            if (showDialog)
+            {
+                EditorUtility.DisplayDialog(
+                    "Sashimi Boy",
+                    "Non-stage prototype scenes and data were generated.",
+                    "OK");
+            }
+        }
+
+        [MenuItem("Sashimi Boy/Generate Stage 01 Salmon Scaffold")]
+        public static void GenerateStage01SalmonScaffold()
+        {
+            GenerateStage01SalmonScaffoldInternal(true);
+        }
+
+        public static void GenerateStage01SalmonScaffoldNoDialog()
+        {
+            GenerateStage01SalmonScaffoldInternal(false);
+        }
+
+        private static void GenerateStage01SalmonScaffoldInternal(bool showDialog)
+        {
+            EnsureFolders();
+            CreateStage01SalmonScene();
+            Stage01SalmonPresentationPipeline.
+                RebuildGeneratedPresentationForPrototypeGenerator();
+            AddScenesToBuildSettings();
+            AssetDatabase.SaveAssets();
+            AssetDatabase.Refresh();
+            if (showDialog)
+            {
+                EditorUtility.DisplayDialog("Sashimi Boy", "Stage 01 Salmon timing scaffold was generated.", "OK");
+            }
         }
 
         [MenuItem("Sashimi Boy/Open Street Scene")]
@@ -116,8 +166,11 @@ namespace SashimiBoy.EditorTools
             CreateReturnDoor(new Vector3(4.8f, 0.8f, -2.8f));
 
             var stageStart = Cube("StartStage01_Placeholder", new Vector3(-2.1f, 0.5f, -1.8f), new Vector3(1.5f, 1f, 1.5f), new Color(0.9f, 0.75f, 0.15f));
-            stageStart.AddComponent<StageStarterInteractable>().prompt = "1스테이지 자리 확인";
-            CreateTextMeshLabel("Label_StagePlaceholder", "1스테이지 자리\n음악/비트맵 대기", new Vector3(-2.1f, 1.5f, -1.8f));
+            StageStarterInteractable starter = stageStart.AddComponent<StageStarterInteractable>();
+            starter.prompt = "1스테이지 타이밍 스캐폴드";
+            starter.stageSceneName = SashimiBoyConstants.Scenes.Stage01Salmon;
+            starter.loadStageScene = true;
+            CreateTextMeshLabel("Label_StagePlaceholder", "1스테이지 타이밍\n음악/클럭 스캐폴드", new Vector3(-2.1f, 1.5f, -1.8f));
 
             DialogueRunner runner = CreateDialogueUI();
             var bossTrigger = GameObject.Find("Boss").AddComponent<DialogueTrigger>();
@@ -184,6 +237,50 @@ namespace SashimiBoy.EditorTools
             CreateSharedWorldUI(true);
             AddDebugHotkeys();
             SaveActiveScene(SashimiBoyConstants.Scenes.Club);
+        }
+
+        private static void CreateStage01SalmonScene()
+        {
+            NewScene(SashimiBoyConstants.Scenes.Stage01Salmon, GameLocation.FishStage);
+            Camera camera = CreateBasicCamera(new Vector3(0f, 7.2f, 0f), Quaternion.Euler(90f, 0f, 0f));
+            camera.orthographic = true;
+            camera.orthographicSize = 3.4f;
+            camera.gameObject.AddComponent<AudioListener>();
+            CreateDirectionalLight();
+
+            Cube("Stage01_Floor", Vector3.zero, new Vector3(8f, 0.08f, 5f), new Color(0.1f, 0.12f, 0.13f));
+            Cube("Stage01_CuttingBoard", new Vector3(0f, 0.22f, 0f), new Vector3(5.3f, 0.16f, 1.75f), new Color(0.74f, 0.62f, 0.42f));
+            Cube("Stage01_SalmonPlaceholder", new Vector3(0f, 0.45f, 0f), new Vector3(3.7f, 0.14f, 0.58f), new Color(0.95f, 0.43f, 0.36f));
+            Cube("Stage01_KnifeLine", new Vector3(0f, 0.66f, 0f), new Vector3(0.06f, 0.08f, 1.65f), new Color(0.92f, 0.98f, 1f));
+            new GameObject("Stage01_SliceLinesRoot");
+
+            var scaffoldObject = new GameObject("Stage01Salmon_TimingScaffold");
+            AudioSource source = scaffoldObject.AddComponent<AudioSource>();
+            source.playOnAwake = false;
+            source.volume = 1f;
+            source.mute = false;
+            source.spatialBlend = 0f;
+            source.clip = AssetDatabase.LoadAssetAtPath<AudioClip>(Stage01SalmonMusicPath);
+            AudioClock clock = scaffoldObject.AddComponent<AudioClock>();
+            clock.audioSource = source;
+            clock.playOnStart = false;
+            Stage01SalmonTimingScaffold scaffold = scaffoldObject.AddComponent<Stage01SalmonTimingScaffold>();
+            scaffold.musicClip = source.clip;
+            scaffold.audioSource = source;
+            scaffold.audioClock = clock;
+            scaffold.bpm = 88f;
+            scaffold.firstDownbeatSec = 0.683d;
+            scaffold.gameplayStartSec = 11.592d;
+            scaffold.gameplayEndSec = 120.683d;
+
+            if (source.clip == null)
+            {
+                Debug.LogWarning("Stage 01 Salmon music clip was not found at " + Stage01SalmonMusicPath);
+            }
+
+            CreateSharedWorldUI(false);
+            AddDebugHotkeys();
+            SaveActiveScene(SashimiBoyConstants.Scenes.Stage01Salmon);
         }
 
         private static void NewScene(string name, GameLocation location)
@@ -302,7 +399,7 @@ namespace SashimiBoy.EditorTools
             canvas.renderMode = RenderMode.ScreenSpaceOverlay;
             canvasObj.AddComponent<CanvasScaler>();
             canvasObj.AddComponent<GraphicRaycaster>();
-            if (Object.FindObjectOfType<EventSystem>() == null)
+            if (Object.FindAnyObjectByType<EventSystem>() == null)
             {
                 var eventSystem = new GameObject("EventSystem");
                 eventSystem.AddComponent<EventSystem>();
@@ -337,7 +434,7 @@ namespace SashimiBoy.EditorTools
             rect.offsetMax = Vector2.zero;
             Text text = go.AddComponent<Text>();
             text.text = content;
-            text.font = Resources.GetBuiltinResource<Font>("Arial.ttf");
+            text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
             text.fontSize = fontSize;
             text.alignment = alignment;
             text.color = color;
@@ -561,7 +658,8 @@ namespace SashimiBoy.EditorTools
                 SashimiBoyConstants.Scenes.Street,
                 SashimiBoyConstants.Scenes.FishShopDialogue,
                 SashimiBoyConstants.Scenes.EquipmentShop,
-                SashimiBoyConstants.Scenes.Club
+                SashimiBoyConstants.Scenes.Club,
+                SashimiBoyConstants.Scenes.Stage01Salmon
             };
 
             var scenes = new List<EditorBuildSettingsScene>();

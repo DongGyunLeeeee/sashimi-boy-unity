@@ -13,7 +13,7 @@ namespace SashimiBoy
         {
             if (clubController == null)
             {
-                clubController = FindObjectOfType<ClubController>();
+                clubController = Object.FindAnyObjectByType<ClubController>();
             }
 
             if (clubController != null)

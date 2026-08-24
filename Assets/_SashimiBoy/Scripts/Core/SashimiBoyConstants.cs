@@ -13,6 +13,7 @@ namespace SashimiBoy
             public const string FishShopDialogue = "FishShopDialogue";
             public const string EquipmentShop = "EquipmentShop";
             public const string Club = "Club";
+            public const string Stage01Salmon = "Stage01_Salmon";
             public const string StageSelect = "StageSelect";
             public const string FishStageTemplate = "FishStageTemplate";
         }

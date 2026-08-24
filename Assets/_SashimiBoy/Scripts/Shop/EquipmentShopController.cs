@@ -25,6 +25,23 @@ namespace SashimiBoy
         public string streetSceneName = SashimiBoyConstants.Scenes.Street;
 
         private StageRuntimeData recommendedStage;
+        private SaveData currentSave;
+
+        private void OnEnable()
+        {
+            if (SaveManager.Instance != null)
+            {
+                SaveManager.Instance.OnSaveChanged += HandleSaveChanged;
+            }
+        }
+
+        private void OnDisable()
+        {
+            if (SaveManager.Instance != null)
+            {
+                SaveManager.Instance.OnSaveChanged -= HandleSaveChanged;
+            }
+        }
 
         private void Awake()
         {
@@ -50,15 +67,15 @@ namespace SashimiBoy
             Refresh();
         }
 
+        private void HandleSaveChanged(SaveData save)
+        {
+            Refresh();
+        }
+
         public void Refresh()
         {
-            SaveData save = SaveManager.Instance != null ? SaveManager.Instance.Current : null;
-            recommendedStage = ProgressionQuery.GetLatestClearedStageWithUnownedReward(save);
-
-            if (recommendedStage == null)
-            {
-                recommendedStage = GetNextRecommendationByProgress(save);
-            }
+            currentSave = SaveManager.Instance != null ? SaveManager.Instance.Current : null;
+            recommendedStage = GetDisplayStage(currentSave);
 
             if (titleText != null)
             {
@@ -72,8 +89,10 @@ namespace SashimiBoy
             }
 
             EquipmentRuntimeData equipment = ContentDefaults.FindEquipment(recommendedStage.rewardEquipment);
-            bool owned = save != null && save.HasEquipment(recommendedStage.rewardEquipment);
-            int plates = save != null ? save.GetPlates(recommendedStage.fishType) : 0;
+            bool owned = currentSave != null && currentSave.HasEquipment(recommendedStage.rewardEquipment);
+            bool cleared = currentSave != null && currentSave.IsStageCleared(recommendedStage.stageId);
+            bool canExchange = CanExchange(currentSave, recommendedStage);
+            int plates = currentSave != null ? currentSave.GetPlates(recommendedStage.fishType) : 0;
 
             if (kevinRequestText != null)
             {
@@ -87,7 +106,7 @@ namespace SashimiBoy
 
             if (itemNameText != null)
             {
-                itemNameText.text = equipment.displayName;
+                itemNameText.text = GetEquipmentName(equipment, recommendedStage.rewardEquipment);
             }
 
             if (itemDescriptionText != null)
@@ -97,21 +116,21 @@ namespace SashimiBoy
 
             if (priceText != null)
             {
-                priceText.text = $"교환 조건: {recommendedStage.displayName} 회 {recommendedStage.requiredPlatesForExchange}접시 / 보유 {plates}접시";
+                priceText.text = $"보상 출처: {recommendedStage.displayName} 클리어 / 필요 {recommendedStage.fishType} {recommendedStage.requiredPlatesForExchange}접시 / 보유 {plates}접시";
             }
 
             if (ownedText != null)
             {
-                ownedText.text = owned ? "이미 보유 중" : "미보유";
+                ownedText.text = GetExchangeStatusText(currentSave, recommendedStage, equipment);
             }
 
             if (buyButton != null)
             {
-                buyButton.interactable = !owned && (allowFreePrototypePurchases || plates >= recommendedStage.requiredPlatesForExchange);
+                buyButton.interactable = canExchange;
                 Text buttonText = buyButton.GetComponentInChildren<Text>();
                 if (buttonText != null)
                 {
-                    buttonText.text = owned ? "획득 완료" : "교환하기";
+                    buttonText.text = GetButtonText(owned, cleared, canExchange);
                 }
             }
         }
@@ -151,10 +170,58 @@ namespace SashimiBoy
             if (buyButton != null)
             {
                 buyButton.interactable = false;
+                Text buttonText = buyButton.GetComponentInChildren<Text>();
+                if (buttonText != null)
+                {
+                    buttonText.text = "교환 불가";
+                }
             }
         }
 
-        private StageRuntimeData GetNextRecommendationByProgress(SaveData save)
+        private StageRuntimeData GetDisplayStage(SaveData save)
+        {
+            StageRuntimeData availableReward = ProgressionQuery.GetLatestClearedStageWithUnownedReward(save);
+            if (availableReward != null)
+            {
+                return availableReward;
+            }
+
+            StageRuntimeData latestAcquiredReward = GetLatestClearedRewardStage(save);
+            if (latestAcquiredReward != null)
+            {
+                return latestAcquiredReward;
+            }
+
+            return GetNextRewardByProgress(save);
+        }
+
+        private StageRuntimeData GetLatestClearedRewardStage(SaveData save)
+        {
+            if (save == null)
+            {
+                return null;
+            }
+
+            List<StageRuntimeData> stages = ContentDefaults.CreateRewardStagesIncludingStageOneStub();
+            StageRuntimeData best = null;
+            for (int i = 0; i < stages.Count; i++)
+            {
+                StageRuntimeData stage = stages[i];
+                if (!save.IsStageCleared(stage.stageId))
+                {
+                    continue;
+                }
+
+                if (best == null || stage.order > best.order)
+                {
+                    best = stage;
+                }
+            }
+
+            return best;
+        }
+
+        private StageRuntimeData GetNextRewardByProgress(SaveData save)
         {
             List<StageRuntimeData> stages = ContentDefaults.CreateRewardStagesIncludingStageOneStub();
             for (int i = 0; i < stages.Count; i++)
@@ -171,8 +238,19 @@ namespace SashimiBoy
 
         public void BuyRecommended()
         {
-            if (recommendedStage == null || SaveManager.Instance == null)
+            if (recommendedStage == null || SaveManager.Instance == null || currentSave == null)
             {
+                return;
+            }
+
+            if (!CanExchange(currentSave, recommendedStage))
+            {
+                if (ToastUI.Instance != null)
+                {
+                    ToastUI.Instance.Show(GetBlockedExchangeMessage(currentSave, recommendedStage));
+                }
+
+                Refresh();
                 return;
             }
 
@@ -182,12 +260,12 @@ namespace SashimiBoy
                 EquipmentRuntimeData equipment = ContentDefaults.FindEquipment(recommendedStage.rewardEquipment);
                 if (ToastUI.Instance != null)
                 {
-                    ToastUI.Instance.Show($"{equipment.displayName} 획득");
+                    ToastUI.Instance.Show($"획득 장비: {GetEquipmentName(equipment, recommendedStage.rewardEquipment)}");
                 }
             }
             else if (ToastUI.Instance != null)
             {
-                ToastUI.Instance.Show("회가 부족합니다.");
+                ToastUI.Instance.Show(GetBlockedExchangeMessage(currentSave, recommendedStage));
             }
 
             Refresh();
@@ -221,6 +299,88 @@ namespace SashimiBoy
                 save.AddPlates(FishType.Salmon, 1);
                 SaveManager.Instance.RaiseChanged();
             }
+        }
+
+        private bool CanExchange(SaveData save, StageRuntimeData stage)
+        {
+            if (save == null || stage == null || save.HasEquipment(stage.rewardEquipment))
+            {
+                return false;
+            }
+
+            if (!save.IsStageCleared(stage.stageId))
+            {
+                return false;
+            }
+
+            return allowFreePrototypePurchases || save.GetPlates(stage.fishType) >= stage.requiredPlatesForExchange;
+        }
+
+        private string GetExchangeStatusText(SaveData save, StageRuntimeData stage, EquipmentRuntimeData equipment)
+        {
+            if (save == null)
+            {
+                return "세이브 로드 대기";
+            }
+
+            string equipmentName = GetEquipmentName(equipment, stage.rewardEquipment);
+            if (save.HasEquipment(stage.rewardEquipment))
+            {
+                return $"획득 장비: {equipmentName}";
+            }
+
+            if (!save.IsStageCleared(stage.stageId))
+            {
+                return save.IsStageUnlocked(stage.stageId) ? "교환 불가: 스테이지 클리어 필요" : "교환 불가: 스테이지 잠김";
+            }
+
+            int plates = save.GetPlates(stage.fishType);
+            if (!allowFreePrototypePurchases && plates < stage.requiredPlatesForExchange)
+            {
+                return $"교환 불가: {stage.fishType} 회 부족";
+            }
+
+            return $"교환 가능: {equipmentName}";
+        }
+
+        private string GetButtonText(bool owned, bool cleared, bool canExchange)
+        {
+            if (owned)
+            {
+                return "획득 완료";
+            }
+
+            if (canExchange)
+            {
+                return "교환하기";
+            }
+
+            return cleared ? "회 부족" : "클리어 필요";
+        }
+
+        private string GetBlockedExchangeMessage(SaveData save, StageRuntimeData stage)
+        {
+            if (save == null)
+            {
+                return "세이브가 아직 준비되지 않았습니다.";
+            }
+
+            if (save.HasEquipment(stage.rewardEquipment))
+            {
+                return "이미 획득한 장비입니다.";
+            }
+
+            if (!save.IsStageCleared(stage.stageId))
+            {
+                return $"{stage.displayName} 클리어 후 교환할 수 있습니다.";
+            }
+
+            return $"{stage.fishType} 회가 부족합니다.";
+        }
+
+        private string GetEquipmentName(EquipmentRuntimeData equipment, EquipmentId fallback)
+        {
+            return string.IsNullOrWhiteSpace(equipment.displayName) ? fallback.ToString() : equipment.displayName;
         }
     }
 }

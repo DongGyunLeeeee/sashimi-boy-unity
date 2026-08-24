@@ -1,0 +1,25 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2d52674a79ab84819b51bcdddeb15887, type: 3}
+  m_Name: EquipmentCatalog
+  m_EditorClassIdentifier: Assembly-CSharp::SashimiBoy.EquipmentCatalog
+  equipment:
+  - {fileID: 11400000, guid: 01f3e8e39c0f447d7936a1df2f67b52c, type: 2}
+  - {fileID: 11400000, guid: caa588cf515154505a6c346d953379da, type: 2}
+  - {fileID: 11400000, guid: ead4d560e3715460d93206602ec7d64e, type: 2}
+  - {fileID: 11400000, guid: efabd272d3d1d42ebabda2866ce79c1e, type: 2}
+  - {fileID: 11400000, guid: 33a019b928c294b4caeaa43f5ca7a5bf, type: 2}
+  - {fileID: 11400000, guid: 7eab99bf15183469eb13430540b72391, type: 2}
+  - {fileID: 11400000, guid: 60c71789d1fc040dd989e686761ead57, type: 2}
+  - {fileID: 11400000, guid: 21817946eea95456ba9bc0e028f1f68d, type: 2}
+  - {fileID: 11400000, guid: 37f909912835845889fdadf52e5d8187, type: 2}
+  - {fileID: 11400000, guid: 51e405d38448b4965874f4f9aa13d2d3, type: 2}

@@ -1,0 +1,3 @@
+Drop the matching FBX for source folder "케빈(스타성개없는얼굴)" into this directory before opening Unity.
+Recommended normalized filename: Kevin_PlainFace.fbx
+The Codex import prompt can also locate an FBX with the original folder-matching name.
