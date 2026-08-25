@@ -6,10 +6,6 @@ namespace SashimiBoy
 {
     public sealed class EquipmentShopController : MonoBehaviour
     {
-        [Header("Prototype")]
-        public bool allowFreePrototypePurchases = true;
-        public bool simulateStageOneCleared = true;
-
         [Header("UI")]
         public Text titleText;
         public Text kevinRequestText;
@@ -63,7 +59,6 @@ namespace SashimiBoy
                 GameFlowManager.Instance.SetLocation(GameLocation.EquipmentShop);
             }
 
-            PreparePrototypeState();
             Refresh();
         }
 
@@ -254,7 +249,7 @@ namespace SashimiBoy
                 return;
             }
 
-            bool success = SaveManager.Instance.TryPurchaseReward(recommendedStage, allowFreePrototypePurchases);
+            bool success = SaveManager.Instance.TryPurchaseReward(recommendedStage);
             if (success)
             {
                 EquipmentRuntimeData equipment = ContentDefaults.FindEquipment(recommendedStage.rewardEquipment);
@@ -279,41 +274,9 @@ namespace SashimiBoy
             }
         }
 
-        private void PreparePrototypeState()
-        {
-            if (!simulateStageOneCleared || SaveManager.Instance == null)
-            {
-                return;
-            }
-
-            SaveData save = SaveManager.Instance.Current;
-            if (save == null)
-            {
-                return;
-            }
-
-            if (!save.IsStageCleared(SashimiBoyConstants.StageIds.Salmon))
-            {
-                save.MarkStageCleared(SashimiBoyConstants.StageIds.Salmon);
-                save.UnlockStage(SashimiBoyConstants.StageIds.Rockfish);
-                save.AddPlates(FishType.Salmon, 1);
-                SaveManager.Instance.RaiseChanged();
-            }
-        }
-
         private bool CanExchange(SaveData save, StageRuntimeData stage)
         {
-            if (save == null || stage == null || save.HasEquipment(stage.rewardEquipment))
-            {
-                return false;
-            }
-
-            if (!save.IsStageCleared(stage.stageId))
-            {
-                return false;
-            }
-
-            return allowFreePrototypePurchases || save.GetPlates(stage.fishType) >= stage.requiredPlatesForExchange;
+            return SaveManager.CanPurchaseReward(save, stage);
         }
 
         private string GetExchangeStatusText(SaveData save, StageRuntimeData stage, EquipmentRuntimeData equipment)
@@ -335,7 +298,7 @@ namespace SashimiBoy
             }
 
             int plates = save.GetPlates(stage.fishType);
-            if (!allowFreePrototypePurchases && plates < stage.requiredPlatesForExchange)
+            if (plates < stage.requiredPlatesForExchange)
             {
                 return $"교환 불가: {stage.fishType} 회 부족";
             }
