@@ -69,11 +69,17 @@ namespace SashimiBoy
         private readonly StringBuilder debugBuilder = new StringBuilder(1024);
         private float judgeDisplayTimer;
         private bool resultShown;
+        private bool stageResultFinalizationAttempted;
+        private bool stageResultFinalized;
         private bool clipMissing;
         private int score;
         private int combo;
         private int maxCombo;
         private int totalGameplayInputs;
+        private int nastyCount;
+        private int smoothCount;
+        private int slippedCount;
+        private int whackCount;
         private float yieldPercent;
         private double lastInputSongSec;
         private double lastInputOffsetMs;
@@ -247,6 +253,9 @@ namespace SashimiBoy
             debugBuilder.AppendLine(
                 $"Judge: {lastJudge}  Score: {score}  " +
                 $"Combo: {combo}  Max: {maxCombo}");
+            debugBuilder.AppendLine(
+                $"Judges N/S/S/W: {nastyCount} / {smoothCount} / " +
+                $"{slippedCount} / {whackCount}");
             debugBuilder.AppendLine($"Yield: {yieldPercent:0.0}%");
             if (activeNoteTracker != null)
             {
@@ -318,6 +327,7 @@ namespace SashimiBoy
                 lastJudge = "EMPTY HIT / WHACK";
                 lastInputDirection = string.Empty;
                 totalGameplayInputs++;
+                whackCount++;
                 combo = 0;
                 UpdateYieldPercent();
                 ShowFallbackJudge(lastJudge);
@@ -333,6 +343,22 @@ namespace SashimiBoy
             lastJudge = GradeLabel(grade);
             lastInputDirection = direction;
             totalGameplayInputs++;
+
+            switch (grade)
+            {
+                case JudgeGrade.Nasty:
+                    nastyCount++;
+                    break;
+                case JudgeGrade.Smooth:
+                    smoothCount++;
+                    break;
+                case JudgeGrade.Slipped:
+                    slippedCount++;
+                    break;
+                default:
+                    whackCount++;
+                    break;
+            }
 
             if (grade == JudgeGrade.Whack)
             {
@@ -595,7 +621,95 @@ namespace SashimiBoy
                     $"MAX COMBO {maxCombo}\nYIELD {yieldPercent:0.0}%";
             }
 
+            FinalizeStageResultOnce();
             presentationController?.PresentResult();
+        }
+
+        private void FinalizeStageResultOnce()
+        {
+            if (stageResultFinalizationAttempted)
+            {
+                return;
+            }
+
+            stageResultFinalizationAttempted = true;
+
+            StageRuntimeData stage = ContentDefaults.FindStage(
+                SashimiBoyConstants.StageIds.Salmon);
+            if (stage == null || string.IsNullOrWhiteSpace(stage.stageId))
+            {
+                Debug.LogError(
+                    "Stage01 result could not be finalized because Salmon " +
+                    "progression metadata is missing.",
+                    this);
+                return;
+            }
+
+            if (GameFlowManager.Instance == null)
+            {
+                Debug.LogError(
+                    "Stage01 result could not be finalized because " +
+                    "GameFlowManager is missing.",
+                    this);
+                return;
+            }
+
+            if (SaveManager.Instance == null)
+            {
+                Debug.LogError(
+                    "Stage01 result could not be finalized because " +
+                    "SaveManager is missing.",
+                    this);
+                return;
+            }
+
+            GameFlowManager.Instance.CompleteStage(
+                BuildStageClearPayload(stage));
+            stageResultFinalized = true;
+        }
+
+        private StageClearPayload BuildStageClearPayload(
+            StageRuntimeData stage)
+        {
+            int authoredNoteCount = GetAuthoredGameplayNoteCount();
+            int missedNoteCount = activeNoteTracker != null
+                ? activeNoteTracker.MissCount
+                : 0;
+
+            // Accuracy is the weighted grade value divided by all authored
+            // gameplay notes. Missed or unresolved notes therefore contribute
+            // zero, while empty inputs do not create extra authored notes.
+            float weightedHits = nastyCount + smoothCount * 0.7f +
+                slippedCount * 0.3f;
+            float accuracy01 = authoredNoteCount > 0
+                ? Mathf.Clamp01(weightedHits / authoredNoteCount)
+                : 0f;
+            bool allNasty = authoredNoteCount > 0 &&
+                nastyCount == authoredNoteCount &&
+                smoothCount == 0 &&
+                slippedCount == 0 &&
+                whackCount == 0 &&
+                missedNoteCount == 0;
+
+            return new StageClearPayload
+            {
+                stageId = stage.stageId,
+                nextStageId = stage.nextStageId,
+                fishType = stage.fishType,
+                rewardPlates = Mathf.Max(0, stage.rewardPlates),
+                allNasty = allNasty,
+                accuracy01 = accuracy01,
+                yield01 = Mathf.Clamp01(yieldPercent / 100f),
+                score = score
+            };
+        }
+
+        private int GetAuthoredGameplayNoteCount()
+        {
+            return notePatternProvider != null &&
+                notePatternProvider.RuntimeNotes != null
+                ? notePatternProvider.RuntimeNotes.Count
+                : 0;
         }
 
         private void SetResultVisible(bool visible)

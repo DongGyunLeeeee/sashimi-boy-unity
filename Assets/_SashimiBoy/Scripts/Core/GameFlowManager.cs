@@ -54,6 +54,14 @@ namespace SashimiBoy
                 return;
             }
 
+            if (SaveManager.Instance == null)
+            {
+                Debug.LogError(
+                    $"Stage clear for '{payload.stageId}' failed because " +
+                    "SaveManager is missing.");
+                return;
+            }
+
             SaveManager.Instance.ApplyStageClear(payload);
             OnStageCleared?.Invoke(payload);
         }
