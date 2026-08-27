@@ -1,0 +1,21 @@
+{
+    "name": "SashimiBoy.Stage01Progression.EditModeTests",
+    "rootNamespace": "SashimiBoy.Tests",
+    "references": [
+        "SashimiBoy.ReflectionTestSupport"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": false,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false,
+    "optionalUnityReferences": [
+        "TestAssemblies"
+    ]
+}
