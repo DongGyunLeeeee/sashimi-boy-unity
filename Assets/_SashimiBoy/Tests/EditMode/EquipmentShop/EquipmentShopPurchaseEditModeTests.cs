@@ -165,6 +165,48 @@ namespace SashimiBoy.EquipmentShopTests
         }
 
         [Test]
+        public void Purchase_CallerTamperedMetadata_IsRejectedWithoutMutation()
+        {
+            object save = CreateNewSave();
+            Component manager = CreateSaveManager(save);
+            object canonicalStage = SalmonStage();
+            int cost = PurchaseCost(canonicalStage);
+            MarkStageCleared(save, canonicalStage);
+            AddPlates(save, canonicalStage, cost + 3);
+            string before = JsonUtility.ToJson(save);
+
+            object tamperedCost = CopyPurchaseMetadata(canonicalStage);
+            RuntimeReflection.SetField(
+                tamperedCost,
+                "requiredPlatesForExchange",
+                cost + 1);
+            Assert.That(TryPurchase(manager, tamperedCost), Is.False);
+
+            object tamperedFish = CopyPurchaseMetadata(canonicalStage);
+            object canonicalFish = RuntimeReflection.GetField(
+                canonicalStage,
+                "fishType");
+            RuntimeReflection.SetField(
+                tamperedFish,
+                "fishType",
+                DifferentEnumValue(canonicalFish));
+            Assert.That(TryPurchase(manager, tamperedFish), Is.False);
+
+            object tamperedEquipment = CopyPurchaseMetadata(canonicalStage);
+            object canonicalEquipment = RuntimeReflection.GetField(
+                canonicalStage,
+                "rewardEquipment");
+            RuntimeReflection.SetField(
+                tamperedEquipment,
+                "rewardEquipment",
+                DifferentEnumValue(canonicalEquipment));
+            Assert.That(TryPurchase(manager, tamperedEquipment), Is.False);
+
+            Assert.That(JsonUtility.ToJson(save), Is.EqualTo(before));
+            Assert.That(HasRewardEquipment(save, canonicalStage), Is.False);
+        }
+
+        [Test]
         public void EquipmentShopScenes_HaveProductionDefaultsAndValidReferences()
         {
             AssertEquipmentShopScene(EquipmentShopScenePath, true);
@@ -281,6 +323,44 @@ namespace SashimiBoy.EquipmentShopTests
             return Convert.ToInt32(RuntimeReflection.GetField(
                 stage,
                 "requiredPlatesForExchange"));
+        }
+
+        private static object CopyPurchaseMetadata(object stage)
+        {
+            object copy = Activator.CreateInstance(
+                RuntimeReflection.RuntimeType("SashimiBoy.StageRuntimeData"));
+            string[] fields =
+            {
+                "stageId",
+                "fishType",
+                "rewardEquipment",
+                "requiredPlatesForExchange"
+            };
+            for (int i = 0; i < fields.Length; i++)
+            {
+                RuntimeReflection.SetField(
+                    copy,
+                    fields[i],
+                    RuntimeReflection.GetField(stage, fields[i]));
+            }
+
+            return copy;
+        }
+
+        private static object DifferentEnumValue(object value)
+        {
+            Array values = Enum.GetValues(value.GetType());
+            for (int i = 0; i < values.Length; i++)
+            {
+                object candidate = values.GetValue(i);
+                if (!candidate.Equals(value))
+                {
+                    return candidate;
+                }
+            }
+
+            throw new InvalidOperationException(
+                "Expected at least two enum values.");
         }
 
         private static void MarkStageCleared(object save, object stage)

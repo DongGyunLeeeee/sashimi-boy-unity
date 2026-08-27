@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using NUnit.Framework;
 using UnityEngine;
+using UnityEngine.EventSystems;
 using UnityEngine.SceneManagement;
 using UnityEngine.TestTools;
 
@@ -59,6 +60,8 @@ namespace SashimiBoy.EquipmentShopTests
                     scene,
                     "SashimiBoy.EquipmentShopController");
                 Assert.That(controller, Is.Not.Null);
+                AssertRequiredControllerReferences(controller);
+                AssertSceneIntegrity(scene);
 
                 AddPlates(testSave, stage, cost);
                 RuntimeReflection.Invoke(controller, "Refresh");
@@ -103,6 +106,75 @@ namespace SashimiBoy.EquipmentShopTests
                     "autoSaveOnChange",
                     originalAutoSave);
             }
+        }
+
+        private static void AssertRequiredControllerReferences(
+            Component controller)
+        {
+            string[] requiredReferences =
+            {
+                "titleText",
+                "kevinRequestText",
+                "shopkeeperText",
+                "itemNameText",
+                "itemDescriptionText",
+                "priceText",
+                "ownedText",
+                "buyButton",
+                "leaveButton"
+            };
+            for (int i = 0; i < requiredReferences.Length; i++)
+            {
+                Assert.That(
+                    RuntimeReflection.GetField(
+                        controller,
+                        requiredReferences[i]),
+                    Is.Not.Null,
+                    requiredReferences[i] + " is null.");
+            }
+        }
+
+        private static void AssertSceneIntegrity(Scene scene)
+        {
+            int activeAudioListeners = 0;
+            int activeEventSystems = 0;
+            GameObject[] roots = scene.GetRootGameObjects();
+            for (int rootIndex = 0; rootIndex < roots.Length; rootIndex++)
+            {
+                AudioListener[] listeners = roots[rootIndex]
+                    .GetComponentsInChildren<AudioListener>(true);
+                for (int i = 0; i < listeners.Length; i++)
+                {
+                    if (listeners[i].isActiveAndEnabled)
+                    {
+                        activeAudioListeners++;
+                    }
+                }
+
+                EventSystem[] eventSystems = roots[rootIndex]
+                    .GetComponentsInChildren<EventSystem>(true);
+                for (int i = 0; i < eventSystems.Length; i++)
+                {
+                    if (eventSystems[i].isActiveAndEnabled)
+                    {
+                        activeEventSystems++;
+                    }
+                }
+
+                Component[] components = roots[rootIndex]
+                    .GetComponentsInChildren<Component>(true);
+                for (int i = 0; i < components.Length; i++)
+                {
+                    Assert.That(
+                        components[i],
+                        Is.Not.Null,
+                        "Missing Script under " + roots[rootIndex].name +
+                        ".");
+                }
+            }
+
+            Assert.That(activeAudioListeners, Is.EqualTo(1));
+            Assert.That(activeEventSystems, Is.EqualTo(1));
         }
 
         private static void AddPlates(object save, object stage, int amount)
