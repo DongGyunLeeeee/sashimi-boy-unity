@@ -95,9 +95,9 @@ namespace SashimiBoy
                 pattern.manualBarCount);
             int repeatBarCount = pattern.manualBarCount - repeatStart + 1;
             int playbackBarOffset = pattern.manualBarCount;
-            while (PatternStartTimeSeconds +
-                playbackBarOffset * stepsPerBar * stepLength <
-                timing.gameplayEndSec)
+            while (timing.IsGameplayNotePlayable(
+                PatternStartTimeSeconds +
+                playbackBarOffset * stepsPerBar * stepLength))
             {
                 AddPatternRange(
                     ordered,
@@ -142,7 +142,7 @@ namespace SashimiBoy
                     source.eighthStepInBar;
                 double songTime = PatternStartTimeSeconds +
                     globalStep * stepLength;
-                if (songTime >= timing.gameplayEndSec)
+                if (!timing.IsGameplayNotePlayable(songTime))
                 {
                     continue;
                 }

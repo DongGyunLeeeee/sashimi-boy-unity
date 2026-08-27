@@ -39,6 +39,14 @@ namespace SashimiBoy
         public int MissCount { get; private set; }
         public int EmptyHitCount { get; private set; }
         public bool IsInitialized => provider != null && provider.IsInitialized;
+        public int UnresolvedCount
+        {
+            get
+            {
+                AdvancePastResolvedNotes();
+                return Notes.Count - nextUnresolvedIndex;
+            }
+        }
 
         public Stage01RuntimeNote NextActiveNote
         {
@@ -83,11 +91,17 @@ namespace SashimiBoy
                     break;
                 }
 
-                note.state = Stage01NoteState.Missed;
-                MissCount++;
-                nextUnresolvedIndex++;
-                NoteMissed?.Invoke(note);
-                AdvancePastResolvedNotes();
+                ResolveNextNoteAsMissed(note);
+            }
+        }
+
+        public void ResolveRemainingNotesAsMissed()
+        {
+            IReadOnlyList<Stage01RuntimeNote> notes = Notes;
+            AdvancePastResolvedNotes();
+            while (nextUnresolvedIndex < notes.Count)
+            {
+                ResolveNextNoteAsMissed(notes[nextUnresolvedIndex]);
             }
         }
 
@@ -164,6 +178,15 @@ namespace SashimiBoy
             {
                 nextUnresolvedIndex++;
             }
+        }
+
+        private void ResolveNextNoteAsMissed(Stage01RuntimeNote note)
+        {
+            note.state = Stage01NoteState.Missed;
+            MissCount++;
+            nextUnresolvedIndex++;
+            NoteMissed?.Invoke(note);
+            AdvancePastResolvedNotes();
         }
     }
 }
