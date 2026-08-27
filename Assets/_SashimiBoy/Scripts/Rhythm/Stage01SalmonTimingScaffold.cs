@@ -64,6 +64,7 @@ namespace SashimiBoy
         private const double NastyWindowMs = 45d;
         private const double SmoothWindowMs = 90d;
         private const double SlippedWindowMs = 140d;
+        private const double GameplayBoundaryEpsilonSec = 0.000001d;
         private const float JudgeDisplayDuration = 0.5f;
 
         private readonly StringBuilder debugBuilder = new StringBuilder(1024);
@@ -88,6 +89,10 @@ namespace SashimiBoy
 
         public double BeatLengthSeconds => 60d / Math.Max(1d, bpm);
         public double BarLengthSeconds => BeatLengthSeconds * BeatsPerBar;
+        public double LateJudgementWindowSeconds =>
+            SlippedWindowMs / 1000d;
+        public double GameplayBoundaryEpsilonSeconds =>
+            GameplayBoundaryEpsilonSec;
         public double CountdownStartSeconds => gameplayStartSec - BeatLengthSeconds * 4d;
         public double SongTimeSeconds => CalibratedSongTimeSec();
         public bool IsResultShown => resultShown;
@@ -168,20 +173,7 @@ namespace SashimiBoy
         private void Update()
         {
             double songSec = SongTimeSeconds;
-
-            if (!resultShown && songSec >= gameplayEndSec)
-            {
-                ShowResultPlaceholder(songSec);
-            }
-
-            if (!resultShown &&
-                CurrentSection == Stage01SalmonSection.Gameplay &&
-                activeNoteTracker != null)
-            {
-                activeNoteTracker.ProcessExpiredNotes(
-                    InputAdjustedSongTimeSec(),
-                    SlippedWindowMs);
-            }
+            AdvanceStageTimeline(songSec, InputAdjustedSongTimeSec());
 
             if (Input.GetKeyDown(inputKey))
             {
@@ -190,6 +182,12 @@ namespace SashimiBoy
 
             RefreshFallbackUi(songSec);
             RefreshMissingClipWarning();
+        }
+
+        public bool IsGameplayNotePlayable(double targetSongTimeSeconds)
+        {
+            return targetSongTimeSeconds + LateJudgementWindowSeconds <=
+                gameplayEndSec + GameplayBoundaryEpsilonSec;
         }
 
         public double GetBeatTimeSeconds(int beatIndex)
@@ -306,6 +304,11 @@ namespace SashimiBoy
                 return;
             }
 
+            ResolveGameplayInput(inputSec);
+        }
+
+        private void ResolveGameplayInput(double inputSec)
+        {
             if (activeNoteTracker == null ||
                 !activeNoteTracker.IsInitialized)
             {
@@ -422,8 +425,7 @@ namespace SashimiBoy
 
         private void HandleAutoMiss(Stage01RuntimeNote note)
         {
-            if (resultShown ||
-                CurrentSection != Stage01SalmonSection.Gameplay)
+            if (resultShown)
             {
                 return;
             }
@@ -435,6 +437,30 @@ namespace SashimiBoy
             UpdateYieldPercent();
             ShowFallbackJudge(lastJudge);
             presentationController?.PresentMiss(note);
+        }
+
+        private void AdvanceStageTimeline(
+            double songSec,
+            double inputAdjustedSongSec)
+        {
+            if (resultShown)
+            {
+                return;
+            }
+
+            if (songSec >= gameplayEndSec)
+            {
+                activeNoteTracker?.ResolveRemainingNotesAsMissed();
+                ShowResultPlaceholder(songSec);
+                return;
+            }
+
+            if (songSec >= gameplayStartSec && activeNoteTracker != null)
+            {
+                activeNoteTracker.ProcessExpiredNotes(
+                    inputAdjustedSongSec,
+                    SlippedWindowMs);
+            }
         }
 
         private Camera EnsureMainCamera()
@@ -633,6 +659,18 @@ namespace SashimiBoy
             }
 
             stageResultFinalizationAttempted = true;
+
+            int authoredNoteCount = GetAuthoredGameplayNoteCount();
+            if (authoredNoteCount > 0 &&
+                (activeNoteTracker == null ||
+                    activeNoteTracker.UnresolvedCount > 0))
+            {
+                Debug.LogError(
+                    "Stage01 result could not be finalized because gameplay " +
+                    "note tracking is missing or still unresolved.",
+                    this);
+                return;
+            }
 
             StageRuntimeData stage = ContentDefaults.FindStage(
                 SashimiBoyConstants.StageIds.Salmon);

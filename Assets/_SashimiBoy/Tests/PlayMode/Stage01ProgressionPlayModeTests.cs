@@ -10,7 +10,7 @@ namespace SashimiBoy.Tests
     public sealed class Stage01ProgressionPlayModeTests
     {
         [UnityTest]
-        public IEnumerator Stage01Result_FinalizesProgressionOnlyOnce()
+        public IEnumerator NaturalBoundary_LastPlayableNoteMissesBeforeResult()
         {
             AsyncOperation load = SceneManager.LoadSceneAsync(
                 "Stage01_Salmon",
@@ -27,6 +27,15 @@ namespace SashimiBoy.Tests
             Assert.That(saveManager, Is.Not.Null);
             Assert.That(gameFlow, Is.Not.Null);
             Assert.That(timing, Is.Not.Null);
+
+            Component provider = (Component)RuntimeReflection.GetField(
+                timing,
+                "notePatternProvider");
+            Component tracker = (Component)RuntimeReflection.GetField(
+                timing,
+                "activeNoteTracker");
+            Assert.That(provider, Is.Not.Null);
+            Assert.That(tracker, Is.Not.Null);
 
             object originalSave = RuntimeReflection.GetField(
                 saveManager,
@@ -51,10 +60,42 @@ namespace SashimiBoy.Tests
                     testSave);
                 RuntimeReflection.SetField(
                     timing,
-                    "gameplayEndSec",
-                    -1d);
+                    "presentationController",
+                    null);
+                RuntimeReflection.SetField(
+                    timing,
+                    "judgementFeedback",
+                    null);
+                var notes = (IList)RuntimeReflection.GetField(
+                    provider,
+                    "runtimeNotes");
+                Assert.That(notes.Count, Is.EqualTo(157));
+                for (int i = 0; i < notes.Count - 1; i++)
+                {
+                    double noteTime = Convert.ToDouble(
+                        RuntimeReflection.GetField(
+                            notes[i],
+                            "songTimeSeconds"));
+                    RuntimeReflection.Invoke(
+                        timing,
+                        "ResolveGameplayInput",
+                        noteTime);
+                }
 
-                yield return null;
+                Assert.That(
+                    Convert.ToInt32(RuntimeReflection.Invoke(
+                        tracker,
+                        "get_UnresolvedCount")),
+                    Is.EqualTo(1));
+
+                double gameplayEnd = Convert.ToDouble(
+                    RuntimeReflection.GetField(timing, "gameplayEndSec"));
+                double frameAfterEnd = gameplayEnd + 0.25d;
+                RuntimeReflection.Invoke(
+                    timing,
+                    "AdvanceStageTimeline",
+                    frameAfterEnd,
+                    frameAfterEnd);
                 yield return null;
 
                 Assert.That(
@@ -62,6 +103,54 @@ namespace SashimiBoy.Tests
                         timing,
                         "stageResultFinalized")),
                     Is.True);
+                Assert.That(
+                    Convert.ToInt32(RuntimeReflection.Invoke(
+                        tracker,
+                        "get_HitCount")),
+                    Is.EqualTo(notes.Count - 1));
+                Assert.That(
+                    Convert.ToInt32(RuntimeReflection.Invoke(
+                        tracker,
+                        "get_MissCount")),
+                    Is.EqualTo(1));
+                Assert.That(
+                    Convert.ToInt32(RuntimeReflection.Invoke(
+                        tracker,
+                        "get_UnresolvedCount")),
+                    Is.Zero);
+                Assert.That(
+                    Convert.ToInt32(RuntimeReflection.GetField(
+                        timing,
+                        "totalGameplayInputs")),
+                    Is.EqualTo(notes.Count));
+
+                float expectedRatio = (notes.Count - 1f) / notes.Count;
+                Assert.That(
+                    Convert.ToSingle(RuntimeReflection.GetField(
+                        timing,
+                        "yieldPercent")),
+                    Is.EqualTo(expectedRatio * 100f).Within(0.0001f));
+
+                object stage = RuntimeReflection.InvokeStatic(
+                    "SashimiBoy.ContentDefaults",
+                    "FindStage",
+                    "STAGE_01_SALMON");
+                object payload = RuntimeReflection.Invoke(
+                    timing,
+                    "BuildStageClearPayload",
+                    stage);
+                Assert.That(
+                    Convert.ToSingle(
+                        RuntimeReflection.GetField(payload, "yield01")),
+                    Is.EqualTo(expectedRatio).Within(0.0001f));
+                Assert.That(
+                    Convert.ToSingle(
+                        RuntimeReflection.GetField(payload, "accuracy01")),
+                    Is.EqualTo(expectedRatio).Within(0.0001f));
+                Assert.That(
+                    Convert.ToBoolean(
+                        RuntimeReflection.GetField(payload, "allNasty")),
+                    Is.False);
                 Assert.That(
                     RuntimeReflection.Invoke(
                         testSave,
@@ -76,6 +165,11 @@ namespace SashimiBoy.Tests
                     Is.EqualTo(true));
                 Assert.That(GetSalmonPlates(testSave), Is.EqualTo(1));
 
+                RuntimeReflection.Invoke(
+                    timing,
+                    "AdvanceStageTimeline",
+                    frameAfterEnd + 0.25d,
+                    frameAfterEnd + 0.25d);
                 yield return null;
                 Assert.That(GetSalmonPlates(testSave), Is.EqualTo(1));
             }

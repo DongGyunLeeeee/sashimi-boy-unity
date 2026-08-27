@@ -14,6 +14,8 @@ namespace SashimiBoy.Tests
     {
         private const string SalmonStageId = "STAGE_01_SALMON";
         private const string RockfishStageId = "STAGE_02_ROCKFISH";
+        private const string Stage01PatternPath =
+            "Assets/_SashimiBoy/Data/Generated/Stage01NotePattern.asset";
         private readonly List<GameObject> createdObjects =
             new List<GameObject>();
 
@@ -142,6 +144,135 @@ namespace SashimiBoy.Tests
                 "BuildStageClearPayload",
                 FindSalmonStage());
 
+            Assert.That(
+                Convert.ToSingle(
+                    RuntimeReflection.GetField(payload, "accuracy01")),
+                Is.EqualTo(1f));
+            Assert.That(
+                Convert.ToBoolean(
+                    RuntimeReflection.GetField(payload, "allNasty")),
+                Is.True);
+        }
+
+        [Test]
+        public void NaturalPattern_AuthorsOnlyNotesWithACompleteLateWindow()
+        {
+            Component provider;
+            Component tracker;
+            Component timing = CreateNaturalPatternRig(
+                out provider,
+                out tracker);
+            IList notes = GetRuntimeNotes(provider);
+            double gameplayEnd = Convert.ToDouble(
+                RuntimeReflection.GetField(timing, "gameplayEndSec"));
+            double lateWindow = Convert.ToDouble(RuntimeReflection.Invoke(
+                timing,
+                "get_LateJudgementWindowSeconds"));
+            double epsilon = Convert.ToDouble(RuntimeReflection.Invoke(
+                timing,
+                "get_GameplayBoundaryEpsilonSeconds"));
+
+            Assert.That(notes.Count, Is.EqualTo(157));
+            for (int i = 0; i < notes.Count; i++)
+            {
+                double noteTime = Convert.ToDouble(
+                    RuntimeReflection.GetField(notes[i], "songTimeSeconds"));
+                Assert.That(
+                    RuntimeReflection.Invoke(
+                        timing,
+                        "IsGameplayNotePlayable",
+                        noteTime),
+                    Is.EqualTo(true),
+                    $"Runtime note {i} does not have a complete late window.");
+            }
+
+            double lastNoteTime = Convert.ToDouble(
+                RuntimeReflection.GetField(
+                    notes[notes.Count - 1],
+                    "songTimeSeconds"));
+            Assert.That(
+                lastNoteTime + lateWindow,
+                Is.LessThanOrEqualTo(gameplayEnd + epsilon));
+            Assert.That(
+                Convert.ToInt32(RuntimeReflection.Invoke(
+                    tracker,
+                    "get_UnresolvedCount")),
+                Is.EqualTo(notes.Count));
+        }
+
+        [Test]
+        public void PlayableBoundary_UsesNamedEpsilonDeterministically()
+        {
+            Component timing = CreateComponent(
+                "Timing",
+                "SashimiBoy.Stage01SalmonTimingScaffold");
+            double gameplayEnd = Convert.ToDouble(
+                RuntimeReflection.GetField(timing, "gameplayEndSec"));
+            double lateWindow = Convert.ToDouble(RuntimeReflection.Invoke(
+                timing,
+                "get_LateJudgementWindowSeconds"));
+            double epsilon = Convert.ToDouble(RuntimeReflection.Invoke(
+                timing,
+                "get_GameplayBoundaryEpsilonSeconds"));
+            double insideTolerance = gameplayEnd - lateWindow + epsilon * 0.5d;
+            double outsideTolerance = gameplayEnd - lateWindow + epsilon * 2d;
+
+            Assert.That(
+                RuntimeReflection.Invoke(
+                    timing,
+                    "IsGameplayNotePlayable",
+                    insideTolerance),
+                Is.EqualTo(true));
+            Assert.That(
+                RuntimeReflection.Invoke(
+                    timing,
+                    "IsGameplayNotePlayable",
+                    outsideTolerance),
+                Is.EqualTo(false));
+        }
+
+        [Test]
+        public void NaturalPattern_AllNasty_ProducesConsistentPerfectPayload()
+        {
+            Component provider;
+            Component tracker;
+            Component timing = CreateNaturalPatternRig(
+                out provider,
+                out tracker);
+            IList notes = GetRuntimeNotes(provider);
+
+            for (int i = 0; i < notes.Count; i++)
+            {
+                double noteTime = Convert.ToDouble(
+                    RuntimeReflection.GetField(notes[i], "songTimeSeconds"));
+                RuntimeReflection.Invoke(
+                    timing,
+                    "ResolveGameplayInput",
+                    noteTime);
+            }
+
+            object payload = RuntimeReflection.Invoke(
+                timing,
+                "BuildStageClearPayload",
+                FindSalmonStage());
+            Assert.That(
+                Convert.ToInt32(RuntimeReflection.Invoke(
+                    tracker,
+                    "get_HitCount")),
+                Is.EqualTo(notes.Count));
+            Assert.That(
+                Convert.ToInt32(RuntimeReflection.Invoke(
+                    tracker,
+                    "get_UnresolvedCount")),
+                Is.Zero);
+            Assert.That(
+                Convert.ToInt32(
+                    RuntimeReflection.GetField(timing, "nastyCount")),
+                Is.EqualTo(notes.Count));
+            Assert.That(
+                Convert.ToSingle(
+                    RuntimeReflection.GetField(payload, "yield01")),
+                Is.EqualTo(1f));
             Assert.That(
                 Convert.ToSingle(
                     RuntimeReflection.GetField(payload, "accuracy01")),
@@ -317,6 +448,43 @@ namespace SashimiBoy.Tests
                 "SashimiBoy.ContentDefaults",
                 "FindStage",
                 SalmonStageId);
+        }
+
+        private Component CreateNaturalPatternRig(
+            out Component provider,
+            out Component tracker)
+        {
+            Component timing = CreateComponent(
+                "Timing",
+                "SashimiBoy.Stage01SalmonTimingScaffold");
+            provider = CreateComponent(
+                "Pattern",
+                "SashimiBoy.Stage01NotePatternProvider");
+            tracker = CreateComponent(
+                "Tracker",
+                "SashimiBoy.Stage01ActiveNoteTracker");
+            UnityEngine.Object pattern = AssetDatabase.LoadAssetAtPath(
+                Stage01PatternPath,
+                RuntimeReflection.RuntimeType(
+                    "SashimiBoy.Stage01NotePatternDefinition"));
+            Assert.That(pattern, Is.Not.Null);
+
+            RuntimeReflection.SetField(provider, "pattern", pattern);
+            RuntimeReflection.SetField(
+                timing,
+                "notePatternProvider",
+                provider);
+            RuntimeReflection.SetField(
+                timing,
+                "activeNoteTracker",
+                tracker);
+            RuntimeReflection.Invoke(timing, "InitializePatternTracking");
+            return timing;
+        }
+
+        private static IList GetRuntimeNotes(Component provider)
+        {
+            return (IList)RuntimeReflection.GetField(provider, "runtimeNotes");
         }
 
         private static void AddRuntimeNotes(Component provider, int count)
