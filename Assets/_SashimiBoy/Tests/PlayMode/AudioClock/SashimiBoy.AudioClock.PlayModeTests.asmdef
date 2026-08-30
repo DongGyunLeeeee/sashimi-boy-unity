@@ -1,0 +1,19 @@
+{
+    "name": "SashimiBoy.AudioClock.PlayModeTests",
+    "rootNamespace": "SashimiBoy.Tests",
+    "references": [
+        "SashimiBoy.ReflectionTestSupport"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": false,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false,
+    "optionalUnityReferences": [
+        "TestAssemblies"
+    ]
+}
