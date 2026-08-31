@@ -20,12 +20,24 @@ Automation memory is optional and must never be a build or workflow gate.
 
 1. GitHub Issue acceptance criteria and comments
 2. This `AGENTS.md`
-3. Linked PR review findings
-4. Repository architecture and QA documentation
-5. Existing production code and serialized Unity data
-6. Product sketches and references
+3. The current repository automation specification in `Docs/Automation/`
+4. Linked PR review findings
+5. Repository architecture and QA documentation
+6. Existing production code and serialized Unity data
+7. Product sketches and references
 
 Do not silently invent missing product, story, UX, balance, or asset decisions.
+
+## Repository automation specification
+
+Repository automation rules take precedence over Automation memory and previous
+chat summaries. Read the current
+[`SPEC_VERSION`](Docs/Automation/SPEC_VERSION),
+[`WORKFLOW.md`](Docs/Automation/WORKFLOW.md), and the applicable
+[`DEVELOPER.md`](Docs/Automation/DEVELOPER.md) or
+[`REVIEWER.md`](Docs/Automation/REVIEWER.md) before every run. The canonical
+state machine is defined in `WORKFLOW.md`; agents may perform only their listed
+transitions and may never merge a PR or move an Issue to `Done`.
 
 ## Project fields
 
