@@ -46,9 +46,7 @@ param(
     [ValidateNotNullOrEmpty()]
     [string]$GitHubCliPath = 'gh',
 
-    [switch]$DryRun,
-
-    [switch]$SkipUnityProcessCheck
+    [switch]$DryRun
 )
 
 Set-StrictMode -Version Latest
@@ -309,29 +307,60 @@ try {
         Stop-Preflight -Message "Unity lock exists for the inspected worktree: $unityLockPath"
     }
 
-    if ($SkipUnityProcessCheck) {
-        Add-PreflightCheck -Name 'UnityProcess' -Passed $true -Skipped $true -Detail 'Skipped by explicit test-only opt-in.'
+    $unityProcesses = $null
+    $cimProcessError = $null
+    try {
+        $unityProcesses = @(Get-CimInstance -ClassName Win32_Process -Filter "Name = 'Unity.exe'" -ErrorAction Stop)
+    }
+    catch {
+        $cimProcessError = $_.Exception.Message
+    }
+
+    if ($null -eq $cimProcessError) {
+        $slashWorktree = $normalizedWorktree.Replace('\', '/')
+        $uninspectableUnityProcesses = @($unityProcesses | Where-Object {
+                [string]::IsNullOrWhiteSpace([string]$_.CommandLine)
+            })
+        if ($uninspectableUnityProcesses.Count -gt 0) {
+            $processDetail = [string]::Join(',', [string[]]@($uninspectableUnityProcesses | ForEach-Object { $_.ProcessId }))
+            Add-PreflightCheck -Name 'UnityProcess' -Passed $false -Detail "Unity.exe command line unavailable for process IDs: $processDetail"
+            Stop-Preflight -Message "Unable to prove that running Unity.exe processes are unrelated to the inspected worktree. Process IDs: $processDetail"
+        }
+        $matchingUnityProcesses = @($unityProcesses | Where-Object {
+                $commandLine = [string]$_.CommandLine
+                $commandLine.IndexOf($normalizedWorktree, [System.StringComparison]::OrdinalIgnoreCase) -ge 0 -or
+                $commandLine.IndexOf($slashWorktree, [System.StringComparison]::OrdinalIgnoreCase) -ge 0
+            })
+        $noMatchingProcess = $matchingUnityProcesses.Count -eq 0
+        $processDetail = if ($noMatchingProcess) { 'none' } else { [string]::Join(',', [string[]]@($matchingUnityProcesses | ForEach-Object { $_.ProcessId })) }
+        Add-PreflightCheck -Name 'UnityProcess' -Passed $noMatchingProcess -Detail $processDetail
+        if (-not $noMatchingProcess) {
+            Stop-Preflight -Message "A Unity process is using the inspected worktree. Process IDs: $processDetail"
+        }
     }
     else {
+        # Some locked-down Windows runners deny Win32_Process/CIM command-line
+        # access. A name-only fallback cannot prove a different Unity process is
+        # unrelated, so any visible Unity.exe remains a conservative blocker.
+        $unityProcessesByName = $null
+        $fallbackProcessError = $null
         try {
-            $unityProcesses = @(Get-CimInstance -ClassName Win32_Process -Filter "Name = 'Unity.exe'" -ErrorAction Stop)
-            $slashWorktree = $normalizedWorktree.Replace('\', '/')
-            $matchingUnityProcesses = @($unityProcesses | Where-Object {
-                    $commandLine = [string]$_.CommandLine
-                    $commandLine.IndexOf($normalizedWorktree, [System.StringComparison]::OrdinalIgnoreCase) -ge 0 -or
-                    $commandLine.IndexOf($slashWorktree, [System.StringComparison]::OrdinalIgnoreCase) -ge 0
-                })
-            $noMatchingProcess = $matchingUnityProcesses.Count -eq 0
-            $processDetail = if ($noMatchingProcess) { 'none' } else { [string]::Join(',', [string[]]@($matchingUnityProcesses | ForEach-Object { $_.ProcessId })) }
-            Add-PreflightCheck -Name 'UnityProcess' -Passed $noMatchingProcess -Detail $processDetail
-            if (-not $noMatchingProcess) {
-                Stop-Preflight -Message "A Unity process is using the inspected worktree. Process IDs: $processDetail"
-            }
+            $unityProcessesByName = @(Get-Process -ErrorAction Stop | Where-Object { $_.ProcessName -ieq 'Unity' })
         }
         catch {
-            Add-PreflightCheck -Name 'UnityProcess' -Passed $false -Detail $_.Exception.Message
-            Stop-Preflight -Message ("Unable to verify Unity processes: {0}" -f $_.Exception.Message)
+            $fallbackProcessError = $_.Exception.Message
         }
+        if ($null -ne $fallbackProcessError) {
+            Add-PreflightCheck -Name 'UnityProcess' -Passed $false -Detail "$cimProcessError; fallback: $fallbackProcessError"
+            Stop-Preflight -Message ("Unable to verify Unity processes: {0}; fallback failed: {1}" -f $cimProcessError, $fallbackProcessError)
+        }
+        if ($unityProcessesByName.Count -gt 0) {
+            $processDetail = [string]::Join(',', [string[]]@($unityProcessesByName | ForEach-Object { $_.Id }))
+            Add-PreflightCheck -Name 'UnityProcess' -Passed $false -Detail "CIM unavailable; Unity.exe process IDs: $processDetail"
+            Stop-Preflight -Message "Unable to inspect Unity command lines and at least one Unity.exe process is running. Process IDs: $processDetail"
+        }
+
+        Add-PreflightCheck -Name 'UnityProcess' -Passed $true -Detail "none (name-only fallback after CIM error: $cimProcessError)"
     }
 
     $temporaryPath = [System.IO.Path]::GetTempPath()

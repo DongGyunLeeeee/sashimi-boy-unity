@@ -8,7 +8,11 @@ param(
     [Parameter()]
     [string]$WindowsPowerShellPath = (Join-Path -Path $env:SystemRoot -ChildPath 'System32\WindowsPowerShell\v1.0\powershell.exe'),
 
-    [switch]$KeepTemporaryFiles
+    [switch]$KeepTemporaryFiles,
+
+    [Parameter(DontShow = $true)]
+    [ValidateSet('None', 'MarkerWrite', 'ChildExitOne', 'Assertion', 'RecordedAssertion')]
+    [string]$InternalLifecycleFailure = 'None'
 )
 
 Set-StrictMode -Version Latest
@@ -29,6 +33,17 @@ $script:testResults = New-Object System.Collections.Generic.List[object]
 $script:temporaryRoot = $null
 $script:fixture = $null
 $script:unityProjectPath = $null
+$script:testRunId = $null
+$script:ownedTestRootCreated = $false
+$script:ownerMarkerWritten = $false
+$script:suiteCompleted = $false
+$script:suiteSucceeded = $false
+$script:testRootPreserved = $false
+
+if ($InternalLifecycleFailure -ne 'None' -and
+    $env:SASHIMI_BOY_AUTOMATION_TEST_HARNESS -cne '1') {
+    throw 'Internal lifecycle failure injection is available only to this script smoke harness.'
+}
 
 function Assert-AutomationTest {
     [CmdletBinding()]
@@ -153,11 +168,55 @@ function Invoke-AutomationChildScript {
     $encodedCommand = [Convert]::ToBase64String(
         [Text.Encoding]::Unicode.GetBytes([string]::Join('; ', $commandParts)))
 
-    $output = @(& $WindowsPowerShellPath -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand $encodedCommand 2>&1)
-    $exitCode = $LASTEXITCODE
+    $previousErrorActionPreference = $ErrorActionPreference
+    try {
+        # A lifecycle regression intentionally lets a child fail before it can
+        # emit JSON. Capture native stderr as evidence without turning that
+        # expected child failure into a terminating error in the parent suite.
+        $ErrorActionPreference = 'Continue'
+        $output = @(& $WindowsPowerShellPath -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand $encodedCommand 2>&1)
+        $exitCode = $LASTEXITCODE
+    }
+    finally {
+        $ErrorActionPreference = $previousErrorActionPreference
+    }
     return [pscustomobject][ordered]@{
         ExitCode = [int]$exitCode
         Output   = [string]::Join([Environment]::NewLine, [string[]]$output)
+    }
+}
+
+function Invoke-SmokeRunnerLifecycleProbe {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$TemporaryPath,
+
+        [Parameter(Mandatory = $true)]
+        [ValidateSet('MarkerWrite', 'ChildExitOne', 'Assertion', 'RecordedAssertion')]
+        [string]$Failure,
+
+        [switch]$KeepTemporaryFiles
+    )
+
+    $previousTemp = [Environment]::GetEnvironmentVariable('TEMP', 'Process')
+    $previousTmp = [Environment]::GetEnvironmentVariable('TMP', 'Process')
+    $previousHarness = [Environment]::GetEnvironmentVariable('SASHIMI_BOY_AUTOMATION_TEST_HARNESS', 'Process')
+    try {
+        [Environment]::SetEnvironmentVariable('TEMP', $TemporaryPath, 'Process')
+        [Environment]::SetEnvironmentVariable('TMP', $TemporaryPath, 'Process')
+        [Environment]::SetEnvironmentVariable('SASHIMI_BOY_AUTOMATION_TEST_HARNESS', '1', 'Process')
+        return Invoke-AutomationChildScript -ScriptPath $PSCommandPath -WorkingDirectory $repository -Parameters @{
+            RepositoryRoot          = $repository
+            WindowsPowerShellPath   = $WindowsPowerShellPath
+            InternalLifecycleFailure = $Failure
+            KeepTemporaryFiles      = [bool]$KeepTemporaryFiles
+        }
+    }
+    finally {
+        [Environment]::SetEnvironmentVariable('TEMP', $previousTemp, 'Process')
+        [Environment]::SetEnvironmentVariable('TMP', $previousTmp, 'Process')
+        [Environment]::SetEnvironmentVariable('SASHIMI_BOY_AUTOMATION_TEST_HARNESS', $previousHarness, 'Process')
     }
 }
 
@@ -227,31 +286,180 @@ function New-TestFile {
     [System.IO.File]::WriteAllText($Path, $Content, (New-Object System.Text.UTF8Encoding($false)))
 }
 
+function New-DisposableDriftUnityFixture {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Root,
+
+        [Parameter(Mandatory = $true)]
+        [ValidateSet('Exact', 'NoFinalNewline', 'HeaderLikeContent', 'RelocatedApprovedField', 'ExtraField', 'SecondProjectSettingsFile', 'AssetsFile', 'PackagesFile')]
+        [string]$Mode
+    )
+
+    $editorDirectory = Join-Path $Root ("$Mode\6000.4.0f1\Editor")
+    $fakeUnityPath = Join-Path $editorDirectory 'Unity.cmd'
+    $fakeUnityScriptPath = Join-Path $editorDirectory 'Unity.ps1'
+    $postLines = @(
+        'PlayerSettings:',
+        '  targetPixelDensity: 30',
+        '  fixtureGapAfterPixel: 0',
+        '  buildNumber:',
+        '    Standalone: 0',
+        '    VisionOS: 0',
+        '    iPhone: 0',
+        '    tvOS: 0',
+        '  fixtureGapAfterBuildNumber: 0',
+        '  iOSTargetOSVersionString: 15.0',
+        '  fixtureGapAfterIOS: 0',
+        '  tvOSTargetOSVersionString: 15.0',
+        '  fixtureGapAfterTvOS: 0',
+        '  VisionOSTargetOSVersionString: 1.0',
+        '  fixtureGapAfterVisionOS: 0',
+        '  macOSTargetOSVersion: 12.0'
+    )
+    if ($Mode -eq 'ExtraField') {
+        $postLines += '  scriptingBackend: 1'
+    }
+    if ($Mode -eq 'HeaderLikeContent') {
+        $postLines += '++ b/ProjectSettings/ProjectSettings.asset'
+    }
+    if ($Mode -eq 'RelocatedApprovedField') {
+        $postLines = @(
+            'PlayerSettings:',
+            '  fixtureGapAfterPixel: 0',
+            '  targetPixelDensity: 30'
+        ) + @($postLines | Select-Object -Skip 3)
+    }
+    $postContent = [string]::Join("`n", $postLines)
+    if ($Mode -ne 'NoFinalNewline') {
+        $postContent += "`n"
+    }
+    $scriptLines = @(
+        '$arguments = @($args)',
+        '$projectPath = $null',
+        '$logFile = $null',
+        '$resultFile = $null',
+        'for ($index = 0; $index -lt $arguments.Count; $index++) {',
+        '    if ($arguments[$index] -ieq ''-projectPath'') { $projectPath = [string]$arguments[++$index]; continue }',
+        '    if ($arguments[$index] -ieq ''-logFile'') { $logFile = [string]$arguments[++$index]; continue }',
+        '    if ($arguments[$index] -ieq ''-testResults'') { $resultFile = [string]$arguments[++$index]; continue }',
+        '}',
+        'if ([string]::IsNullOrWhiteSpace($projectPath) -or [string]::IsNullOrWhiteSpace($logFile)) { exit 64 }',
+        ('$mutationContent = ' + (ConvertTo-SingleQuotedPowerShellLiteral -Value $postContent)),
+        '$utf8NoBom = New-Object System.Text.UTF8Encoding($false)',
+        '[System.IO.File]::WriteAllText((Join-Path $projectPath ''ProjectSettings\ProjectSettings.asset''), $mutationContent, $utf8NoBom)'
+    )
+    switch ($Mode) {
+        'SecondProjectSettingsFile' {
+            $scriptLines += '[System.IO.File]::WriteAllText((Join-Path $projectPath ''ProjectSettings\Unexpected.asset''), ''unexpected'', $utf8NoBom)'
+        }
+        'AssetsFile' {
+            $scriptLines += '[System.IO.File]::WriteAllText((Join-Path $projectPath ''Assets\Unexpected.txt''), ''unexpected'', $utf8NoBom)'
+        }
+        'PackagesFile' {
+            $scriptLines += '[System.IO.File]::WriteAllText((Join-Path $projectPath ''Packages\Unexpected.json''), ''{}'', $utf8NoBom)'
+        }
+    }
+    $scriptLines += @(
+        'if ($resultFile) {',
+        '    [System.IO.File]::WriteAllText($logFile, "Running tests for ExecutionSettings with details:`r`nTest run completed. Exiting with code 0`r`n", $utf8NoBom)',
+        '    [System.IO.File]::WriteAllText($resultFile, ''<test-run id="2" testcasecount="1" result="Passed" total="1" passed="1" failed="0" inconclusive="0" skipped="0" duration="0.1" />'', $utf8NoBom)',
+        '}',
+        'else {',
+        '    [System.IO.File]::WriteAllText($logFile, "Clean compile/import fixture`r`n", $utf8NoBom)',
+        '}',
+        'exit 0'
+    )
+    New-TestFile -Path $fakeUnityScriptPath -Content ([string]::Join("`r`n", $scriptLines) + "`r`n")
+    $cmdLines = @(
+        '@echo off',
+        '"%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "%~dp0Unity.ps1" %*',
+        'exit /b %ERRORLEVEL%'
+    )
+    New-TestFile -Path $fakeUnityPath -Content ([string]::Join("`r`n", $cmdLines) + "`r`n")
+    return $fakeUnityPath
+}
+
 function Remove-OwnedTestRoot {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory = $true)]
-        [string]$Path
+        [string]$Path,
+
+        [Parameter(Mandatory = $true)]
+        [string]$AutomationRoot,
+
+        [Parameter(Mandatory = $true)]
+        [ValidatePattern('^[0-9a-fA-F]{32}$')]
+        [string]$ExpectedRunId,
+
+        [Parameter(Mandatory = $true)]
+        [bool]$MarkerWasWritten
     )
 
-    $automationRootInput = Join-Path -Path ([System.IO.Path]::GetTempPath()) -ChildPath 'SashimiBoyAutomation'
-    Assert-AutomationPathHasNoReparsePoint -Path $automationRootInput
+    Assert-AutomationPathHasNoReparsePoint -Path $AutomationRoot
     Assert-AutomationPathHasNoReparsePoint -Path $Path
-    $automationRoot = ConvertTo-AutomationPath -Path $automationRootInput -AllowMissing
-    $normalizedPath = ConvertTo-AutomationPath -Path $Path -AllowMissing
+    $normalizedAutomationRoot = ConvertTo-AutomationLexicalPath -Path $AutomationRoot
+    $normalizedPath = ConvertTo-AutomationLexicalPath -Path $Path
+    $expectedPath = Join-Path -Path $normalizedAutomationRoot -ChildPath ('script-tests-' + $ExpectedRunId.ToLowerInvariant())
     $markerPath = Join-Path -Path $normalizedPath -ChildPath '.automation-script-tests-owner'
-    if (-not (Test-AutomationPathWithin -Path $normalizedPath -Root $automationRoot) -or
-        (Test-AutomationPathEqual -Left $normalizedPath -Right $automationRoot) -or
-        -not (Test-Path -LiteralPath $markerPath -PathType Leaf)) {
+    if (-not (Test-AutomationPathEqual -Left $normalizedPath -Right $expectedPath) -or
+        -not (Test-AutomationPathWithin -Path $normalizedPath -Root $normalizedAutomationRoot) -or
+        (Test-AutomationPathEqual -Left $normalizedPath -Right $normalizedAutomationRoot)) {
         throw "Refusing to remove unowned test path: $normalizedPath"
     }
 
+    if (-not (Test-Path -LiteralPath $normalizedPath)) {
+        return
+    }
+
+    if (-not (Test-Path -LiteralPath $normalizedPath -PathType Container)) {
+        throw "Owned test root is not a directory: $normalizedPath"
+    }
+
     Assert-AutomationTreeHasNoReparsePoint -Root $normalizedPath
+    if (-not $MarkerWasWritten) {
+        $unexpectedEntries = @(Get-ChildItem -LiteralPath $normalizedPath -Force -ErrorAction Stop |
+            Where-Object { -not (Test-AutomationPathEqual -Left $_.FullName -Right $markerPath) })
+        if ($unexpectedEntries.Count -gt 0) {
+            throw "Refusing marker-failure cleanup because the root contains an unexpected entry: $($unexpectedEntries[0].FullName)"
+        }
+        if (Test-Path -LiteralPath $markerPath -PathType Leaf) {
+            (Get-Item -LiteralPath $markerPath -Force).Attributes = [System.IO.FileAttributes]::Normal
+            [System.IO.File]::Delete($markerPath)
+        }
+        [System.IO.Directory]::Delete($normalizedPath, $false)
+        return
+    }
+    else {
+        if (-not (Test-Path -LiteralPath $markerPath -PathType Leaf)) {
+            throw "Owned test marker disappeared before cleanup: $markerPath"
+        }
+        try {
+            $marker = Get-Content -Raw -LiteralPath $markerPath -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
+        }
+        catch {
+            throw "Owned test marker is invalid: $($_.Exception.Message)"
+        }
+        if ([int]$marker.SchemaVersion -ne 1 -or
+            -not [string]::Equals([string]$marker.RunId, $ExpectedRunId, [System.StringComparison]::OrdinalIgnoreCase) -or
+            -not (Test-AutomationPathEqual -Left ([string]$marker.WorkspaceRoot) -Right $normalizedPath) -or
+            [System.IO.Path]::GetFileName([string]$marker.Script) -cne 'Test-AutomationScripts.ps1') {
+            throw "Owned test marker does not match this run: $markerPath"
+        }
+    }
+
     $pending = New-Object 'System.Collections.Generic.Stack[string]'
     $directories = New-Object 'System.Collections.Generic.List[string]'
     $pending.Push($normalizedPath)
     while ($pending.Count -gt 0) {
         $directory = $pending.Pop()
+        $directoryItem = Get-Item -LiteralPath $directory -Force -ErrorAction Stop
+        if (-not $directoryItem.PSIsContainer -or
+            ($directoryItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+            throw "Refusing cleanup because a queued test directory changed type: $directory"
+        }
         $directories.Add($directory)
         foreach ($entry in @(Get-ChildItem -LiteralPath $directory -Force -ErrorAction Stop)) {
             if (($entry.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
@@ -297,6 +505,21 @@ function New-AutomationSmokeFixture {
     New-TestFile -Path (Join-Path $basePath 'Assets\.fixture') -Content "fixture`n"
     New-TestFile -Path (Join-Path $basePath 'Packages\manifest.json') -Content "{}`n"
     New-TestFile -Path (Join-Path $basePath 'ProjectSettings\ProjectVersion.txt') -Content "m_EditorVersion: 6000.4.0f1`nm_EditorVersionWithRevision: 6000.4.0f1 (fixture)`n"
+    $projectSettingsFixture = @(
+        'PlayerSettings:',
+        '  targetPixelDensity: 0',
+        '  fixtureGapAfterPixel: 0',
+        '  buildNumber: {}',
+        '  fixtureGapAfterBuildNumber: 0',
+        '  iOSTargetOSVersionString: ',
+        '  fixtureGapAfterIOS: 0',
+        '  tvOSTargetOSVersionString: ',
+        '  fixtureGapAfterTvOS: 0',
+        '  VisionOSTargetOSVersionString: ',
+        '  fixtureGapAfterVisionOS: 0',
+        '  macOSTargetOSVersion: '
+    )
+    New-TestFile -Path (Join-Path $basePath 'ProjectSettings\ProjectSettings.asset') -Content ([string]::Join("`n", $projectSettingsFixture) + "`n")
     New-TestFile -Path (Join-Path $basePath 'pilot-main.txt') -Content "main`n"
     Invoke-CheckedNativeCommand -FilePath 'git' -ArgumentList @('-C', $basePath, 'add', '--all') | Out-Null
     Invoke-CheckedNativeCommand -FilePath 'git' -ArgumentList @('-C', $basePath, 'commit', '-m', 'test: seed automation fixture') | Out-Null
@@ -336,6 +559,10 @@ function New-AutomationSmokeFixture {
         'goto parse',
         ':writeResults',
         'if defined logFile echo Fake Unity invocation: !allArguments!>"!logFile!"',
+        'if defined resultFile echo Running tests for ExecutionSettings with details:>>"!logFile!"',
+        'if defined resultFile echo LogAssert.Expect matched the expected negative-path error.>>"!logFile!"',
+        'if defined resultFile echo UnityEngine.Debug:LogError ^(object^)>>"!logFile!"',
+        'if defined resultFile echo Test run completed. Exiting with code 0 >>"!logFile!"',
         'if defined resultFile echo ^<test-run id="2" testcasecount="1" result="Passed" total="1" passed="1" failed="0" inconclusive="0" skipped="0" duration="0.1" /^>>"!resultFile!"',
         'exit /b 0'
     )
@@ -375,16 +602,73 @@ function New-AutomationSmokeFixture {
 }
 
 $repository = ConvertTo-AutomationPath -Path $RepositoryRoot
-$automationTempRoot = Join-Path -Path ([System.IO.Path]::GetTempPath()) -ChildPath 'SashimiBoyAutomation'
-if (-not (Test-Path -LiteralPath $automationTempRoot -PathType Container)) {
-    New-Item -ItemType Directory -Path $automationTempRoot -Force | Out-Null
-}
-
-$script:temporaryRoot = Join-Path -Path $automationTempRoot -ChildPath ('script-tests-' + [Guid]::NewGuid().ToString('N'))
-New-Item -ItemType Directory -Path $script:temporaryRoot | Out-Null
-New-TestFile -Path (Join-Path $script:temporaryRoot '.automation-script-tests-owner') -Content "owned`n"
+$automationTempRoot = $null
+$script:testRunId = [Guid]::NewGuid().ToString('N')
 
 try {
+    $automationTempRootInput = Join-Path -Path ([System.IO.Path]::GetTempPath()) -ChildPath 'SashimiBoyAutomation'
+    # This must precede the first write. It inspects the lexical path and every
+    # existing ancestor without resolving a junction to its target.
+    Assert-AutomationPathHasNoReparsePoint -Path $automationTempRootInput
+    $automationTempRoot = ConvertTo-AutomationLexicalPath -Path $automationTempRootInput
+    $testRootCandidate = Join-Path -Path $automationTempRoot -ChildPath ('script-tests-' + $script:testRunId)
+    Assert-AutomationPathHasNoReparsePoint -Path $testRootCandidate
+    if (-not (Test-Path -LiteralPath $automationTempRoot)) {
+        New-Item -ItemType Directory -Path $automationTempRoot -ErrorAction Stop | Out-Null
+    }
+    Assert-AutomationPathHasNoReparsePoint -Path $automationTempRoot
+
+    if (Test-Path -LiteralPath $testRootCandidate) {
+        throw "Refusing to reuse a pre-existing test root: $testRootCandidate"
+    }
+    Assert-AutomationPathHasNoReparsePoint -Path $testRootCandidate
+    New-Item -ItemType Directory -Path $testRootCandidate -ErrorAction Stop | Out-Null
+    $script:temporaryRoot = ConvertTo-AutomationLexicalPath -Path $testRootCandidate
+    $script:ownedTestRootCreated = $true
+    Assert-AutomationPathHasNoReparsePoint -Path $script:temporaryRoot
+
+    if ($InternalLifecycleFailure -eq 'MarkerWrite') {
+        [System.IO.File]::WriteAllText(
+            (Join-Path $script:temporaryRoot '.automation-script-tests-owner'),
+            '{"partial":',
+            (New-Object System.Text.UTF8Encoding($false)))
+        throw 'Injected ownership-marker write failure.'
+    }
+    $markerData = [ordered]@{
+        SchemaVersion = 1
+        RunId          = $script:testRunId
+        WorkspaceRoot  = $script:temporaryRoot
+        Script         = $PSCommandPath
+    }
+    $testMarkerPath = Join-Path $script:temporaryRoot '.automation-script-tests-owner'
+    New-TestFile -Path $testMarkerPath -Content ((ConvertTo-AutomationJson -InputObject $markerData) + "`n")
+    $writtenMarker = Get-Content -Raw -LiteralPath $testMarkerPath -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
+    if ([int]$writtenMarker.SchemaVersion -ne 1 -or
+        -not [string]::Equals([string]$writtenMarker.RunId, $script:testRunId, [System.StringComparison]::OrdinalIgnoreCase) -or
+        -not (Test-AutomationPathEqual -Left ([string]$writtenMarker.WorkspaceRoot) -Right $script:temporaryRoot) -or
+        [System.IO.Path]::GetFileName([string]$writtenMarker.Script) -cne 'Test-AutomationScripts.ps1') {
+        throw 'Ownership marker readback did not match this smoke run.'
+    }
+    $script:ownerMarkerWritten = $true
+
+    if ($InternalLifecycleFailure -eq 'ChildExitOne') {
+        & $WindowsPowerShellPath -NoProfile -NonInteractive -Command 'exit 1'
+        $injectedChildExitCode = $LASTEXITCODE
+        if ($injectedChildExitCode -ne 1) {
+            throw "Injected child returned unexpected exit code $injectedChildExitCode."
+        }
+        throw 'Injected child process exit 1.'
+    }
+    if ($InternalLifecycleFailure -eq 'Assertion') {
+        Assert-AutomationTest -Condition $false -Message 'Injected assertion failure.'
+    }
+
+    if ($InternalLifecycleFailure -eq 'RecordedAssertion') {
+        Invoke-AutomationTestCase -Name 'InjectedRecordedAssertion' -Body {
+            Assert-AutomationTest -Condition $false -Message 'Injected recorded assertion failure.'
+        }
+    }
+    else {
     Invoke-AutomationTestCase -Name 'RequiredFilesExist' -Body {
         $requiredFiles = @(
             'AGENTS.md',
@@ -438,6 +722,73 @@ exit 0
         }
     }
 
+    Invoke-AutomationTestCase -Name 'SmokeRunnerRejectsJunctionBeforeFirstWrite' -Body {
+        $probeTemp = Join-Path $script:temporaryRoot 'runner junction probe temp'
+        $junctionTarget = Join-Path $script:temporaryRoot 'runner junction probe target'
+        $junctionRoot = Join-Path $probeTemp 'SashimiBoyAutomation'
+        New-Item -ItemType Directory -Path $probeTemp -ErrorAction Stop | Out-Null
+        New-Item -ItemType Directory -Path $junctionTarget -ErrorAction Stop | Out-Null
+        $sentinel = Join-Path $junctionTarget 'target-sentinel.txt'
+        New-TestFile -Path $sentinel -Content "must survive`n"
+        New-Item -ItemType Junction -Path $junctionRoot -Target $junctionTarget -ErrorAction Stop | Out-Null
+        try {
+            $probe = Invoke-SmokeRunnerLifecycleProbe -TemporaryPath $probeTemp -Failure Assertion
+            Assert-AutomationTest -Condition ($probe.ExitCode -ne 0) -Message 'Smoke runner accepted a junction canonical temp root.'
+            Assert-AutomationTest -Condition ($probe.Output -match 'Reparse points are not allowed') -Message "Smoke runner junction rejection was not explicit: $($probe.Output)"
+            $targetEntries = @(Get-ChildItem -LiteralPath $junctionTarget -Force -ErrorAction Stop)
+            Assert-AutomationTest -Condition ($targetEntries.Count -eq 1 -and (Test-AutomationPathEqual -Left $targetEntries[0].FullName -Right $sentinel)) -Message 'Smoke runner wrote fixture data through the junction before validation.'
+        }
+        finally {
+            if (Test-Path -LiteralPath $junctionRoot) {
+                [System.IO.Directory]::Delete($junctionRoot, $false)
+            }
+        }
+        Assert-AutomationTest -Condition (Test-Path -LiteralPath $sentinel -PathType Leaf) -Message 'Junction rejection modified the external target sentinel.'
+    }
+
+    Invoke-AutomationTestCase -Name 'SmokeRunnerCleansEveryInjectedFailure' -Body {
+        foreach ($failure in @('MarkerWrite', 'ChildExitOne', 'Assertion', 'RecordedAssertion')) {
+            foreach ($keepRequested in @($false, $true)) {
+                $probeTemp = Join-Path $script:temporaryRoot ('runner lifecycle ' + $failure + ' keep-' + $keepRequested)
+                New-Item -ItemType Directory -Path $probeTemp -ErrorAction Stop | Out-Null
+                $probe = Invoke-SmokeRunnerLifecycleProbe `
+                    -TemporaryPath $probeTemp `
+                    -Failure $failure `
+                    -KeepTemporaryFiles:$keepRequested
+                Assert-AutomationTest -Condition ($probe.ExitCode -ne 0) -Message "Injected runner failure unexpectedly succeeded: $failure (KeepTemporaryFiles=$keepRequested)"
+                $automationRoot = Join-Path $probeTemp 'SashimiBoyAutomation'
+                $ownedRootRemainders = @(
+                    if (Test-Path -LiteralPath $automationRoot -PathType Container) {
+                        Get-ChildItem -LiteralPath $automationRoot -Directory -Filter 'script-tests-*' -Force -ErrorAction Stop
+                    }
+                )
+                Assert-AutomationTest -Condition ($ownedRootRemainders.Count -eq 0) -Message "Injected $failure left an owned test root behind when KeepTemporaryFiles=$keepRequested."
+            }
+        }
+    }
+
+    Invoke-AutomationTestCase -Name 'SmokeRunnerNeverDeletesUnownedPath' -Body {
+        $localAutomationRoot = Join-Path $script:temporaryRoot 'nonowned cleanup boundary'
+        $actualRunId = [Guid]::NewGuid().ToString('N')
+        $differentRunId = [Guid]::NewGuid().ToString('N')
+        $nonOwnedPath = Join-Path $localAutomationRoot ('script-tests-' + $actualRunId)
+        $sentinel = Join-Path $nonOwnedPath 'nonowned-sentinel.txt'
+        New-TestFile -Path $sentinel -Content "must survive refusal`n"
+        $rejected = $false
+        try {
+            Remove-OwnedTestRoot `
+                -Path $nonOwnedPath `
+                -AutomationRoot $localAutomationRoot `
+                -ExpectedRunId $differentRunId `
+                -MarkerWasWritten $false
+        }
+        catch {
+            $rejected = $_.Exception.Message -match 'unowned test path'
+        }
+        Assert-AutomationTest -Condition $rejected -Message 'Smoke runner cleanup accepted an unrecorded path.'
+        Assert-AutomationTest -Condition (Test-Path -LiteralPath $sentinel -PathType Leaf) -Message 'Smoke runner cleanup deleted an unowned path.'
+    }
+
     Invoke-AutomationTestCase -Name 'SpecVersionHasOneSource' -Body {
         $versionPath = Join-Path $repository 'Docs\Automation\SPEC_VERSION'
         $versionLines = @([System.IO.File]::ReadAllLines($versionPath) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
@@ -483,9 +834,81 @@ exit 0
         $integrationContent = [System.IO.File]::ReadAllText((Join-Path $repository 'Tools\Automation\New-ReviewIntegration.ps1'))
         Assert-AutomationTest -Condition ($integrationContent -match 'SashimiBoyAutomation') -Message 'Integration cleanup is not rooted under SashimiBoyAutomation.'
         Assert-AutomationTest -Condition ($integrationContent -match '(?i)marker|owner') -Message 'Integration cleanup has no ownership-marker guard.'
+        $preflightContent = [System.IO.File]::ReadAllText((Join-Path $repository 'Tools\Automation\Invoke-AutomationPreflight.ps1'))
+        Assert-AutomationTest -Condition ($preflightContent -notmatch 'SkipUnityProcessCheck') -Message 'Production preflight still exposes SkipUnityProcessCheck.'
+        $unityContent = [System.IO.File]::ReadAllText((Join-Path $repository 'Tools\Automation\Invoke-UnityTests.ps1'))
+        Assert-AutomationTest -Condition ($unityContent -notmatch 'AllowSkipped') -Message 'Unity wrapper still exposes an AllowSkipped bypass.'
+        Assert-AutomationTest -Condition ($unityContent -notmatch '\$ProtectedProjectPath\b') -Message 'Unity wrapper still exposes a public protected-worktree override.'
+        Assert-AutomationTest -Condition ($unityContent -match "ValidatedUnityVersion, '6000\.4\.0f1'") -Message 'Known drift is not bound to literal Unity 6000.4.0f1.'
+        Assert-AutomationTest -Condition ($unityContent -match '\$protectedCheckoutPaths' -and $unityContent -match '\$persistentEvidencePaths') -Message 'Immutable overlap protection and test-injectable evidence paths are not separated.'
+        Assert-AutomationTest -Condition (@([regex]::Matches($unityContent, "'-buildTarget', 'StandaloneWindows64'")).Count -eq 3) -Message 'Unity wrapper must use StandaloneWindows64 for compile, EditMode, and PlayMode.'
         $commonContent = [System.IO.File]::ReadAllText((Join-Path $repository 'Tools\Automation\Automation.Common.ps1'))
         Assert-AutomationTest -Condition (@([regex]::Matches($commonContent, '(?is)Remove-Item[^\r\n]*-Recurse')).Count -eq 1) -Message 'The vetted common helper must contain the sole production recursive delete.'
         Assert-AutomationTest -Condition ($commonContent -match 'Assert-AutomationTreeHasNoReparsePoint') -Message 'Recursive cleanup lacks a full-tree reparse-point guard.'
+    }
+
+    Invoke-AutomationTestCase -Name 'SourceOfTruthHierarchyAndStaleCommentPolicyAreExact' -Body {
+        $documents = [ordered]@{
+            'AGENTS.md'                      = 1
+            'Docs\Automation\WORKFLOW.md'  = 1
+            'Docs\Automation\DEVELOPER.md' = 1
+            'Docs\Automation\REVIEWER.md'  = 1
+            'Docs\Automation\BOOTSTRAP.md' = 2
+        }
+        $rankPatterns = @(
+            '^\s*1\.\s+the current Issue''s latest Owner Decision\s*$',
+            '^\s*2\.\s+the current Issue''s latest body and Acceptance Criteria\s*$',
+            '^\s*3\.\s+repository-wide safety rules',
+            '^\s*4\.\s+the role-specific',
+            '^\s*5\.\s+the latest independent Review finding on the linked PR\s*$',
+            '^\s*6\.\s+older Issue/PR comments and older Reviews\s*$',
+            '^\s*7\.\s+previous chat summaries and Automation memory\s*$'
+        )
+        $nonRelaxablePatterns = @(
+            "destroy the user's checkout",
+            'reset --hard.*git clean.*force push',
+            'never merge a PR.*move an Issue to.*Done',
+            '(?:exactly )?one Issue per run|One run handles exactly one Issue',
+            'never report an unexecuted test as PASS'
+        )
+
+        foreach ($documentEntry in $documents.GetEnumerator()) {
+            $relativePath = [string]$documentEntry.Key
+            $expectedBlockCount = [int]$documentEntry.Value
+            $content = [System.IO.File]::ReadAllText((Join-Path $repository $relativePath))
+            $lines = @($content -split "`r?`n")
+            $blockStarts = @()
+            for ($lineIndex = 0; $lineIndex -lt $lines.Count; $lineIndex++) {
+                if ($lines[$lineIndex] -match $rankPatterns[0]) {
+                    $blockStarts += [int]$lineIndex
+                }
+            }
+            Assert-AutomationTest -Condition ($blockStarts.Count -eq $expectedBlockCount) -Message "$relativePath must contain exactly $expectedBlockCount Source of Truth block(s)."
+
+            for ($blockIndex = 0; $blockIndex -lt $blockStarts.Count; $blockIndex++) {
+                $start = $blockStarts[$blockIndex]
+                $end = if ($blockIndex + 1 -lt $blockStarts.Count) { $blockStarts[$blockIndex + 1] - 1 } else { $lines.Count - 1 }
+                $cursor = $start - 1
+                foreach ($rankPattern in $rankPatterns) {
+                    $rankMatches = @()
+                    for ($candidateIndex = $start; $candidateIndex -le $end; $candidateIndex++) {
+                        if ($lines[$candidateIndex] -match $rankPattern) {
+                            $rankMatches += [int]$candidateIndex
+                        }
+                    }
+                    Assert-AutomationTest -Condition ($rankMatches.Count -eq 1) -Message "$relativePath Source of Truth block has a missing or duplicate rank: $rankPattern"
+                    Assert-AutomationTest -Condition ($rankMatches[0] -gt $cursor) -Message "$relativePath Source of Truth ranks are out of order."
+                    $cursor = $rankMatches[0]
+                }
+
+                $segment = [string]::Join(' ', [string[]]$lines[$start..$end]) -replace '\s+', ' '
+                Assert-AutomationTest -Condition ($segment -match 'Only the latest Owner Decision and (?:the )?current Acceptance Criteria are authoritative comments') -Message "$relativePath does not limit authoritative comments to the latest Owner Decision/current Acceptance Criteria."
+                Assert-AutomationTest -Condition ($segment -match 'Older or non-Owner general comments.*(?:yield|conflict)') -Message "$relativePath does not make stale/non-Owner comments yield on conflict."
+                foreach ($prohibitionPattern in $nonRelaxablePatterns) {
+                    Assert-AutomationTest -Condition ($segment -match $prohibitionPattern) -Message "$relativePath Source of Truth entry point can relax a required safety prohibition: $prohibitionPattern"
+                }
+            }
+        }
     }
 
     Invoke-AutomationTestCase -Name 'DocumentationStateMachineIsConsistent' -Body {
@@ -546,7 +969,6 @@ exit 0
             ExpectedUnityVersion    = '6000.4.0f1'
             MinimumTempFreeBytes    = 1
             GitHubCliPath           = $script:fixture.FakeGitHubPath
-            SkipUnityProcessCheck   = $true
         }
         Assert-AutomationTest -Condition ($preflight.ExitCode -eq 0) -Message "Preflight success path failed: $($preflight.Output)"
         $json = ConvertFrom-LastAutomationJson -Output $preflight.Output
@@ -571,7 +993,6 @@ exit 0
                 ExpectedUnityVersion    = '6000.4.0f1'
                 MinimumTempFreeBytes    = 1
                 GitHubCliPath           = $script:fixture.FakeGitHubPath
-                SkipUnityProcessCheck   = $true
             }
             Assert-AutomationTest -Condition ($preflight.ExitCode -ne 0) -Message 'Dirty-worktree preflight unexpectedly succeeded.'
             $json = ConvertFrom-LastAutomationJson -Output $preflight.Output
@@ -608,7 +1029,6 @@ exit 0
             ExpectedUnityVersion    = '6000.4.0f1'
             MinimumTempFreeBytes    = 1
             GitHubCliPath           = $wrongGitHubPath
-            SkipUnityProcessCheck   = $true
             DryRun                   = $true
         }
         Assert-AutomationTest -Condition ($preflight.ExitCode -ne 0) -Message 'Preflight accepted a mismatched local repository identity.'
@@ -672,6 +1092,35 @@ exit 0
         Assert-AutomationTest -Condition ([bool]$json.WorkspaceCleaned) -Message 'Synthetic merge did not report cleanup.'
         Assert-AutomationTest -Condition (-not (Test-Path -LiteralPath ([string]$json.WorkspaceRoot))) -Message 'Synthetic merge workspace still exists after default cleanup.'
         Assert-AutomationTest -Condition ([string]$json.PullRequestHead -match '^[0-9a-f]{40}$' -and [string]$json.MainHead -match '^[0-9a-f]{40}$' -and [string]$json.MergeHead -match '^[0-9a-f]{40}$') -Message 'Synthetic merge did not report exact SHAs.'
+    }
+
+    Invoke-AutomationTestCase -Name 'SyntheticMergeNeverAdoptsPreExistingWorkspace' -Body {
+        Assert-AutomationTest -Condition ($null -ne $script:fixture) -Message 'Smoke fixture setup failed.'
+        $integrationScript = Join-Path $repository 'Tools\Automation\New-ReviewIntegration.ps1'
+        $integrationTemp = Join-Path $script:temporaryRoot 'exclusive integration collision'
+        $fixedLeaf = 'ReviewIntegration-20000101T000000Z-0123456789abcdef0123456789abcdef'
+        $preExistingWorkspace = Join-Path $integrationTemp $fixedLeaf
+        $sentinelPath = Join-Path $preExistingWorkspace 'non-owner-sentinel.txt'
+        New-TestFile -Path $sentinelPath -Content "must survive`n"
+        $previousHarness = [Environment]::GetEnvironmentVariable('SASHIMI_BOY_AUTOMATION_TEST_HARNESS', 'Process')
+        try {
+            [Environment]::SetEnvironmentVariable('SASHIMI_BOY_AUTOMATION_TEST_HARNESS', '1', 'Process')
+            $integration = Invoke-AutomationChildScript -ScriptPath $integrationScript -WorkingDirectory $repository -Parameters @{
+                PullRequestNumber     = 23
+                RepositoryUrl         = $script:fixture.OriginPath
+                TempRoot              = $integrationTemp
+                InternalWorkspaceLeaf = $fixedLeaf
+            }
+        }
+        finally {
+            [Environment]::SetEnvironmentVariable('SASHIMI_BOY_AUTOMATION_TEST_HARNESS', $previousHarness, 'Process')
+        }
+
+        Assert-AutomationTest -Condition ($integration.ExitCode -ne 0) -Message 'Synthetic merge adopted a pre-existing unowned workspace.'
+        Assert-AutomationTest -Condition (Test-Path -LiteralPath $sentinelPath -PathType Leaf) -Message 'Synthetic merge deleted or overwrote a pre-existing sentinel.'
+        Assert-AutomationTest -Condition (-not (Test-Path -LiteralPath (Join-Path $preExistingWorkspace '.sashimi-boy-automation-owned.json'))) -Message 'Synthetic merge wrote an ownership marker into a pre-existing workspace.'
+        $json = ConvertFrom-LastAutomationJson -Output $integration.Output
+        Assert-AutomationTest -Condition (-not [bool]$json.Success -and -not [bool]$json.WorkspaceCleaned) -Message 'Pre-existing workspace collision was not reported as a non-cleanup failure.'
     }
 
     Invoke-AutomationTestCase -Name 'PreservedIntegrationHasExplicitSafeCleanup' -Body {
@@ -739,8 +1188,8 @@ exit 0
         $junctionPath = Join-Path $script:temporaryRoot 'junction temp root'
         New-Item -ItemType Directory -Path $junctionTarget -Force | Out-Null
         New-TestFile -Path (Join-Path $junctionTarget 'target-sentinel.txt') -Content "survives`n"
-        New-Item -ItemType Junction -Path $junctionPath -Target $junctionTarget | Out-Null
         try {
+            New-Item -ItemType Junction -Path $junctionPath -Target $junctionTarget | Out-Null
             $rejection = Invoke-AutomationChildScript -ScriptPath $integrationScript -WorkingDirectory $repository -Parameters @{
                 PullRequestNumber = 23
                 RepositoryUrl     = $script:fixture.OriginPath
@@ -795,23 +1244,36 @@ exit 0
         )
         New-TestFile -Path $fakeGitPath -Content ([string]::Join("`r`n", $fakeGit) + "`r`n")
 
-        $integration = Invoke-AutomationChildScript -ScriptPath $integrationScript -WorkingDirectory $repository -Parameters @{
-            PullRequestNumber = 23
-            RepositoryUrl     = 'https://example.invalid/repository.git'
-            TempRoot          = $integrationTemp
-            GitExecutable     = $fakeGitPath
+        $workspace = $null
+        try {
+            $integration = Invoke-AutomationChildScript -ScriptPath $integrationScript -WorkingDirectory $repository -Parameters @{
+                PullRequestNumber = 23
+                RepositoryUrl     = 'https://example.invalid/repository.git'
+                TempRoot          = $integrationTemp
+                GitExecutable     = $fakeGitPath
+            }
+            $json = ConvertFrom-LastAutomationJson -Output $integration.Output
+            $workspace = [string]$json.WorkspaceRoot
+            Assert-AutomationTest -Condition ($integration.ExitCode -eq 12) -Message "Dual primary/cleanup failure did not return cleanup exit 12: $($integration.Output)"
+            Assert-AutomationTest -Condition ([string]$json.PrimaryError.Message -match 'exit code 7.*intentional clone exit 7') -Message "Primary clone failure was not preserved: $($integration.Output)"
+            Assert-AutomationTest -Condition ([string]$json.Error.Message -eq [string]$json.PrimaryError.Message) -Message 'Backward-compatible Error no longer reports the primary failure.'
+            Assert-AutomationTest -Condition ([string]$json.CleanupError.Message -match 'reparse point') -Message "Cleanup failure was not recorded separately: $($integration.Output)"
         }
-        Assert-AutomationTest -Condition ($integration.ExitCode -eq 12) -Message "Dual primary/cleanup failure did not return cleanup exit 12: $($integration.Output)"
-        $json = ConvertFrom-LastAutomationJson -Output $integration.Output
-        Assert-AutomationTest -Condition ([string]$json.PrimaryError.Message -match 'exit code 7.*intentional clone exit 7') -Message "Primary clone failure was not preserved: $($integration.Output)"
-        Assert-AutomationTest -Condition ([string]$json.Error.Message -eq [string]$json.PrimaryError.Message) -Message 'Backward-compatible Error no longer reports the primary failure.'
-        Assert-AutomationTest -Condition ([string]$json.CleanupError.Message -match 'reparse point') -Message "Cleanup failure was not recorded separately: $($integration.Output)"
+        finally {
+            if (Test-Path -LiteralPath $integrationTemp -PathType Container) {
+                foreach ($retainedWorkspace in @(Get-ChildItem -LiteralPath $integrationTemp -Directory -Filter 'ReviewIntegration-*' -Force -ErrorAction SilentlyContinue)) {
+                    $retainedRepository = Join-Path $retainedWorkspace.FullName 'Repository'
+                    if (Test-Path -LiteralPath $retainedRepository) {
+                        $retainedRepositoryItem = Get-Item -LiteralPath $retainedRepository -Force -ErrorAction Stop
+                        if (($retainedRepositoryItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+                            [System.IO.Directory]::Delete($retainedRepository, $false)
+                        }
+                    }
+                }
+            }
+        }
 
-        $workspace = [string]$json.WorkspaceRoot
-        $integrationJunction = Join-Path $workspace 'Repository'
-        if (Test-Path -LiteralPath $integrationJunction) {
-            [System.IO.Directory]::Delete($integrationJunction, $false)
-        }
+        Assert-AutomationTest -Condition (-not [string]::IsNullOrWhiteSpace($workspace)) -Message 'Dual-failure test did not report its retained workspace.'
         $cleanup = Invoke-AutomationChildScript -ScriptPath $cleanupScript -WorkingDirectory $repository -Parameters @{
             WorkspaceRoot = $workspace
             TempRoot      = $integrationTemp
@@ -820,7 +1282,7 @@ exit 0
         Assert-AutomationTest -Condition (Test-Path -LiteralPath (Join-Path $junctionTarget 'target-sentinel.txt') -PathType Leaf) -Message 'Dual-failure cleanup modified the junction target.'
     }
 
-    Invoke-AutomationTestCase -Name 'UnityWrapperHandlesArgumentsLogsAndResults' -Body {
+    Invoke-AutomationTestCase -Name 'UnityWrapperAllowsExpectedLogAssertAndHandlesArguments' -Body {
         Assert-AutomationTest -Condition ($null -ne $script:fixture) -Message 'Smoke fixture setup failed.'
         $script:unityProjectPath = Join-Path $script:temporaryRoot 'fresh Unity project clone'
         Invoke-CheckedNativeCommand -FilePath 'git' -ArgumentList @('clone', '--branch', 'main', '--single-branch', '--', $script:fixture.OriginPath, $script:unityProjectPath) | Out-Null
@@ -835,6 +1297,7 @@ exit 0
         Assert-AutomationTest -Condition ($unity.ExitCode -eq 0) -Message "Unity wrapper success smoke failed: $($unity.Output)"
         $json = ConvertFrom-LastAutomationJson -Output $unity.Output
         Assert-AutomationTest -Condition ([bool]$json.Success) -Message 'Unity wrapper JSON reported failure.'
+        Assert-AutomationTest -Condition (@($json.Diagnostics | Where-Object { [string]$_.Category -match 'Console|LogError' }).Count -eq 0) -Message 'Expected LogAssert output was reclassified as a new Console error.'
         Assert-AutomationTest -Condition ([int]$json.Stages.EditMode.Counts.Total -eq 1 -and [int]$json.Stages.EditMode.Counts.Passed -eq 1) -Message 'EditMode XML counts were not parsed.'
         Assert-AutomationTest -Condition ([int]$json.Stages.PlayMode.Counts.Total -eq 1 -and [int]$json.Stages.PlayMode.Counts.Passed -eq 1) -Message 'PlayMode XML counts were not parsed.'
         foreach ($artifact in @('CompileImport.log', 'EditMode.log', 'EditMode.xml', 'PlayMode.log', 'PlayMode.xml', 'Summary.json')) {
@@ -922,13 +1385,14 @@ exit 0
         Assert-AutomationTest -Condition (@($json.Failures | Where-Object { $_.Stage -eq 'DiagnosticScan' -or $_.Stage -eq 'CompileImport' }).Count -ge 1) -Message 'Compiler diagnostic did not produce a structured failure.'
     }
 
-    Invoke-AutomationTestCase -Name 'UnityWrapperRejectsConsoleErrorsWithZeroNativeExit' -Body {
+    Invoke-AutomationTestCase -Name 'UnityWrapperRejectsUnexpectedErrorViaFailedNUnitResult' -Body {
         Assert-AutomationTest -Condition ($null -ne $script:unityProjectPath) -Message 'Unity success smoke did not create a project clone.'
         $diagnosticUnityPath = Join-Path $script:temporaryRoot 'Console Error Unity\6000.4.0f1\Editor\Unity.cmd'
         $diagnosticUnity = @(
             '@echo off',
             'setlocal EnableExtensions',
             'set "logFile="',
+            'set "resultFile="',
             ':parse',
             'if "%~1"=="" goto writeLog',
             'if /I "%~1"=="-logFile" (',
@@ -937,11 +1401,19 @@ exit 0
             '  shift',
             '  goto parse',
             ')',
+            'if /I "%~1"=="-testResults" (',
+            '  set "resultFile=%~2"',
+            '  shift',
+            '  shift',
+            '  goto parse',
+            ')',
             'shift',
             'goto parse',
             ':writeLog',
-            'if defined logFile echo Error: fixture import failure>"%logFile%"',
-            'if defined logFile echo UnityEngine.Debug:LogError ^(object^)>>"%logFile%"',
+            'if not defined resultFile if defined logFile echo Clean compile/import fixture>"%logFile%"',
+            'if defined resultFile if defined logFile echo Error: unexpected test error>"%logFile%"',
+            'if defined resultFile if defined logFile echo UnityEngine.Debug:LogError ^(object^)>>"%logFile%"',
+            'if defined resultFile echo ^<test-run id="2" testcasecount="1" result="Failed" total="1" passed="0" failed="1" inconclusive="0" skipped="0" duration="0.1" /^>"%resultFile%"',
             'exit /b 0'
         )
         New-TestFile -Path $diagnosticUnityPath -Content ([string]::Join("`r`n", $diagnosticUnity) + "`r`n")
@@ -953,10 +1425,59 @@ exit 0
             UnityExecutable      = $diagnosticUnityPath
             ExpectedUnityVersion = '6000.4.0f1'
         }
-        Assert-AutomationTest -Condition ($unity.ExitCode -ne 0) -Message 'Unity wrapper accepted a Console error with native exit 0.'
+        Assert-AutomationTest -Condition ($unity.ExitCode -ne 0) -Message 'Unity wrapper accepted an unexpected test error with failed NUnit XML.'
         $json = ConvertFrom-LastAutomationJson -Output $unity.Output
-        Assert-AutomationTest -Condition (@($json.Diagnostics | Where-Object { $_.Category -eq 'ConsoleError' }).Count -ge 1) -Message 'Console error was not reported in structured diagnostics.'
-        Assert-AutomationTest -Condition (@($json.Diagnostics | Where-Object { $_.Category -eq 'ConsoleLogError' }).Count -ge 1) -Message 'Unity Debug.LogError stack trace was not reported in structured diagnostics.'
+        $nonAuthoritativeStages = @($json.Stages.EditMode, $json.Stages.PlayMode | Where-Object { -not [bool]$_.AuthoritativePass })
+        Assert-AutomationTest -Condition ($nonAuthoritativeStages.Count -ge 1) -Message 'Unexpected Error regression was not rejected through authoritative failed NUnit XML.'
+    }
+
+    Invoke-AutomationTestCase -Name 'UnityWrapperRejectsOutOfRunConsoleErrorWithPassedNUnitXml' -Body {
+        Assert-AutomationTest -Condition ($null -ne $script:unityProjectPath) -Message 'Unity success smoke did not create a project clone.'
+        $diagnosticUnityPath = Join-Path $script:temporaryRoot 'Out Of Run Console Unity\6000.4.0f1\Editor\Unity.cmd'
+        $diagnosticUnity = @(
+            '@echo off',
+            'setlocal EnableExtensions',
+            'set "logFile="',
+            'set "resultFile="',
+            ':parse',
+            'if "%~1"=="" goto writeLog',
+            'if /I "%~1"=="-logFile" (',
+            '  set "logFile=%~2"',
+            '  shift',
+            '  shift',
+            '  goto parse',
+            ')',
+            'if /I "%~1"=="-testResults" (',
+            '  set "resultFile=%~2"',
+            '  shift',
+            '  shift',
+            '  goto parse',
+            ')',
+            'shift',
+            'goto parse',
+            ':writeLog',
+            'if not defined resultFile if defined logFile echo Clean compile/import fixture>"%logFile%"',
+            'if defined resultFile if defined logFile echo Error: outside NUnit execution>"%logFile%"',
+            'if defined resultFile if defined logFile echo Running tests for ExecutionSettings with details:>>"%logFile%"',
+            'if defined resultFile if defined logFile echo LogAssert.Expect matched an expected in-test error.>>"%logFile%"',
+            'if defined resultFile if defined logFile echo UnityEngine.Debug:LogError ^(object^)>>"%logFile%"',
+            'if defined resultFile if defined logFile echo Test run completed. Exiting with code 0 >>"%logFile%"',
+            'if defined resultFile echo ^<test-run id="2" testcasecount="1" result="Passed" total="1" passed="1" failed="0" inconclusive="0" skipped="0" duration="0.1" /^>>"%resultFile%"',
+            'exit /b 0'
+        )
+        New-TestFile -Path $diagnosticUnityPath -Content ([string]::Join("`r`n", $diagnosticUnity) + "`r`n")
+        $artifactsPath = Join-Path $script:temporaryRoot 'Unity Artifacts\out of run console error'
+        $unityScript = Join-Path $repository 'Tools\Automation\Invoke-UnityTests.ps1'
+        $unity = Invoke-AutomationChildScript -ScriptPath $unityScript -WorkingDirectory $repository -Parameters @{
+            ProjectPath          = $script:unityProjectPath
+            ArtifactsPath        = $artifactsPath
+            UnityExecutable      = $diagnosticUnityPath
+            ExpectedUnityVersion = '6000.4.0f1'
+        }
+        Assert-AutomationTest -Condition ($unity.ExitCode -ne 0) -Message 'Unity wrapper accepted an out-of-run Console error with Passed NUnit XML.'
+        $json = ConvertFrom-LastAutomationJson -Output $unity.Output
+        Assert-AutomationTest -Condition (@($json.Diagnostics | Where-Object { $_.Category -eq 'OutOfRunConsoleError' }).Count -ge 1) -Message 'Out-of-run Console error was not reported as structured diagnostic evidence.'
+        Assert-AutomationTest -Condition (@($json.Diagnostics | Where-Object { $_.Category -eq 'OutOfRunConsoleLogError' }).Count -eq 0) -Message 'Expected in-run LogAssert output was reclassified as out-of-run.'
     }
 
     Invoke-AutomationTestCase -Name 'UnityWrapperRejectsInvalidRootResultAndNegativeCounts' -Body {
@@ -972,6 +1493,11 @@ exit 0
                 Name = 'negative result count'
                 Xml  = '<test-run id="2" testcasecount="1" result="Passed" total="1" passed="-1" failed="2" inconclusive="0" skipped="0" duration="0.1" />'
                 ErrorPattern = 'negative.*count'
+            },
+            [ordered]@{
+                Name = 'skipped strict result'
+                Xml  = '<test-run id="2" testcasecount="1" result="Passed" total="1" passed="0" failed="0" inconclusive="0" skipped="1" duration="0.1" />'
+                ErrorPattern = 'Skipped tests are not allowed'
             }
         )
         foreach ($invalidResult in $invalidResults) {
@@ -1015,6 +1541,101 @@ exit 0
             $json = ConvertFrom-LastAutomationJson -Output $unity.Output
             $failureText = [string]::Join(' ', @($json.Failures | ForEach-Object { [string]$_.Message }))
             Assert-AutomationTest -Condition ($failureText -match $invalidResult.ErrorPattern) -Message "Invalid XML contract '$($invalidResult.Name)' was not reported explicitly: $($unity.Output)"
+        }
+    }
+
+    Invoke-AutomationTestCase -Name 'UnityWrapperAllowsOnlyExactDisposableUnityDrift' -Body {
+        Assert-AutomationTest -Condition ($null -ne $script:fixture) -Message 'Smoke fixture setup failed.'
+        $integrationScript = Join-Path $repository 'Tools\Automation\New-ReviewIntegration.ps1'
+        $cleanupScript = Join-Path $repository 'Tools\Automation\Remove-ReviewIntegration.ps1'
+        $unityScript = Join-Path $repository 'Tools\Automation\Invoke-UnityTests.ps1'
+        $protectedFixturePaths = @(
+            $script:fixture.BasePath,
+            $script:fixture.DeveloperPath,
+            $script:fixture.ReviewerPath
+        )
+        $scenarios = @(
+            [ordered]@{ Name = 'ArtifactsInsideWorkspaceRejected'; Mode = 'Exact'; ShouldPass = $false; EnableTestHarness = $true; ArtifactsInsideWorkspace = $true },
+            [ordered]@{ Name = 'Exact'; Mode = 'Exact'; ShouldPass = $true; EnableTestHarness = $true; ArtifactsInsideWorkspace = $false },
+            [ordered]@{ Name = 'NoFinalNewline'; Mode = 'NoFinalNewline'; ShouldPass = $false; EnableTestHarness = $true; ArtifactsInsideWorkspace = $false },
+            [ordered]@{ Name = 'HeaderLikeContent'; Mode = 'HeaderLikeContent'; ShouldPass = $false; EnableTestHarness = $true; ArtifactsInsideWorkspace = $false },
+            [ordered]@{ Name = 'RelocatedApprovedField'; Mode = 'RelocatedApprovedField'; ShouldPass = $false; EnableTestHarness = $true; ArtifactsInsideWorkspace = $false },
+            [ordered]@{ Name = 'ExtraField'; Mode = 'ExtraField'; ShouldPass = $false; EnableTestHarness = $true; ArtifactsInsideWorkspace = $false },
+            [ordered]@{ Name = 'SecondProjectSettingsFile'; Mode = 'SecondProjectSettingsFile'; ShouldPass = $false; EnableTestHarness = $true; ArtifactsInsideWorkspace = $false },
+            [ordered]@{ Name = 'AssetsFile'; Mode = 'AssetsFile'; ShouldPass = $false; EnableTestHarness = $true; ArtifactsInsideWorkspace = $false },
+            [ordered]@{ Name = 'PackagesFile'; Mode = 'PackagesFile'; ShouldPass = $false; EnableTestHarness = $true; ArtifactsInsideWorkspace = $false }
+        )
+
+        foreach ($scenario in $scenarios) {
+            $scenarioName = [string]$scenario.Name
+            $mode = [string]$scenario.Mode
+            $fakeUnityPath = New-DisposableDriftUnityFixture -Root (Join-Path $script:temporaryRoot 'Disposable Drift Unity') -Mode $mode
+            $integrationTemp = Join-Path $script:temporaryRoot ("disposable drift integration $scenarioName")
+            $integration = Invoke-AutomationChildScript -ScriptPath $integrationScript -WorkingDirectory $repository -Parameters @{
+                PullRequestNumber = 23
+                RepositoryUrl     = $script:fixture.OriginPath
+                TempRoot          = $integrationTemp
+                KeepWorkspace     = $true
+            }
+            Assert-AutomationTest -Condition ($integration.ExitCode -eq 0) -Message "Disposable drift integration setup failed for $mode`: $($integration.Output)"
+            $integrationJson = ConvertFrom-LastAutomationJson -Output $integration.Output
+            $workspace = [string]$integrationJson.WorkspaceRoot
+            try {
+                $artifactsPath = if ([bool]$scenario.ArtifactsInsideWorkspace) {
+                    Join-Path $workspace 'Artifacts'
+                }
+                else {
+                    Join-Path $script:temporaryRoot ("Unity Artifacts\disposable drift $scenarioName")
+                }
+                $previousHarness = [Environment]::GetEnvironmentVariable('SASHIMI_BOY_AUTOMATION_TEST_HARNESS', 'Process')
+                try {
+                    if ([bool]$scenario.EnableTestHarness) {
+                        [Environment]::SetEnvironmentVariable('SASHIMI_BOY_AUTOMATION_TEST_HARNESS', '1', 'Process')
+                    }
+                    else {
+                        [Environment]::SetEnvironmentVariable('SASHIMI_BOY_AUTOMATION_TEST_HARNESS', $null, 'Process')
+                    }
+                    $unity = Invoke-AutomationChildScript -ScriptPath $unityScript -WorkingDirectory $repository -Parameters @{
+                        ProjectPath          = [string]$integrationJson.IntegrationPath
+                        ArtifactsPath        = $artifactsPath
+                        UnityExecutable      = $fakeUnityPath
+                        ExpectedUnityVersion = '6000.4.0f1'
+                        InternalRequiredPersistentPath = $protectedFixturePaths
+                    }
+                }
+                finally {
+                    [Environment]::SetEnvironmentVariable('SASHIMI_BOY_AUTOMATION_TEST_HARNESS', $previousHarness, 'Process')
+                }
+                $unityJson = ConvertFrom-LastAutomationJson -Output $unity.Output
+                if ([bool]$scenario.ShouldPass) {
+                    Assert-AutomationTest -Condition ($unity.ExitCode -eq 0 -and [bool]$unityJson.Success) -Message "Exact disposable drift was not accepted: $($unity.Output)"
+                    Assert-AutomationTest -Condition ([string]$unityJson.KnownDisposableUnityDrift.Classification -eq 'KnownDisposableUnityDrift' -and [bool]$unityJson.KnownDisposableUnityDrift.Allowed) -Message 'Exact disposable drift classification is missing.'
+                    Assert-AutomationTest -Condition (@($unityJson.KnownDisposableUnityDrift.ProtectedWorktrees | Where-Object { $_.IsGitRoot -and $_.Clean -and -not $_.Error }).Count -eq 3) -Message 'Exact drift did not verify all three persistent worktrees as clean.'
+                    $diffPath = [string]$unityJson.KnownDisposableUnityDrift.DiffArtifactPath
+                    $shaPath = [string]$unityJson.KnownDisposableUnityDrift.DiffSha256ArtifactPath
+                    Assert-AutomationTest -Condition (Test-Path -LiteralPath $diffPath -PathType Leaf) -Message 'Known drift diff artifact is missing.'
+                    Assert-AutomationTest -Condition (Test-Path -LiteralPath $shaPath -PathType Leaf) -Message 'Known drift SHA-256 artifact is missing.'
+                    $actualDiffHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $diffPath).Hash.ToUpperInvariant()
+                    Assert-AutomationTest -Condition ($actualDiffHash -eq [string]$unityJson.KnownDisposableUnityDrift.DiffSha256) -Message 'Known drift diff SHA-256 does not match its Summary evidence.'
+                    $shaEvidence = [System.IO.File]::ReadAllText($shaPath)
+                    Assert-AutomationTest -Condition ($shaEvidence -match ('^' + [regex]::Escape($actualDiffHash) + '  KnownDisposableUnityDrift\.diff\r?\n?$')) -Message 'Known drift SHA-256 artifact has an unexpected contract.'
+                }
+                else {
+                    Assert-AutomationTest -Condition ($unity.ExitCode -ne 0 -and -not [bool]$unityJson.Success) -Message "Rejected drift scenario was accepted for $scenarioName`: $($unity.Output)"
+                    Assert-AutomationTest -Condition (-not [bool]$unityJson.KnownDisposableUnityDrift.Allowed) -Message "Rejected drift scenario was classified as allowed for $scenarioName."
+                    Assert-AutomationTest -Condition (@($unityJson.Failures | Where-Object { $_.Stage -eq 'WorkspaceMutation' }).Count -eq 1) -Message "Rejected drift scenario did not produce WorkspaceMutation for $scenarioName."
+                }
+            }
+            finally {
+                if ($workspace -and (Test-Path -LiteralPath $workspace -PathType Container)) {
+                    $cleanup = Invoke-AutomationChildScript -ScriptPath $cleanupScript -WorkingDirectory $repository -Parameters @{
+                        WorkspaceRoot = $workspace
+                        TempRoot      = $integrationTemp
+                    }
+                    Assert-AutomationTest -Condition ($cleanup.ExitCode -eq 0) -Message "Disposable drift cleanup failed for $scenarioName`: $($cleanup.Output)"
+                    Assert-AutomationTest -Condition (-not (Test-Path -LiteralPath $workspace)) -Message "Disposable drift workspace remains after cleanup for $scenarioName."
+                }
+            }
         }
     }
 
@@ -1077,10 +1698,23 @@ exit 0
             Assert-AutomationTest -Condition ([string]::IsNullOrWhiteSpace($status.StdOut)) -Message "Smoke fixture worktree is not clean: $path`n$($status.StdOut)"
         }
     }
+    }
+
+    $script:suiteCompleted = $true
+    $script:suiteSucceeded = (@($script:testResults | Where-Object { -not $_.Passed }).Count -eq 0)
 }
 finally {
-    if (-not $KeepTemporaryFiles -and $script:temporaryRoot -and (Test-Path -LiteralPath $script:temporaryRoot)) {
-        Remove-OwnedTestRoot -Path $script:temporaryRoot
+    $script:testRootPreserved = [bool]$KeepTemporaryFiles -and
+        $script:ownedTestRootCreated -and
+        $script:ownerMarkerWritten -and
+        $script:suiteCompleted -and
+        $script:suiteSucceeded
+    if ($script:ownedTestRootCreated -and $script:temporaryRoot -and -not $script:testRootPreserved) {
+        Remove-OwnedTestRoot `
+            -Path $script:temporaryRoot `
+            -AutomationRoot $automationTempRoot `
+            -ExpectedRunId $script:testRunId `
+            -MarkerWasWritten $script:ownerMarkerWritten
     }
 }
 
@@ -1093,7 +1727,7 @@ $summary = [pscustomobject][ordered]@{
     Passed        = @($script:testResults | Where-Object { $_.Passed }).Count
     Failed        = $failed.Count
     Tests         = $script:testResults.ToArray()
-    TemporaryRoot = if ($KeepTemporaryFiles) { $script:temporaryRoot } else { $null }
+    TemporaryRoot = if ($script:testRootPreserved) { $script:temporaryRoot } else { $null }
 }
 
 $summary | ConvertTo-AutomationJson

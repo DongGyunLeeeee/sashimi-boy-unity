@@ -1,6 +1,6 @@
 #requires -Version 5.1
 
-[CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'Low')]
+[CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)]
     [ValidateRange(1, 2147483647)]
@@ -29,7 +29,11 @@ param(
 
     [switch]$KeepWorkspace,
 
-    [switch]$DryRun
+    [switch]$DryRun,
+
+    [Parameter(DontShow = $true)]
+    [ValidatePattern('^ReviewIntegration-\d{8}T\d{6}Z-[0-9a-f]{32}$')]
+    [string]$InternalWorkspaceLeaf
 )
 
 Set-StrictMode -Version Latest
@@ -144,9 +148,18 @@ function Assert-SafeAutomationRoot {
 }
 
 $commands = New-Object System.Collections.ArrayList
-$effectiveDryRun = [bool]$DryRun -or [bool]$WhatIfPreference
+$effectiveDryRun = [bool]$DryRun
 $exitCode = 0
-$runId = [Guid]::NewGuid().ToString('N')
+if (-not [string]::IsNullOrWhiteSpace($InternalWorkspaceLeaf) -and
+    $env:SASHIMI_BOY_AUTOMATION_TEST_HARNESS -cne '1') {
+    throw 'Internal workspace-name injection is available only to the automation smoke harness.'
+}
+$runId = if ([string]::IsNullOrWhiteSpace($InternalWorkspaceLeaf)) {
+    [Guid]::NewGuid().ToString('N')
+}
+else {
+    $InternalWorkspaceLeaf.Substring($InternalWorkspaceLeaf.Length - 32)
+}
 $workspaceCreated = $false
 $markerPath = $null
 $result = $null
@@ -171,7 +184,13 @@ try {
         $RepositoryUrl = "https://github.com/$Repository.git"
     }
 
-    $workspaceRoot = Join-Path -Path $normalizedTempRoot -ChildPath ("ReviewIntegration-{0}-{1}" -f ([DateTime]::UtcNow.ToString('yyyyMMddTHHmmssZ')), $runId)
+    $workspaceLeaf = if ([string]::IsNullOrWhiteSpace($InternalWorkspaceLeaf)) {
+        "ReviewIntegration-{0}-{1}" -f ([DateTime]::UtcNow.ToString('yyyyMMddTHHmmssZ')), $runId
+    }
+    else {
+        $InternalWorkspaceLeaf
+    }
+    $workspaceRoot = Join-Path -Path $normalizedTempRoot -ChildPath $workspaceLeaf
     $integrationPath = Join-Path -Path $workspaceRoot -ChildPath 'Repository'
     $markerPath = Join-Path -Path $workspaceRoot -ChildPath '.sashimi-boy-automation-owned.json'
     $disabledHooksPath = Join-Path -Path $workspaceRoot -ChildPath 'DisabledHooks'
@@ -222,7 +241,14 @@ try {
         $result.PullRequestHead = Get-RemoteRefSha -Remote $RepositoryUrl -RefName $pullRef -Stage 'DiscoverPullRequestHead' -Commands $commands
         $result.MainHead = Get-RemoteRefSha -Remote $RepositoryUrl -RefName $mainRef -Stage 'DiscoverMainHead' -Commands $commands
 
-        New-Item -ItemType Directory -Path $workspaceRoot -Force | Out-Null
+        if (-not (Test-Path -LiteralPath $normalizedTempRoot -PathType Container)) {
+            New-Item -ItemType Directory -Path $normalizedTempRoot -Force -ErrorAction Stop | Out-Null
+        }
+        Assert-AutomationPathHasNoReparsePoint -Path $normalizedTempRoot
+
+        # The create operation is the ownership boundary. Without -Force,
+        # New-Item refuses to reuse or overwrite a pre-existing workspace.
+        New-Item -ItemType Directory -Path $workspaceRoot -ErrorAction Stop | Out-Null
         $workspaceCreated = $true
         Assert-AutomationPathHasNoReparsePoint -Path $workspaceRoot
         $markerData = [ordered]@{

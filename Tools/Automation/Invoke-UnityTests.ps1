@@ -1,6 +1,6 @@
 #requires -Version 5.1
 
-[CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'Low')]
+[CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)]
     [string]$ProjectPath,
@@ -16,13 +16,8 @@ param(
     [ValidateNotNullOrEmpty()]
     [string]$GitExecutable = 'git',
 
-    [string[]]$ProtectedProjectPath = @(
-        'C:\Dev\sashimi-boy-unity',
-        'C:\Dev\sashimi-boy-unity-developer',
-        'C:\Dev\sashimi-boy-unity-reviewer'
-    ),
-
-    [switch]$AllowSkipped,
+    [Parameter(DontShow = $true)]
+    [string[]]$InternalRequiredPersistentPath,
 
     [switch]$DryRun
 )
@@ -36,6 +31,19 @@ if (-not (Test-Path -LiteralPath $commonPath -PathType Leaf)) {
     exit 10
 }
 . $commonPath
+
+$protectedCheckoutPaths = @(
+    'C:\Dev\sashimi-boy-unity',
+    'C:\Dev\sashimi-boy-unity-developer',
+    'C:\Dev\sashimi-boy-unity-reviewer'
+)
+$persistentEvidencePaths = @($protectedCheckoutPaths)
+if ($null -ne $InternalRequiredPersistentPath -and @($InternalRequiredPersistentPath).Count -gt 0) {
+    if ($env:SASHIMI_BOY_AUTOMATION_TEST_HARNESS -cne '1') {
+        throw 'Internal persistent-path injection is available only with the explicit smoke-harness guard.'
+    }
+    $persistentEvidencePaths = @($InternalRequiredPersistentPath)
+}
 
 function Add-PlannedCommand {
     param(
@@ -123,25 +131,40 @@ function Get-UnityProcessesForProject {
     )
 
     $matches = @()
+    $processes = $null
+    $cimProcessError = $null
     try {
         $processes = @(Get-CimInstance -ClassName Win32_Process -Filter "Name = 'Unity.exe'" -ErrorAction Stop)
     }
     catch {
+        $cimProcessError = $_.Exception.Message
+    }
+    if ($null -ne $cimProcessError) {
         # Some automation hosts deny Win32_Process command-line access. If no
         # Unity process exists at all, the project-specific process check still
         # has a definitive negative result; otherwise fail conservatively.
-        $basicProcesses = @(Get-Process -Name 'Unity' -ErrorAction SilentlyContinue)
+        try {
+            $basicProcesses = @(Get-Process -ErrorAction Stop | Where-Object { $_.ProcessName -ieq 'Unity' })
+        }
+        catch {
+            throw "Unable to inspect Unity processes through CIM or Get-Process: $cimProcessError; fallback: $($_.Exception.Message)"
+        }
         if ($basicProcesses.Count -gt 0) {
-            throw "Unable to inspect Unity process command lines while Unity is running: $($_.Exception.Message)"
+            throw "Unable to inspect Unity process command lines while Unity is running: $cimProcessError"
         }
         return @()
     }
+    $slashProjectPath = $NormalizedProjectPath.Replace('\', '/')
     foreach ($process in $processes) {
-        if ($null -ne $process.CommandLine -and
-            $process.CommandLine.IndexOf($NormalizedProjectPath, [System.StringComparison]::OrdinalIgnoreCase) -ge 0) {
+        $commandLine = [string]$process.CommandLine
+        if ([string]::IsNullOrWhiteSpace($commandLine)) {
+            throw "Unable to prove that Unity.exe process $($process.ProcessId) is unrelated because its command line is unavailable."
+        }
+        if ($commandLine.IndexOf($NormalizedProjectPath, [System.StringComparison]::OrdinalIgnoreCase) -ge 0 -or
+            $commandLine.IndexOf($slashProjectPath, [System.StringComparison]::OrdinalIgnoreCase) -ge 0) {
             $matches += [ordered]@{
                 ProcessId   = [int]$process.ProcessId
-                CommandLine = [string]$process.CommandLine
+                CommandLine = $commandLine
             }
         }
     }
@@ -295,13 +318,50 @@ function Get-TestResultSummary {
     }
 }
 
-function Get-LogDiagnostics {
+function Add-LogDiagnosticMatches {
+    param(
+        [Parameter(Mandatory = $true)]
+        [AllowEmptyCollection()]
+        [System.Collections.ArrayList]$Diagnostics,
+
+        [Parameter(Mandatory = $true)]
+        [string]$LogPath,
+
+        [Parameter(Mandatory = $true)]
+        [AllowEmptyString()]
+        [string]$Content,
+
+        [Parameter(Mandatory = $true)]
+        [object[]]$Signatures,
+
+        [Parameter(Mandatory = $true)]
+        [string]$Scope
+    )
+
+    foreach ($signature in $Signatures) {
+        $matches = [regex]::Matches($Content, $signature.Pattern)
+        if ($matches.Count -gt 0) {
+            $samples = @($matches | Select-Object -First 5 | ForEach-Object { $_.Value })
+            [void]$Diagnostics.Add([ordered]@{
+                LogPath  = $LogPath
+                Category = $signature.Name
+                Scope    = $Scope
+                Count    = $matches.Count
+                Samples  = $samples
+            })
+        }
+    }
+}
+
+function Get-CompileLogDiagnostics {
     param(
         [Parameter(Mandatory = $true)]
         [string[]]$LogPaths
     )
 
-    $signatures = @(
+    # Clean import/compile is deliberately strict. Any one of these signatures
+    # blocks the test stages even when Unity happens to return exit code zero.
+    $strictSignatures = @(
         [ordered]@{ Name = 'CompilerError'; Pattern = '(?im)(?:^|\s)error\s+CS\d{4}\s*:' },
         [ordered]@{ Name = 'CompilationFailure'; Pattern = '(?im)Scripts? (?:had|have) compilation errors|Compilation failed' },
         [ordered]@{ Name = 'NullReferenceException'; Pattern = '(?i)NullReferenceException' },
@@ -323,18 +383,78 @@ function Get-LogDiagnostics {
             continue
         }
         $content = Get-Content -Raw -LiteralPath $logPath
-        foreach ($signature in $signatures) {
-            $matches = [regex]::Matches($content, $signature.Pattern)
-            if ($matches.Count -gt 0) {
-                $samples = @($matches | Select-Object -First 5 | ForEach-Object { $_.Value })
-                [void]$diagnostics.Add([ordered]@{
-                    LogPath  = $logPath
-                    Category = $signature.Name
-                    Count    = $matches.Count
-                    Samples  = $samples
-                })
+        Add-LogDiagnosticMatches `
+            -Diagnostics $diagnostics `
+            -LogPath $logPath `
+            -Content $content `
+            -Signatures $strictSignatures `
+            -Scope 'CompileImport'
+    }
+    return @($diagnostics)
+}
+
+function Get-TestLogDiagnostics {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string[]]$LogPaths
+    )
+
+    # Test results are authoritative through native exit + strict NUnit XML.
+    # Broad Debug.LogError/Assertion/managed-exception scanning would reject a
+    # passing LogAssert.Expect test. Only failures which remain independently
+    # actionable are scanned across the entire test log.
+    $wholeLogSignatures = @(
+        [ordered]@{ Name = 'CompilerError'; Pattern = '(?im)(?:^|\s)error\s+CS\d{4}\s*:' },
+        [ordered]@{ Name = 'CompilationFailure'; Pattern = '(?im)Scripts? (?:had|have) compilation errors|Compilation failed' },
+        [ordered]@{ Name = 'MissingScript'; Pattern = '(?i)Missing Script|The referenced script .* is missing|The associated script cannot be loaded' },
+        [ordered]@{ Name = 'UnhandledException'; Pattern = '(?im)^\s*Unhandled Exception\s*:' },
+        [ordered]@{ Name = 'BatchModeAbort'; Pattern = '(?im)^\s*Aborting batchmode due to failure' },
+        [ordered]@{ Name = 'UnityCrash'; Pattern = '(?im)^\s*(?:Fatal error\b|Unity has crashed\b|Crash!!!|Receiving unhandled NULL exception\b)' }
+    )
+    $outsideRunSignatures = @(
+        [ordered]@{ Name = 'OutOfRunConsoleError'; Pattern = '(?im)^\s*Error\s*:' },
+        [ordered]@{ Name = 'OutOfRunConsoleLogError'; Pattern = '(?im)^\s*UnityEngine\.Debug:(?:LogError|LogException|LogAssertion)\b' },
+        [ordered]@{ Name = 'OutOfRunAssertionFailure'; Pattern = '(?im)^\s*(?:Assertion failed|AssertionException\b|UnityEngine\.Assertions\.AssertionException)' },
+        [ordered]@{ Name = 'OutOfRunNullReferenceException'; Pattern = '(?im)^\s*(?:[A-Za-z_]\w*\.)*NullReferenceException\s*:' },
+        [ordered]@{ Name = 'OutOfRunMissingReferenceException'; Pattern = '(?im)^\s*(?:[A-Za-z_]\w*\.)*MissingReferenceException\s*:' },
+        [ordered]@{ Name = 'OutOfRunManagedException'; Pattern = '(?im)^\s*(?!(?:[A-Za-z_]\w*\.)*(?:NullReferenceException|MissingReferenceException)\s*:)(?:[A-Za-z_]\w*\.)*[A-Za-z_]\w*Exception\s*:' }
+    )
+
+    $diagnostics = New-Object System.Collections.ArrayList
+    foreach ($logPath in $LogPaths) {
+        if (-not (Test-Path -LiteralPath $logPath -PathType Leaf)) {
+            continue
+        }
+
+        $content = Get-Content -Raw -LiteralPath $logPath
+        Add-LogDiagnosticMatches `
+            -Diagnostics $diagnostics `
+            -LogPath $logPath `
+            -Content $content `
+            -Signatures $wholeLogSignatures `
+            -Scope 'EntireTestProcess'
+
+        $runStart = [regex]::Match($content, '(?im)^Running tests for ExecutionSettings with details:\s*$')
+        $runEnd = [regex]::Match($content, '(?im)^Test run completed\. Exiting with code \d+.*$')
+        if ($runStart.Success -and $runEnd.Success -and $runEnd.Index -ge $runStart.Index) {
+            $outsideRun = $content.Substring(0, $runStart.Index) + [Environment]::NewLine
+            $afterEnd = $runEnd.Index + $runEnd.Length
+            if ($afterEnd -lt $content.Length) {
+                $outsideRun += $content.Substring($afterEnd)
             }
         }
+        else {
+            # Without both boundary lines, no output can be proven to belong to
+            # an authoritative NUnit run. Scan the entire log conservatively.
+            $outsideRun = $content
+        }
+
+        Add-LogDiagnosticMatches `
+            -Diagnostics $diagnostics `
+            -LogPath $logPath `
+            -Content $outsideRun `
+            -Signatures $outsideRunSignatures `
+            -Scope 'OutsideNUnitRun'
     }
     return @($diagnostics)
 }
@@ -353,12 +473,454 @@ function Test-IsProtectedContentPath {
         $path -like '*.prefab.meta')
 }
 
+function Test-StringSequenceEqual {
+    param(
+        [Parameter(Mandatory = $true)]
+        [AllowEmptyCollection()]
+        [string[]]$Actual,
+
+        [Parameter(Mandatory = $true)]
+        [AllowEmptyCollection()]
+        [string[]]$Expected
+    )
+
+    if ($Actual.Count -ne $Expected.Count) {
+        return $false
+    }
+    for ($index = 0; $index -lt $Expected.Count; $index++) {
+        if (-not [string]::Equals($Actual[$index], $Expected[$index], [System.StringComparison]::Ordinal)) {
+            return $false
+        }
+    }
+    return $true
+}
+
+function Get-DisposableReviewIntegrationContext {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$NormalizedProjectPath
+    )
+
+    $context = [ordered]@{
+        Valid         = $false
+        Reason        = $null
+        WorkspaceRoot = $null
+        RunId         = $null
+        MarkerPath    = $null
+    }
+
+    try {
+        $canonicalRootInput = [System.IO.Path]::Combine(
+            [System.IO.Path]::GetTempPath(),
+            'SashimiBoyAutomation')
+        Assert-AutomationPathHasNoReparsePoint -Path $canonicalRootInput
+        $canonicalRoot = ConvertTo-AutomationPath -Path $canonicalRootInput -AllowMissing
+        if (-not (Test-AutomationPathWithin -Path $NormalizedProjectPath -Root $canonicalRoot) -or
+            (Test-AutomationPathEqual -Left $NormalizedProjectPath -Right $canonicalRoot)) {
+            $context.Reason = "ProjectPath is not below the canonical automation temp root '$canonicalRoot'."
+            return [pscustomobject]$context
+        }
+
+        $workspaceRoot = Split-Path -Parent $NormalizedProjectPath
+        $expectedRepositoryPath = Join-Path -Path $workspaceRoot -ChildPath 'Repository'
+        if (-not (Test-AutomationPathEqual -Left $NormalizedProjectPath -Right $expectedRepositoryPath)) {
+            $context.Reason = "ProjectPath is not the Repository child of an owned review-integration workspace."
+            return [pscustomobject]$context
+        }
+
+        $ownedWorkspace = Get-AutomationOwnedWorkspace `
+            -WorkspaceRoot $workspaceRoot `
+            -AllowedRoot $canonicalRoot
+        $context.Valid = $true
+        $context.Reason = 'Ownership marker, RunId, canonical containment, and reparse-point checks passed.'
+        $context.WorkspaceRoot = $ownedWorkspace.WorkspaceRoot
+        $context.RunId = $ownedWorkspace.RunId
+        $context.MarkerPath = $ownedWorkspace.MarkerPath
+    }
+    catch {
+        $context.Reason = $_.Exception.Message
+    }
+
+    return [pscustomobject]$context
+}
+
+function Get-KnownDisposableUnityDriftAssessment {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$NormalizedProjectPath,
+
+        [Parameter(Mandatory = $true)]
+        [string]$NormalizedArtifactsPath,
+
+        [Parameter(Mandatory = $true)]
+        [AllowEmptyCollection()]
+        [string[]]$StatusLines,
+
+        [Parameter(Mandatory = $true)]
+        [psobject]$DisposableContext,
+
+        [Parameter(Mandatory = $true)]
+        [string[]]$RequiredPersistentPaths,
+
+        [Parameter(Mandatory = $true)]
+        [string]$ValidatedUnityVersion,
+
+        [Parameter(Mandatory = $true)]
+        [string]$GitExecutablePath
+    )
+
+    $assessment = [ordered]@{
+        Classification        = if ($StatusLines.Count -gt 0) { 'WorkspaceMutation' } else { 'None' }
+        Detected              = ($StatusLines.Count -gt 0)
+        Allowed               = $false
+        Reason                = if ($StatusLines.Count -gt 0) { 'Workspace changes require validation.' } else { 'No workspace mutation detected.' }
+        RepositoryRelativePath = $null
+        WorkspaceRoot         = $DisposableContext.WorkspaceRoot
+        RunId                 = $DisposableContext.RunId
+        MarkerPath            = $DisposableContext.MarkerPath
+        ApprovedChanges       = @()
+        DiffArtifactPath      = $null
+        DiffSha256ArtifactPath = $null
+        DiffSha256            = $null
+        DiffSha256ArtifactSha256 = $null
+        WorkingFileSha256     = $null
+        ProtectedWorktrees    = @()
+    }
+
+    if ($StatusLines.Count -eq 0) {
+        return [pscustomobject]$assessment
+    }
+    if (-not $DisposableContext.Valid) {
+        $assessment.Reason = "Workspace is not a validated tool-owned disposable review integration: $($DisposableContext.Reason)"
+        return [pscustomobject]$assessment
+    }
+    if (-not [string]::Equals($ValidatedUnityVersion, '6000.4.0f1', [System.StringComparison]::Ordinal)) {
+        $assessment.Reason = "Known drift is approved only for Unity 6000.4.0f1; validated project version was '$ValidatedUnityVersion'."
+        return [pscustomobject]$assessment
+    }
+    if ((Test-AutomationPathEqual -Left $NormalizedArtifactsPath -Right $DisposableContext.WorkspaceRoot) -or
+        (Test-AutomationPathWithin -Path $NormalizedArtifactsPath -Root $DisposableContext.WorkspaceRoot)) {
+        $assessment.Reason = 'Known drift evidence must be stored outside the disposable workspace so cleanup cannot remove it.'
+        return [pscustomobject]$assessment
+    }
+
+    $expectedStatus = ' M ProjectSettings/ProjectSettings.asset'
+    if ($StatusLines.Count -ne 1 -or
+        -not [string]::Equals($StatusLines[0], $expectedStatus, [System.StringComparison]::Ordinal)) {
+        $assessment.Reason = 'Known drift requires exactly one unstaged modification: ProjectSettings/ProjectSettings.asset.'
+        return [pscustomobject]$assessment
+    }
+    $assessment.RepositoryRelativePath = 'ProjectSettings/ProjectSettings.asset'
+
+    try {
+        # Revalidate marker/RunId/tree immediately before granting the narrow
+        # non-blocking classification; the Unity run may have lasted minutes.
+        $canonicalRoot = ConvertTo-AutomationPath -Path ([System.IO.Path]::Combine(
+                [System.IO.Path]::GetTempPath(),
+                'SashimiBoyAutomation'))
+        [void](Get-AutomationOwnedWorkspace `
+                -WorkspaceRoot $DisposableContext.WorkspaceRoot `
+                -AllowedRoot $canonicalRoot `
+                -ExpectedRunId $DisposableContext.RunId)
+
+        $fullDiffCommand = Invoke-AutomationNativeCommand `
+            -FilePath $GitExecutablePath `
+            -ArgumentList @(
+                '-C', $NormalizedProjectPath,
+                'diff', '--no-ext-diff', '--no-textconv', '--full-index', '--binary', '--no-color', '--',
+                'ProjectSettings/ProjectSettings.asset')
+        if (-not $fullDiffCommand.Succeeded -or [string]::IsNullOrWhiteSpace($fullDiffCommand.StdOut)) {
+            throw "Unable to capture the ProjectSettings drift diff: $($fullDiffCommand.StdErr)"
+        }
+
+        $validationDiffCommand = Invoke-AutomationNativeCommand `
+            -FilePath $GitExecutablePath `
+            -ArgumentList @(
+                '-C', $NormalizedProjectPath,
+                'diff', '--no-ext-diff', '--no-textconv', '--unified=0', '--no-color', '--',
+                'ProjectSettings/ProjectSettings.asset')
+        if (-not $validationDiffCommand.Succeeded) {
+            throw "Unable to validate the ProjectSettings drift diff: $($validationDiffCommand.StdErr)"
+        }
+        $metadataDiffCommand = Invoke-AutomationNativeCommand `
+            -FilePath $GitExecutablePath `
+            -ArgumentList @(
+                '-C', $NormalizedProjectPath,
+                'diff', '--no-ext-diff', '--no-textconv', '--summary', '--',
+                'ProjectSettings/ProjectSettings.asset')
+        if (-not $metadataDiffCommand.Succeeded) {
+            throw "Unable to inspect ProjectSettings mode/type metadata: $($metadataDiffCommand.StdErr)"
+        }
+        if (-not [string]::IsNullOrWhiteSpace($metadataDiffCommand.StdOut)) {
+            throw "ProjectSettings drift includes a forbidden mode, rename, copy, or type metadata change: $($metadataDiffCommand.StdOut)"
+        }
+
+        $expectedChangeLines = @(
+            '-  targetPixelDensity: 0',
+            '+  targetPixelDensity: 30',
+            '-  buildNumber: {}',
+            '+  buildNumber:',
+            '+    Standalone: 0',
+            '+    VisionOS: 0',
+            '+    iPhone: 0',
+            '+    tvOS: 0',
+            '-  iOSTargetOSVersionString: ',
+            '+  iOSTargetOSVersionString: 15.0',
+            '-  tvOSTargetOSVersionString: ',
+            '+  tvOSTargetOSVersionString: 15.0',
+            '-  VisionOSTargetOSVersionString: ',
+            '+  VisionOSTargetOSVersionString: 1.0',
+            '-  macOSTargetOSVersion: ',
+            '+  macOSTargetOSVersion: 12.0'
+        )
+        $actualChangeLines = @($validationDiffCommand.StdOut -split "`r?`n" | Where-Object {
+                (($_ -like '+*') -and
+                    -not [string]::Equals($_, '+++ b/ProjectSettings/ProjectSettings.asset', [System.StringComparison]::Ordinal)) -or
+                (($_ -like '-*') -and
+                    -not [string]::Equals($_, '--- a/ProjectSettings/ProjectSettings.asset', [System.StringComparison]::Ordinal))
+            })
+        if (-not (Test-StringSequenceEqual -Actual $actualChangeLines -Expected $expectedChangeLines)) {
+            throw ("ProjectSettings drift contains a deletion, reordering, value, or key outside the approved Unity-default serialization sequence. Actual change lines: {0}" -f
+                [string]::Join(' | ', [string[]]$actualChangeLines))
+        }
+        if ($validationDiffCommand.StdOut -match '(?m)^\\ No newline at end of file\r?$') {
+            throw 'ProjectSettings drift changed the approved file end-of-file newline.'
+        }
+        if ($fullDiffCommand.StdOut -notmatch '(?m)^diff --git a/ProjectSettings/ProjectSettings\.asset b/ProjectSettings/ProjectSettings\.asset\r?$' -or
+            $fullDiffCommand.StdOut -notmatch '(?m)^--- a/ProjectSettings/ProjectSettings\.asset\r?$' -or
+            $fullDiffCommand.StdOut -notmatch '(?m)^\+\+\+ b/ProjectSettings/ProjectSettings\.asset\r?$') {
+            throw 'ProjectSettings drift diff headers do not identify the exact approved file.'
+        }
+
+        $changedFilePath = Join-Path -Path $NormalizedProjectPath -ChildPath 'ProjectSettings\ProjectSettings.asset'
+        Assert-AutomationPathHasNoReparsePoint -Path $changedFilePath
+        if (-not (Test-Path -LiteralPath $changedFilePath -PathType Leaf)) {
+            throw "Changed ProjectSettings file is missing: $changedFilePath"
+        }
+
+        # Diff-line comparison is useful evidence, but it cannot prove hunk
+        # locations. Build the sole approved full-file result from the HEAD
+        # content and require the working file to match it exactly as text.
+        $headContentCommand = Invoke-AutomationNativeCommand `
+            -FilePath $GitExecutablePath `
+            -ArgumentList @('-C', $NormalizedProjectPath, 'cat-file', 'blob', 'HEAD:ProjectSettings/ProjectSettings.asset')
+        if (-not $headContentCommand.Succeeded) {
+            throw "Unable to read HEAD ProjectSettings content: $($headContentCommand.StdErr)"
+        }
+        $normalizedHeadContent = ($headContentCommand.StdOut -replace "`r`n", "`n") -replace "`r", "`n"
+        # Invoke-AutomationNativeCommand captures native output line-by-line and
+        # therefore omits the terminal newline. The accepted diff above proves
+        # that neither side carries Git's no-final-newline marker.
+        $normalizedHeadContent += "`n"
+        $approvedLineReplacements = [ordered]@{
+            '  targetPixelDensity: 0'         = @('  targetPixelDensity: 30')
+            '  buildNumber: {}'               = @('  buildNumber:', '    Standalone: 0', '    VisionOS: 0', '    iPhone: 0', '    tvOS: 0')
+            '  iOSTargetOSVersionString: '     = @('  iOSTargetOSVersionString: 15.0')
+            '  tvOSTargetOSVersionString: '    = @('  tvOSTargetOSVersionString: 15.0')
+            '  VisionOSTargetOSVersionString: ' = @('  VisionOSTargetOSVersionString: 1.0')
+            '  macOSTargetOSVersion: '         = @('  macOSTargetOSVersion: 12.0')
+        }
+        $replacementCounts = @{}
+        foreach ($sourceLine in $approvedLineReplacements.Keys) {
+            $replacementCounts[$sourceLine] = 0
+        }
+        $expectedLines = New-Object System.Collections.Generic.List[string]
+        foreach ($headLine in @($normalizedHeadContent -split "`n")) {
+            if ($approvedLineReplacements.Contains($headLine)) {
+                $replacementCounts[$headLine] = [int]$replacementCounts[$headLine] + 1
+                foreach ($replacementLine in @($approvedLineReplacements[$headLine])) {
+                    [void]$expectedLines.Add([string]$replacementLine)
+                }
+            }
+            else {
+                [void]$expectedLines.Add($headLine)
+            }
+        }
+        foreach ($sourceLine in $approvedLineReplacements.Keys) {
+            if ([int]$replacementCounts[$sourceLine] -ne 1) {
+                throw "HEAD ProjectSettings must contain exactly one approved source line '$sourceLine'; found $($replacementCounts[$sourceLine])."
+            }
+        }
+        $expectedWorkingContent = [string]::Join("`n", [string[]]$expectedLines)
+        $actualWorkingContent = ([System.IO.File]::ReadAllText($changedFilePath) -replace "`r`n", "`n") -replace "`r", "`n"
+        if (-not [string]::Equals($actualWorkingContent, $expectedWorkingContent, [System.StringComparison]::Ordinal)) {
+            throw 'ProjectSettings working content is not the exact full-file result of the approved Unity-default transformations at their original locations.'
+        }
+
+        $diffArtifactPath = Join-Path -Path $NormalizedArtifactsPath -ChildPath 'KnownDisposableUnityDrift.diff'
+        $shaArtifactPath = Join-Path -Path $NormalizedArtifactsPath -ChildPath 'KnownDisposableUnityDrift.diff.sha256'
+        Assert-AutomationPathHasNoReparsePoint -Path $NormalizedArtifactsPath
+        Assert-AutomationTreeHasNoReparsePoint -Root $NormalizedArtifactsPath
+        $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+        [System.IO.File]::WriteAllText(
+            $diffArtifactPath,
+            $fullDiffCommand.StdOut + [Environment]::NewLine,
+            $utf8NoBom)
+        $diffSha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $diffArtifactPath).Hash.ToUpperInvariant()
+        [System.IO.File]::WriteAllText(
+            $shaArtifactPath,
+            "$diffSha256  KnownDisposableUnityDrift.diff" + [Environment]::NewLine,
+            $utf8NoBom)
+
+        $assessment.DiffArtifactPath = $diffArtifactPath
+        $assessment.DiffSha256ArtifactPath = $shaArtifactPath
+        $assessment.DiffSha256 = $diffSha256
+        $assessment.DiffSha256ArtifactSha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $shaArtifactPath).Hash.ToUpperInvariant()
+        $assessment.WorkingFileSha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $changedFilePath).Hash.ToUpperInvariant()
+
+        # The Owner-approved non-blocking classification also requires the
+        # base, Developer, and Reviewer worktrees to be valid, distinct, and
+        # clean at the moment the drift is granted.
+        if (@($RequiredPersistentPaths).Count -ne 3) {
+            throw "Known drift requires exactly three persistent worktree paths; received $(@($RequiredPersistentPaths).Count)."
+        }
+        $projectOriginCommand = Invoke-AutomationNativeCommand `
+            -FilePath $GitExecutablePath `
+            -ArgumentList @('-C', $NormalizedProjectPath, 'remote', 'get-url', 'origin')
+        if (-not $projectOriginCommand.Succeeded -or [string]::IsNullOrWhiteSpace($projectOriginCommand.StdOut)) {
+            throw "Unable to resolve the disposable integration origin: $($projectOriginCommand.StdErr)"
+        }
+        $expectedOrigin = $projectOriginCommand.StdOut.Trim()
+        $protectedEvidence = New-Object System.Collections.ArrayList
+        $normalizedProtectedPaths = New-Object System.Collections.ArrayList
+        $sharedCommonDirectory = $null
+        for ($protectedIndex = 0; $protectedIndex -lt $RequiredPersistentPaths.Count; $protectedIndex++) {
+            $configuredProtectedPath = $RequiredPersistentPaths[$protectedIndex]
+            $expectedRole = @('Base', 'Developer', 'Reviewer')[$protectedIndex]
+            $worktreeEvidence = [ordered]@{
+                Role           = $expectedRole
+                ConfiguredPath = $configuredProtectedPath
+                Path           = $null
+                IsGitRoot      = $false
+                RepositoryShape = $null
+                GitDirectory   = $null
+                CommonDirectory = $null
+                Origin         = $null
+                Clean          = $false
+                Status         = @()
+                Error          = $null
+            }
+            try {
+                Assert-AutomationPathHasNoReparsePoint -Path $configuredProtectedPath
+                $normalizedProtectedPath = ConvertTo-AutomationPath -Path $configuredProtectedPath
+                $worktreeEvidence.Path = $normalizedProtectedPath
+                foreach ($otherProtectedPath in $normalizedProtectedPaths) {
+                    if (Test-AutomationPathEqual -Left $normalizedProtectedPath -Right $otherProtectedPath) {
+                        throw "Protected worktree paths must be distinct: $normalizedProtectedPath"
+                    }
+                }
+                [void]$normalizedProtectedPaths.Add($normalizedProtectedPath)
+
+                $protectedRootCommand = Invoke-AutomationNativeCommand `
+                    -FilePath $GitExecutablePath `
+                    -ArgumentList @('-C', $normalizedProtectedPath, 'rev-parse', '--show-toplevel')
+                if (-not $protectedRootCommand.Succeeded) {
+                    throw "Protected path is not a Git working tree: $($protectedRootCommand.StdErr)"
+                }
+                $protectedGitRoot = ConvertTo-AutomationPath -Path $protectedRootCommand.StdOut.Trim()
+                if (-not (Test-AutomationPathEqual -Left $protectedGitRoot -Right $normalizedProtectedPath)) {
+                    throw "Protected path is not its Git root; resolved root is '$protectedGitRoot'."
+                }
+                $worktreeEvidence.IsGitRoot = $true
+
+                $gitDirectoryCommand = Invoke-AutomationNativeCommand `
+                    -FilePath $GitExecutablePath `
+                    -ArgumentList @('-C', $normalizedProtectedPath, 'rev-parse', '--absolute-git-dir')
+                $commonDirectoryCommand = Invoke-AutomationNativeCommand `
+                    -FilePath $GitExecutablePath `
+                    -ArgumentList @('-C', $normalizedProtectedPath, 'rev-parse', '--path-format=absolute', '--git-common-dir')
+                if (-not $gitDirectoryCommand.Succeeded -or -not $commonDirectoryCommand.Succeeded) {
+                    throw 'Unable to inspect the protected checkout/worktree shape.'
+                }
+                $protectedGitDirectory = ConvertTo-AutomationPath -Path $gitDirectoryCommand.StdOut.Trim()
+                $protectedCommonDirectory = ConvertTo-AutomationPath -Path $commonDirectoryCommand.StdOut.Trim()
+                $worktreeEvidence.GitDirectory = $protectedGitDirectory
+                $worktreeEvidence.CommonDirectory = $protectedCommonDirectory
+                $gitMarkerPath = Join-Path -Path $normalizedProtectedPath -ChildPath '.git'
+                $shapeIsValid = if ($expectedRole -eq 'Base') {
+                    (Test-Path -LiteralPath $gitMarkerPath -PathType Container) -and
+                        (Test-AutomationPathEqual -Left $protectedGitDirectory -Right $protectedCommonDirectory)
+                }
+                else {
+                    (Test-Path -LiteralPath $gitMarkerPath -PathType Leaf) -and
+                        -not (Test-AutomationPathEqual -Left $protectedGitDirectory -Right $protectedCommonDirectory)
+                }
+                if (-not $shapeIsValid) {
+                    throw "Protected $expectedRole path does not have the required primary/linked-worktree shape."
+                }
+                $worktreeEvidence.RepositoryShape = if ($expectedRole -eq 'Base') { 'PrimaryCheckout' } else { 'LinkedWorktree' }
+                if ($null -eq $sharedCommonDirectory) {
+                    $sharedCommonDirectory = $protectedCommonDirectory
+                }
+                elseif (-not (Test-AutomationPathEqual -Left $sharedCommonDirectory -Right $protectedCommonDirectory)) {
+                    throw 'Protected Base, Developer, and Reviewer paths do not share one Git common directory.'
+                }
+
+                $originCommand = Invoke-AutomationNativeCommand `
+                    -FilePath $GitExecutablePath `
+                    -ArgumentList @('-C', $normalizedProtectedPath, 'remote', 'get-url', 'origin')
+                if (-not $originCommand.Succeeded -or [string]::IsNullOrWhiteSpace($originCommand.StdOut)) {
+                    throw "Unable to resolve the protected $expectedRole origin: $($originCommand.StdErr)"
+                }
+                $worktreeEvidence.Origin = $originCommand.StdOut.Trim()
+                if (-not [string]::Equals($worktreeEvidence.Origin, $expectedOrigin, [System.StringComparison]::OrdinalIgnoreCase)) {
+                    throw "Protected $expectedRole origin does not match the disposable integration origin."
+                }
+
+                $protectedStatusCommand = Invoke-AutomationNativeCommand `
+                    -FilePath $GitExecutablePath `
+                    -ArgumentList @('-C', $normalizedProtectedPath, 'status', '--porcelain=v1', '--untracked-files=all')
+                if (-not $protectedStatusCommand.Succeeded) {
+                    throw "Unable to inspect protected worktree status: $($protectedStatusCommand.StdErr)"
+                }
+                $protectedStatusLines = @($protectedStatusCommand.StdOut -split "`r?`n" | Where-Object { $_ -match '\S' })
+                $worktreeEvidence.Status = $protectedStatusLines
+                if ($protectedStatusLines.Count -gt 0) {
+                    throw "Protected worktree is not clean: $($protectedStatusLines -join '; ')"
+                }
+                $worktreeEvidence.Clean = $true
+            }
+            catch {
+                $worktreeEvidence.Error = $_.Exception.Message
+                [void]$protectedEvidence.Add($worktreeEvidence)
+                $assessment.ProtectedWorktrees = @($protectedEvidence)
+                throw "Protected worktree validation failed for '$configuredProtectedPath': $($_.Exception.Message)"
+            }
+            [void]$protectedEvidence.Add($worktreeEvidence)
+        }
+        $assessment.ProtectedWorktrees = @($protectedEvidence)
+
+        $assessment.Classification = 'KnownDisposableUnityDrift'
+        $assessment.Allowed = $true
+        $assessment.Reason = 'Exact Owner-approved Unity 6000.4.0f1 default serialization drift in a validated disposable clone.'
+        $assessment.WorkspaceRoot = $DisposableContext.WorkspaceRoot
+        $assessment.RunId = $DisposableContext.RunId
+        $assessment.MarkerPath = $DisposableContext.MarkerPath
+        $assessment.ApprovedChanges = @(
+            'targetPixelDensity: 0 -> 30',
+            'buildNumber: empty -> Standalone/VisionOS/iPhone/tvOS zero defaults',
+            'iOSTargetOSVersionString: empty -> 15.0',
+            'tvOSTargetOSVersionString: empty -> 15.0',
+            'VisionOSTargetOSVersionString: empty -> 1.0',
+            'macOSTargetOSVersion: empty -> 12.0'
+        )
+    }
+    catch {
+        $assessment.Classification = 'WorkspaceMutation'
+        $assessment.Allowed = $false
+        $assessment.Reason = $_.Exception.Message
+    }
+
+    return [pscustomobject]$assessment
+}
+
 $commands = New-Object System.Collections.ArrayList
 $failures = New-Object System.Collections.ArrayList
-$effectiveDryRun = [bool]$DryRun -or [bool]$WhatIfPreference
+$effectiveDryRun = [bool]$DryRun
 $exitCode = 0
 $artifactsCreated = $false
 $result = $null
+$disposableContext = $null
 
 try {
     foreach ($configuredPath in @($ProjectPath, $ArtifactsPath, $UnityExecutable)) {
@@ -368,8 +930,8 @@ try {
     $normalizedArtifactsPath = ConvertTo-AutomationPath -Path $ArtifactsPath -AllowMissing
     $normalizedUnityExecutable = ConvertTo-AutomationPath -Path $UnityExecutable -AllowMissing:$effectiveDryRun
 
-    Assert-PathDoesNotOverlap -Path $normalizedProjectPath -Description 'ProjectPath' -Protected $ProtectedProjectPath
-    Assert-PathDoesNotOverlap -Path $normalizedArtifactsPath -Description 'ArtifactsPath' -Protected $ProtectedProjectPath
+    Assert-PathDoesNotOverlap -Path $normalizedProjectPath -Description 'ProjectPath' -Protected $protectedCheckoutPaths
+    Assert-PathDoesNotOverlap -Path $normalizedArtifactsPath -Description 'ArtifactsPath' -Protected $protectedCheckoutPaths
     if ((Test-AutomationPathEqual -Left $normalizedProjectPath -Right $normalizedArtifactsPath) -or
         (Test-AutomationPathWithin -Path $normalizedArtifactsPath -Root $normalizedProjectPath) -or
         (Test-AutomationPathWithin -Path $normalizedProjectPath -Root $normalizedArtifactsPath)) {
@@ -383,10 +945,10 @@ try {
     $playXml = Join-Path -Path $normalizedArtifactsPath -ChildPath 'PlayMode.xml'
     $summaryPath = Join-Path -Path $normalizedArtifactsPath -ChildPath 'Summary.json'
 
-    $compileArguments = @('-batchmode', '-nographics', '-projectPath', $normalizedProjectPath, '-logFile', $compileLog, '-quit')
+    $compileArguments = @('-batchmode', '-nographics', '-buildTarget', 'StandaloneWindows64', '-projectPath', $normalizedProjectPath, '-logFile', $compileLog, '-quit')
     # Unity Test Framework 1.6.0 explicitly rejects -quit for command-line test runs.
-    $editArguments = @('-batchmode', '-nographics', '-projectPath', $normalizedProjectPath, '-runTests', '-testPlatform', 'EditMode', '-testResults', $editXml, '-logFile', $editLog)
-    $playArguments = @('-batchmode', '-nographics', '-projectPath', $normalizedProjectPath, '-runTests', '-testPlatform', 'PlayMode', '-testResults', $playXml, '-logFile', $playLog)
+    $editArguments = @('-batchmode', '-nographics', '-buildTarget', 'StandaloneWindows64', '-projectPath', $normalizedProjectPath, '-runTests', '-testPlatform', 'EditMode', '-testResults', $editXml, '-logFile', $editLog)
+    $playArguments = @('-batchmode', '-nographics', '-buildTarget', 'StandaloneWindows64', '-projectPath', $normalizedProjectPath, '-runTests', '-testPlatform', 'PlayMode', '-testResults', $playXml, '-logFile', $playLog)
 
     $result = [ordered]@{
         Tool                 = 'Invoke-UnityTests'
@@ -400,7 +962,7 @@ try {
         UnityExecutable      = $normalizedUnityExecutable
         ExpectedUnityVersion = $ExpectedUnityVersion
         DetectedUnityVersion = $null
-        AllowSkipped         = [bool]$AllowSkipped
+        BuildTarget          = 'StandaloneWindows64'
         Stages               = [ordered]@{
             CompileImport = $null
             EditMode      = $null
@@ -409,6 +971,12 @@ try {
         Diagnostics          = @()
         GitStatusAfter       = @()
         ProtectedChanges     = @()
+        KnownDisposableUnityDrift = [ordered]@{
+            Classification = 'None'
+            Detected       = $false
+            Allowed        = $false
+            Reason         = 'Not evaluated.'
+        }
         Commands             = $commands
         Failures             = $failures
     }
@@ -467,6 +1035,7 @@ try {
         if (-not [string]::IsNullOrWhiteSpace($initialStatus.StdOut)) {
             throw "ProjectPath must be clean before Unity runs: $($initialStatus.StdOut)"
         }
+        $disposableContext = Get-DisposableReviewIntegrationContext -NormalizedProjectPath $normalizedProjectPath
 
         if (Test-Path -LiteralPath $normalizedArtifactsPath) {
             $existingArtifacts = @(Get-ChildItem -LiteralPath $normalizedArtifactsPath -Force)
@@ -488,7 +1057,8 @@ try {
             StdOut         = $compile.StdOut
             StdErr         = $compile.StdErr
         }
-        if (-not (Test-Path -LiteralPath $compileLog -PathType Leaf)) {
+        $compileLogExists = Test-Path -LiteralPath $compileLog -PathType Leaf
+        if (-not $compileLogExists) {
             Add-Failure -Failures $failures -Stage 'CompileImport' -Message "Compile/import log was not created: $compileLog" -NativeExitCode $compile.ExitCode -StdOut $compile.StdOut -StdErr $compile.StdErr
             if ($exitCode -eq 0) { $exitCode = 1 }
         }
@@ -497,8 +1067,9 @@ try {
             if ($exitCode -eq 0) { $exitCode = if ($compile.ExitCode -ne 0) { [int]$compile.ExitCode } else { 1 } }
         }
 
-        $compileDiagnostics = @(Get-LogDiagnostics -LogPaths @($compileLog))
-        $canRunTests = $compile.Succeeded -and $compileDiagnostics.Count -eq 0
+        $compileDiagnostics = @(Get-CompileLogDiagnostics -LogPaths @($compileLog))
+        $result.Diagnostics = @($compileDiagnostics)
+        $canRunTests = $compile.Succeeded -and $compileLogExists -and $compileDiagnostics.Count -eq 0
         if (-not $canRunTests -and $compileDiagnostics.Count -gt 0) {
             Add-Failure -Failures $failures -Stage 'CompileImport' -Message 'Forbidden error signatures were found in the compile/import log.' -StdOut $compile.StdOut -StdErr $compile.StdErr
             if ($exitCode -eq 0) { $exitCode = 1 }
@@ -525,6 +1096,7 @@ try {
                     LogPath        = $testStage.LogPath
                     ResultPath     = $testStage.XmlPath
                     Counts         = $testSummary
+                    AuthoritativePass = $false
                     StdOut         = $native.StdOut
                     StdErr         = $native.StdErr
                 }
@@ -538,6 +1110,7 @@ try {
                     Add-Failure -Failures $failures -Stage $testStage.Name -Message 'Unity test process returned a non-zero exit code.' -NativeExitCode $native.ExitCode -StdOut $native.StdOut -StdErr $native.StdErr
                     if ($exitCode -eq 0) { $exitCode = if ($native.ExitCode -ne 0) { [int]$native.ExitCode } else { 1 } }
                 }
+                $strictXmlPassed = $false
                 if ($null -ne $testSummary) {
                     if (-not [string]::Equals($testSummary.Result, 'Passed', [System.StringComparison]::OrdinalIgnoreCase)) {
                         Add-Failure -Failures $failures -Stage $testStage.Name -Message "Unity XML root result is not Passed: result='$($testSummary.Result)'." -NativeExitCode $native.ExitCode -StdOut $native.StdOut -StdErr $native.StdErr
@@ -551,7 +1124,7 @@ try {
                         Add-Failure -Failures $failures -Stage $testStage.Name -Message "Test failures found: failed=$($testSummary.Failed), inconclusive=$($testSummary.Inconclusive)." -NativeExitCode $native.ExitCode
                         if ($exitCode -eq 0) { $exitCode = if ($native.ExitCode -ne 0) { [int]$native.ExitCode } else { 1 } }
                     }
-                    if (-not $AllowSkipped -and $testSummary.Skipped -gt 0) {
+                    if ($testSummary.Skipped -gt 0) {
                         Add-Failure -Failures $failures -Stage $testStage.Name -Message "Skipped tests are not allowed in the strict full-PASS contract: skipped=$($testSummary.Skipped)." -NativeExitCode $native.ExitCode
                         if ($exitCode -eq 0) { $exitCode = 1 }
                     }
@@ -559,18 +1132,32 @@ try {
                         Add-Failure -Failures $failures -Stage $testStage.Name -Message 'XML test counts do not add up to total.' -NativeExitCode $native.ExitCode
                         if ($exitCode -eq 0) { $exitCode = 1 }
                     }
-                    if (-not $AllowSkipped -and $testSummary.Passed -ne $testSummary.Total) {
+                    if ($testSummary.Passed -ne $testSummary.Total) {
                         Add-Failure -Failures $failures -Stage $testStage.Name -Message "Strict full-PASS count mismatch: passed=$($testSummary.Passed), total=$($testSummary.Total)." -NativeExitCode $native.ExitCode
                         if ($exitCode -eq 0) { $exitCode = 1 }
                     }
+
+                    $strictXmlPassed = (
+                        [string]::Equals($testSummary.Result, 'Passed', [System.StringComparison]::OrdinalIgnoreCase) -and
+                        $testSummary.Total -gt 0 -and
+                        $testSummary.Failed -eq 0 -and
+                        $testSummary.Inconclusive -eq 0 -and
+                        $testSummary.Skipped -eq 0 -and
+                        $testSummary.Passed -eq $testSummary.Total -and
+                        ($testSummary.Passed + $testSummary.Failed + $testSummary.Inconclusive + $testSummary.Skipped) -eq $testSummary.Total)
                 }
+                if ([bool]$native.Succeeded -ne [bool]$strictXmlPassed) {
+                    Add-Failure -Failures $failures -Stage $testStage.Name -Message "Unity native exit and strict NUnit XML disagree: nativeSucceeded=$([bool]$native.Succeeded), strictXmlPassed=$strictXmlPassed." -NativeExitCode $native.ExitCode -StdOut $native.StdOut -StdErr $native.StdErr
+                    if ($exitCode -eq 0) { $exitCode = if ($native.ExitCode -ne 0) { [int]$native.ExitCode } else { 1 } }
+                }
+                $stageResult.AuthoritativePass = ([bool]$native.Succeeded -and [bool]$strictXmlPassed)
             }
         }
 
-        $allLogPaths = @($compileLog, $editLog, $playLog)
-        $result.Diagnostics = @(Get-LogDiagnostics -LogPaths $allLogPaths)
-        if ($result.Diagnostics.Count -gt 0) {
-            Add-Failure -Failures $failures -Stage 'DiagnosticScan' -Message 'One or more forbidden diagnostic signatures were found in Unity logs.'
+        $testDiagnostics = @(Get-TestLogDiagnostics -LogPaths @($editLog, $playLog))
+        $result.Diagnostics = @($compileDiagnostics) + @($testDiagnostics)
+        if ($testDiagnostics.Count -gt 0) {
+            Add-Failure -Failures $failures -Stage 'TestDiagnosticScan' -Message 'A compile failure, crash, Missing Script, or out-of-run Console error, assertion, or managed exception was found in a Unity test log.'
             if ($exitCode -eq 0) { $exitCode = 1 }
         }
 
@@ -582,7 +1169,15 @@ try {
         else {
             $statusLines = @($finalStatus.StdOut -split "`r?`n" | Where-Object { $_ -match '\S' })
             $result.GitStatusAfter = $statusLines
-            if ($statusLines.Count -gt 0) {
+            $result.KnownDisposableUnityDrift = Get-KnownDisposableUnityDriftAssessment `
+                -NormalizedProjectPath $normalizedProjectPath `
+                -NormalizedArtifactsPath $normalizedArtifactsPath `
+                -StatusLines $statusLines `
+                -DisposableContext $disposableContext `
+                -RequiredPersistentPaths $persistentEvidencePaths `
+                -ValidatedUnityVersion ([string]$result.DetectedUnityVersion) `
+                -GitExecutablePath $GitExecutable
+            if ($statusLines.Count -gt 0 -and -not $result.KnownDisposableUnityDrift.Allowed) {
                 Add-Failure -Failures $failures -Stage 'WorkspaceMutation' -Message 'Unity left tracked or unignored changes in the fresh integration workspace.'
                 if ($exitCode -eq 0) { $exitCode = 1 }
             }
@@ -627,6 +1222,8 @@ catch {
 $result.ExitCode = $exitCode
 if ($artifactsCreated) {
     try {
+        Assert-AutomationPathHasNoReparsePoint -Path $result.ArtifactsPath
+        Assert-AutomationTreeHasNoReparsePoint -Root $result.ArtifactsPath
         $result.SummaryWritten = $true
         Set-Content -LiteralPath $result.SummaryPath -Value (ConvertTo-AutomationJson -InputObject $result) -Encoding UTF8
     }

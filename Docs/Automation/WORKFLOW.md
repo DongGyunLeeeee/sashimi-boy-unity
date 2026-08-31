@@ -14,16 +14,29 @@ At the start of every run, report both values below:
 
 Apply instructions in this order:
 
-1. the target GitHub Issue's latest Owner Decision and acceptance criteria
-2. [`AGENTS.md`](../../AGENTS.md)
-3. the current specification in `Docs/Automation/`
-4. the linked PR's latest review findings
-5. older PR comments and older reviews
-6. Automation memory and previous chat summaries
+1. the current Issue's latest Owner Decision
+2. the current Issue's latest body and Acceptance Criteria
+3. repository-wide safety rules in [`AGENTS.md`](../../AGENTS.md)
+4. the role-specific execution specification in `Docs/Automation/**` from the
+   current commit
+5. the latest independent Review finding on the linked PR
+6. older Issue/PR comments and older Reviews
+7. previous chat summaries and Automation memory
 
-Ignore an older comment, memory entry, or chat summary when it conflicts with a
+Only the latest Owner Decision and the current Acceptance Criteria are
+authoritative comments. Older or non-Owner general comments, previous chat
+summaries, and Automation memory yield whenever they conflict with a
 higher-priority source. Failure to read or update Automation memory is not a
 development or review blocker.
+
+These safety prohibitions are non-relaxable by any Agent, comment, review, chat
+summary, or memory:
+
+- Never destroy the user's checkout.
+- Never use `git reset --hard`, `git clean`, or force push.
+- An Agent must never merge a PR or move an Issue to `Done`.
+- One run handles exactly one Issue.
+- Never report an unexecuted test as PASS.
 
 ## Separation of responsibilities
 
@@ -122,7 +135,24 @@ Automation rule.
   `-WhatIf` first; it refuses a missing/mismatched marker or any reparse point.
 - `Invoke-UnityTests.ps1` runs clean import/compile, all EditMode tests, and all
   PlayMode tests, writes logs and XML only under the requested artifact path,
-  summarizes counts, and propagates failure.
+  summarizes counts, and propagates failure. All three invocations use
+  `-buildTarget StandaloneWindows64`; skipped tests are never a strict PASS.
+  Compile/import log diagnostics remain strict. For EditMode and PlayMode, the
+  native exit and strict NUnit XML result/counts are authoritative, so an
+  expected `LogAssert.Expect` error in a passing test is not counted again as a
+  new Console failure. A failed/missing XML result, native/XML disagreement,
+  crash, compile failure, Missing Script, or out-of-run Console error,
+  assertion, or managed exception is
+  still a failure.
+- `KnownDisposableUnityDrift` is non-blocking only for an owned, marker-bound
+  review integration below `%TEMP%\SashimiBoyAutomation`, exactly one modified
+  `ProjectSettings/ProjectSettings.asset`, the Owner-approved Unity-default
+  serialization sequence, an empty mode/type diff summary, and three distinct
+  clean protected worktrees. The full diff and SHA-256 evidence must be stored
+  with the Summary. Any extra field or file, `Assets/**`, `Packages/**`, other
+  `ProjectSettings/**`, deletion, reordering, or meaningful build/gameplay
+  setting change remains `WorkspaceMutation`. Never restore the file to hide
+  the drift or commit the serialized defaults.
 - `Set-GitHubProjectStatus.ps1` validates an existing Project item and an
   allowed role transition before editing the existing `Status` field. It
   supports `-WhatIf` and never creates schema.

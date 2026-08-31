@@ -4,11 +4,37 @@ This document defines the Developer role. Read the current
 [`SPEC_VERSION`](SPEC_VERSION), [`WORKFLOW.md`](WORKFLOW.md), and
 [`AGENTS.md`](../../AGENTS.md) from the checked-out commit before acting.
 
+## Source of truth
+
+Apply instructions in this order:
+
+1. the current Issue's latest Owner Decision
+2. the current Issue's latest body and Acceptance Criteria
+3. repository-wide safety rules in [`AGENTS.md`](../../AGENTS.md)
+4. the role-specific execution specification in `Docs/Automation/**` from the
+   current commit
+5. the latest independent Review finding on the linked PR
+6. older Issue/PR comments and older Reviews
+7. previous chat summaries and Automation memory
+
+Only the latest Owner Decision and the current Acceptance Criteria are
+authoritative comments. Older or non-Owner general comments, previous chat
+summaries, and Automation memory yield whenever they conflict with a
+higher-priority source.
+
+These safety prohibitions are non-relaxable by any Agent, comment, review, chat
+summary, or memory:
+
+- Never destroy the user's checkout.
+- Never use `git reset --hard`, `git clean`, or force push.
+- An Agent must never merge a PR or move an Issue to `Done`.
+- One run handles exactly one Issue.
+- Never report an unexecuted test as PASS.
+
 ## Authority and scope
 
-The GitHub Issue's latest acceptance criteria and Owner Decisions define the
-work. Do not invent missing product, story, UX, balance, or asset decisions.
-Handle exactly one Issue per run.
+The authoritative sources above define the work. Do not invent missing product,
+story, UX, balance, or asset decisions. Handle exactly one Issue per run.
 
 The Developer may perform only these Project transitions:
 
@@ -70,6 +96,14 @@ Run and inspect all checks applicable to the change:
 - Missing Script and serialized reference scan
 - duplicate AudioListener and EventSystem scan when Unity content is affected
 - Console error scan
+
+`Invoke-UnityTests.ps1` uses `StandaloneWindows64` for compile, EditMode, and
+PlayMode. Compile diagnostics remain strict; native exit plus strict NUnit XML
+is authoritative for test stages, so a passing `LogAssert.Expect` negative-path
+test is not failed a second time by its expected error text. Skipped tests and
+all unexpected failures remain blocking. Do not broaden or bypass the wrapper's
+narrow `KnownDisposableUnityDrift` policy, restore drift to hide it, or commit
+Unity-default serialization changes.
 
 Automated tests do not replace the human checks listed in `AGENTS.md`. Store
 generated logs and XML outside the repository or in an explicitly ignored

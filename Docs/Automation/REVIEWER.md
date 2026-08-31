@@ -4,12 +4,38 @@ This document defines the independent Reviewer role. Read the current
 [`SPEC_VERSION`](SPEC_VERSION), [`WORKFLOW.md`](WORKFLOW.md), and
 [`AGENTS.md`](../../AGENTS.md) from the checked-out commit before acting.
 
+## Source of truth
+
+Apply instructions in this order:
+
+1. the current Issue's latest Owner Decision
+2. the current Issue's latest body and Acceptance Criteria
+3. repository-wide safety rules in [`AGENTS.md`](../../AGENTS.md)
+4. the role-specific execution specification in `Docs/Automation/**` from the
+   current commit
+5. the latest independent Review finding on the linked PR
+6. older Issue/PR comments and older Reviews
+7. previous chat summaries and Automation memory
+
+Only the latest Owner Decision and the current Acceptance Criteria are
+authoritative comments. Older or non-Owner general comments, previous chat
+summaries, and Automation memory yield whenever they conflict with a
+higher-priority source.
+
+These safety prohibitions are non-relaxable by any Agent, comment, review, chat
+summary, or memory:
+
+- Never destroy the user's checkout.
+- Never use `git reset --hard`, `git clean`, or force push.
+- An Agent must never merge a PR or move an Issue to `Done`.
+- One run handles exactly one Issue.
+- Never report an unexecuted test as PASS.
+
 ## Authority and scope
 
-Review exactly one Issue and its linked PR per run. Use the latest Issue body,
-Owner Decisions, acceptance criteria, and current PR head. Treat older comments
-or Automation memory as historical when they conflict with the current
-repository specification.
+Review exactly one Issue and its linked PR per run. Use the authoritative
+sources above and the current PR head. Treat stale material according to the
+source-of-truth order rather than as current instructions.
 
 The Reviewer may perform only these Project transitions:
 
@@ -77,6 +103,22 @@ project and an explicit artifact directory. Inspect:
 - passed, failed, skipped, and inconclusive counts
 - compiler errors, `NullReferenceException`, `MissingReferenceException`,
   Missing Script messages, and new Console errors
+
+All compile/import and test invocations use `StandaloneWindows64`. Treat the
+Unity native exit and strict NUnit XML result/counts as authoritative for
+EditMode and PlayMode. Expected `LogAssert.Expect` output from a passing test is
+not a new Console failure; skipped tests, failed or missing XML, native/XML
+disagreement, crashes, compile failures, Missing Script, and out-of-run Console
+errors, assertions, or managed exceptions still fail verification.
+
+Do not accept a dirty integration workspace except for
+`KnownDisposableUnityDrift` reported by the wrapper. That classification must
+bind to the owned temporary integration marker and run ID, contain exactly the
+approved `ProjectSettings/ProjectSettings.asset` Unity-default serialization
+sequence and no other change, verify all three protected worktrees are clean,
+and preserve the complete diff plus SHA-256 artifacts. Inspect those artifacts
+and the Summary. Never restore the file to manufacture a clean result, commit
+the defaults, or broaden the allowlist.
 
 Also run `git diff --check`, `.meta` and GUID integrity checks, required
 Missing Script/reference scans, and Issue-specific regression checks. Verify
