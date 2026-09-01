@@ -87,6 +87,192 @@ namespace SashimiBoy.Tests
         }
 
         [UnityTest]
+        public IEnumerator ScheduledStop_CancelsPendingPlaybackPastOriginalDspDeadline()
+        {
+            const double scheduledLeadSeconds = 0.25d;
+            const double minimumDeadlineMarginSeconds = 0.25d;
+            const double observationCushionSeconds = 0.1d;
+            const float timeoutSeconds = 5f;
+
+            GameObject gameObject = new GameObject(
+                "AudioClockScheduledStopPlayModeTests");
+            AudioClip clip = null;
+            try
+            {
+                AudioListener existingListener =
+                    UnityEngine.Object.FindAnyObjectByType<AudioListener>();
+                if (existingListener == null ||
+                    !existingListener.isActiveAndEnabled)
+                {
+                    gameObject.AddComponent<AudioListener>();
+                }
+
+                AudioSource source = gameObject.AddComponent<AudioSource>();
+                source.playOnAwake = false;
+                source.loop = false;
+                source.mute = true;
+                clip = AudioClip.Create(
+                    "AudioClockScheduledStopPlayModeClip",
+                    96000,
+                    1,
+                    48000,
+                    false);
+                source.clip = clip;
+
+                Component clock = RuntimeReflection.AddComponent(
+                    gameObject,
+                    "SashimiBoy.AudioClock");
+                RuntimeReflection.SetField(clock, "audioSource", source);
+                RuntimeReflection.SetField(
+                    clock,
+                    "scheduledLeadTime",
+                    scheduledLeadSeconds);
+
+                Assert.That(Command(clock, "Play"), Is.True);
+                double controlStartDspTime = Convert.ToDouble(
+                    RuntimeReflection.GetField(clock, "startDspTime"));
+                float controlTimeout =
+                    Time.realtimeSinceStartup + timeoutSeconds;
+                while ((AudioSettings.dspTime < controlStartDspTime ||
+                    !source.isPlaying ||
+                    source.timeSamples <= 0) &&
+                    Time.realtimeSinceStartup < controlTimeout)
+                {
+                    yield return null;
+                }
+
+                Assert.That(
+                    AudioSettings.dspTime,
+                    Is.GreaterThanOrEqualTo(controlStartDspTime),
+                    "Control playback did not reach its DSP deadline.");
+                Assert.That(
+                    source.isPlaying,
+                    Is.True,
+                    "The control phase must prove this runtime source can play.");
+                Assert.That(source.timeSamples, Is.GreaterThan(0));
+                Assert.That(StateName(clock), Is.EqualTo("Playing"));
+                Assert.That(
+                    Convert.ToBoolean(GetProperty(clock, "IsRunning")),
+                    Is.True);
+                double observedStartLagSeconds = Math.Max(
+                    0d,
+                    AudioSettings.dspTime - controlStartDspTime);
+                double cancellationDeadlineMarginSeconds = Math.Max(
+                    minimumDeadlineMarginSeconds,
+                    observedStartLagSeconds + observationCushionSeconds);
+
+                Assert.That(Command(clock, "Stop"), Is.True);
+                Assert.That(source.isPlaying, Is.False);
+                Assert.That(source.timeSamples, Is.Zero);
+                Assert.That(StateName(clock), Is.EqualTo("Stopped"));
+                Assert.That(SongTimeMs(clock), Is.Zero);
+                Assert.That(
+                    Convert.ToBoolean(GetProperty(clock, "IsRunning")),
+                    Is.False);
+                yield return null;
+                Assert.That(source.isPlaying, Is.False);
+                Assert.That(source.timeSamples, Is.Zero);
+                Assert.That(StateName(clock), Is.EqualTo("Stopped"));
+                Assert.That(SongTimeMs(clock), Is.Zero);
+
+                Assert.That(Command(clock, "Play"), Is.True);
+                double cancelledStartDspTime = Convert.ToDouble(
+                    RuntimeReflection.GetField(clock, "startDspTime"));
+                Assert.That(StateName(clock), Is.EqualTo("Scheduled"));
+                Assert.That(
+                    Convert.ToBoolean(GetProperty(clock, "IsRunning")),
+                    Is.True);
+                Assert.That(source.timeSamples, Is.Zero);
+                Assert.That(SongTimeMs(clock), Is.LessThan(0d));
+
+                double pendingObservationDspTime = cancelledStartDspTime -
+                    scheduledLeadSeconds * 0.5d;
+                float pendingTimeout =
+                    Time.realtimeSinceStartup + timeoutSeconds;
+                while (AudioSettings.dspTime < pendingObservationDspTime &&
+                    Time.realtimeSinceStartup < pendingTimeout)
+                {
+                    yield return null;
+                }
+
+                Assert.That(
+                    AudioSettings.dspTime,
+                    Is.GreaterThanOrEqualTo(pendingObservationDspTime),
+                    "The scheduled request was not held pending long enough.");
+                Assert.That(StateName(clock), Is.EqualTo("Scheduled"));
+                Assert.That(source.timeSamples, Is.Zero);
+                Assert.That(SongTimeMs(clock), Is.LessThan(0d));
+                Assert.That(
+                    AudioSettings.dspTime,
+                    Is.LessThan(cancelledStartDspTime),
+                    "Stop must run while playback is still scheduled.");
+
+                Assert.That(Command(clock, "Stop"), Is.True);
+                Assert.That(source.isPlaying, Is.False);
+                Assert.That(source.timeSamples, Is.Zero);
+                Assert.That(StateName(clock), Is.EqualTo("Stopped"));
+                Assert.That(SongTimeMs(clock), Is.Zero);
+                Assert.That(
+                    Convert.ToBoolean(GetProperty(clock, "IsRunning")),
+                    Is.False);
+
+                bool latePlaybackObserved = false;
+                int maximumSamplesAfterStop = source.timeSamples;
+                float cancellationTimeout =
+                    Time.realtimeSinceStartup + timeoutSeconds;
+                while (AudioSettings.dspTime <
+                        cancelledStartDspTime +
+                            cancellationDeadlineMarginSeconds &&
+                    Time.realtimeSinceStartup < cancellationTimeout)
+                {
+                    latePlaybackObserved |= source.isPlaying;
+                    maximumSamplesAfterStop = Math.Max(
+                        maximumSamplesAfterStop,
+                        source.timeSamples);
+                    yield return null;
+                }
+
+                latePlaybackObserved |= source.isPlaying;
+                maximumSamplesAfterStop = Math.Max(
+                    maximumSamplesAfterStop,
+                    source.timeSamples);
+                Assert.That(
+                    AudioSettings.dspTime,
+                    Is.GreaterThanOrEqualTo(
+                        cancelledStartDspTime +
+                            cancellationDeadlineMarginSeconds),
+                    "Cancellation observation timed out before the DSP deadline.");
+                Assert.That(
+                    latePlaybackObserved,
+                    Is.False,
+                    "The stopped scheduled source started after its deadline.");
+                Assert.That(maximumSamplesAfterStop, Is.Zero);
+                Assert.That(source.isPlaying, Is.False);
+                Assert.That(source.timeSamples, Is.Zero);
+                Assert.That(StateName(clock), Is.EqualTo("Stopped"));
+                Assert.That(SongTimeMs(clock), Is.Zero);
+                Assert.That(
+                    Convert.ToBoolean(GetProperty(clock, "IsRunning")),
+                    Is.False);
+            }
+            finally
+            {
+                if (gameObject != null)
+                {
+                    UnityEngine.Object.Destroy(gameObject);
+                }
+
+                if (clip != null)
+                {
+                    UnityEngine.Object.Destroy(clip);
+                }
+            }
+
+            yield return null;
+            LogAssert.NoUnexpectedReceived();
+        }
+
+        [UnityTest]
         public IEnumerator MissingResources_FaultOnceWithoutExceptionsOrSpam()
         {
             GameObject gameObject = new GameObject(
