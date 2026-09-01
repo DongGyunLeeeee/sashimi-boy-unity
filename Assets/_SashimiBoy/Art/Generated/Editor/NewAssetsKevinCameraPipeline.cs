@@ -69,9 +69,21 @@ namespace SashimiBoy.EditorTools
             AssetSpec.Kevin("PlainFace", "Plain Face"),
             AssetSpec.Kevin("CuteFace", "Cute Face"),
             AssetSpec.Kevin("WesternFace", "Western Face"),
-            AssetSpec.Fish("Salmon", "Salmon", 1.25f),
-            AssetSpec.Fish("Rockfish", "Rockfish", 1.15f),
-            AssetSpec.Fish("Mullet", "Mullet", 1.2f),
+            AssetSpec.Fish(
+                "Salmon",
+                "Salmon",
+                1.25f,
+                new Vector3(0f, -90f, 0f)),
+            AssetSpec.Fish(
+                "Rockfish",
+                "Rockfish",
+                1.15f,
+                new Vector3(0f, -90f, 0f)),
+            AssetSpec.Fish(
+                "Mullet",
+                "Mullet",
+                1.2f,
+                new Vector3(0f, -90f, 0f)),
             AssetSpec.FishShop(
                 "KitchenKnife",
                 "Kitchen Knife",
@@ -152,6 +164,36 @@ namespace SashimiBoy.EditorTools
         public static void RebuildForPrototypeGenerator()
         {
             RunPipeline(true, false);
+        }
+
+        public static void RebuildCanonicalFishWrappersForArtPassBatch()
+        {
+            EnsureGeneratedFolders();
+            AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport);
+
+            List<AssetInspection> inspections = new List<AssetInspection>();
+            for (int i = 0; i < AssetSpecs.Length; i++)
+            {
+                AssetSpec spec = AssetSpecs[i];
+                if (!spec.IsFish)
+                {
+                    continue;
+                }
+
+                AssetInspection inspection = DiscoverAsset(spec);
+                InspectImportedModel(inspection);
+                inspections.Add(inspection);
+            }
+
+            List<AssetBuildResult> results = BuildAssets(inspections);
+            if (results.Any(result => result.Prefab == null))
+            {
+                throw new InvalidOperationException(
+                    "A canonical FishShop fish wrapper could not be rebuilt.");
+            }
+
+            AssetDatabase.SaveAssets();
+            AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport);
         }
 
         [MenuItem("Sashimi Boy/Art/Open Kevin Asset Gallery")]
@@ -772,10 +814,12 @@ namespace SashimiBoy.EditorTools
             RemoveImportedColliders(imported);
             AssignSharedMaterial(imported, material);
 
-            Vector3 correction = FindModelRotationCorrection(
-                root,
-                modelContainer,
-                inspection.Spec.IsKevin);
+            Vector3 correction = inspection.Spec.IsKevin
+                ? FindModelRotationCorrection(
+                    root,
+                    modelContainer,
+                    true)
+                : inspection.Spec.ModelRotationCorrection;
             if (inspection.Spec.IsKevin)
             {
                 correction.y = 180f;
@@ -2773,7 +2817,9 @@ namespace SashimiBoy.EditorTools
                 string prefabName,
                 int maximumTextureSize,
                 float targetLongestDimension,
-                bool isKevin)
+                bool isKevin,
+                bool isFish,
+                Vector3 modelRotationCorrection)
             {
                 AssetId = assetId;
                 DisplayName = displayName;
@@ -2782,6 +2828,8 @@ namespace SashimiBoy.EditorTools
                 MaximumTextureSize = maximumTextureSize;
                 TargetLongestDimension = targetLongestDimension;
                 IsKevin = isKevin;
+                IsFish = isFish;
+                ModelRotationCorrection = modelRotationCorrection;
             }
 
             public string AssetId { get; }
@@ -2791,6 +2839,8 @@ namespace SashimiBoy.EditorTools
             public int MaximumTextureSize { get; }
             public float TargetLongestDimension { get; }
             public bool IsKevin { get; }
+            public bool IsFish { get; }
+            public Vector3 ModelRotationCorrection { get; }
 
             public static AssetSpec Kevin(
                 string assetId,
@@ -2804,21 +2854,28 @@ namespace SashimiBoy.EditorTools
                     "PF_Character_Kevin_" + assetId,
                     2048,
                     1.75f,
-                    true);
+                    true,
+                    false,
+                    Vector3.zero);
             }
 
             public static AssetSpec Fish(
                 string assetId,
                 string displayName,
-                float targetLength)
+                float targetLength,
+                Vector3 modelRotationCorrection)
             {
-                return FishShop(
+                return new AssetSpec(
                     assetId,
                     displayName,
-                    "Fish/" + assetId,
+                    SourceRoot +
+                        "/Environment/FishShop/Fish/" + assetId,
                     "PF_Fish_" + assetId,
                     2048,
-                    targetLength);
+                    targetLength,
+                    false,
+                    true,
+                    modelRotationCorrection);
             }
 
             public static AssetSpec FishShop(
@@ -2837,7 +2894,9 @@ namespace SashimiBoy.EditorTools
                     prefabName,
                     maximumTextureSize,
                     targetLongestDimension,
-                    false);
+                    false,
+                    false,
+                    Vector3.zero);
             }
         }
 
