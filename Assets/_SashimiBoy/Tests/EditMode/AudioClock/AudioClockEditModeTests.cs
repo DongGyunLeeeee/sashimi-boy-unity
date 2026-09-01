@@ -107,6 +107,86 @@ namespace SashimiBoy.Tests
         }
 
         [Test]
+        public void ScheduledStop_StopsAudioAndResetsToStopped()
+        {
+            Assert.That(Command("Play"), Is.True);
+            AssertState("Scheduled");
+
+            Assert.That(Command("Stop"), Is.True);
+
+            Assert.That(source.isPlaying, Is.False);
+            Assert.That(source.timeSamples, Is.Zero);
+            AssertState("Stopped");
+            Assert.That(SongTimeMs, Is.Zero);
+            Assert.That(IsRunning, Is.False);
+        }
+
+        [Test]
+        public void ScheduledResume_IsNoOpAndPreservesScheduleAndTime()
+        {
+            Assert.That(Command("Play"), Is.True);
+            AssertState("Scheduled");
+            double scheduledStart = GetPrivateDouble("startDspTime");
+            double probeDspTime = scheduledStart - 0.04d;
+            double scheduledSongTime = CaptureAt(probeDspTime);
+            int scheduledSample = source.timeSamples;
+
+            Assert.That(Command("Resume"), Is.False);
+
+            AssertState("Scheduled");
+            Assert.That(IsRunning, Is.True);
+            Assert.That(GetPrivateDouble("startDspTime"),
+                Is.EqualTo(scheduledStart));
+            Assert.That(CaptureAt(probeDspTime),
+                Is.EqualTo(scheduledSongTime).Within(0.01d));
+            Assert.That(CaptureAt(probeDspTime + 0.01d),
+                Is.EqualTo(scheduledSongTime + 10d).Within(0.01d));
+            Assert.That(source.timeSamples, Is.EqualTo(scheduledSample));
+            Assert.That(Convert.ToBoolean(RuntimeReflection.GetField(
+                    clock,
+                    "scheduledPlaybackStarted")),
+                Is.False);
+        }
+
+        [Test]
+        public void PausedStop_ResetsToStopped()
+        {
+            Assert.That(Command("Play"), Is.True);
+            double start = GetPrivateDouble("startDspTime");
+            Assert.That(InvokeBool("PauseAt", start + 0.03d), Is.True);
+            AssertState("Paused");
+            Assert.That(SongTimeMs, Is.EqualTo(30d).Within(0.01d));
+
+            Assert.That(Command("Stop"), Is.True);
+
+            Assert.That(source.isPlaying, Is.False);
+            Assert.That(source.timeSamples, Is.Zero);
+            AssertState("Stopped");
+            Assert.That(SongTimeMs, Is.Zero);
+            Assert.That(IsRunning, Is.False);
+        }
+
+        [Test]
+        public void FinishedStop_ResetsToStopped()
+        {
+            Assert.That(Command("Play"), Is.True);
+            double start = GetPrivateDouble("startDspTime");
+            Tick(start + 0.02d, true);
+            Tick(start + ClipDurationMs / 1000d + 0.01d, false);
+            AssertState("Finished");
+            Assert.That(SongTimeMs,
+                Is.EqualTo(ClipDurationMs).Within(0.01d));
+
+            Assert.That(Command("Stop"), Is.True);
+
+            Assert.That(source.isPlaying, Is.False);
+            Assert.That(source.timeSamples, Is.Zero);
+            AssertState("Stopped");
+            Assert.That(SongTimeMs, Is.Zero);
+            Assert.That(IsRunning, Is.False);
+        }
+
+        [Test]
         public void ScheduledPauseResume_PreservesNegativeLeadTime()
         {
             Assert.That(Command("Play"), Is.True);
