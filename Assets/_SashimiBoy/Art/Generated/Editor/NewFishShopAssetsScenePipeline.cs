@@ -35,6 +35,8 @@ namespace SashimiBoy.EditorTools
             PrefabRoot + "/PF_Fixture_DisplayOutside.prefab";
         private const string DisplayInsidePath =
             PrefabRoot + "/PF_Fixture_DisplayInside.prefab";
+        private const string SashimiTablePath =
+            PrefabRoot + "/PF_Fixture_SashimiTable.prefab";
         private const string SalmonPath =
             PrefabRoot + "/PF_Fish_Salmon.prefab";
         private const string RockfishPath =
@@ -69,6 +71,30 @@ namespace SashimiBoy.EditorTools
             ApplyAll(false);
         }
 
+        public static void RebuildFishShopArtPassBatch()
+        {
+            NewAssetsKevinCameraPipeline.
+                RebuildCanonicalFishWrappersForArtPassBatch();
+            ApplyFishShopArtPassForPrototypeGenerator();
+        }
+
+        public static void ApplyFishShopArtPassForPrototypeGenerator()
+        {
+            AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport);
+            Dictionary<string, GameObject> prefabs = LoadRequiredPrefabs();
+            ApplyFishShop(
+                prefabs[DisplayInsidePath],
+                prefabs[SashimiTablePath],
+                prefabs[SalmonPath],
+                prefabs[RockfishPath],
+                prefabs[MulletPath]);
+            AssetDatabase.SaveAssets();
+            AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport);
+            Debug.Log(
+                "[Sashimi Boy] FishShop canonical wrappers and art pass " +
+                "were applied without changing gameplay anchors.");
+        }
+
         private static void ApplyAll(bool showDialog)
         {
             AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport);
@@ -79,6 +105,7 @@ namespace SashimiBoy.EditorTools
             ApplyStreet(prefabs[DisplayOutsidePath]);
             ApplyFishShop(
                 prefabs[DisplayInsidePath],
+                prefabs[SashimiTablePath],
                 prefabs[SalmonPath],
                 prefabs[RockfishPath],
                 prefabs[MulletPath]);
@@ -114,6 +141,7 @@ namespace SashimiBoy.EditorTools
             {
                 DisplayOutsidePath,
                 DisplayInsidePath,
+                SashimiTablePath,
                 SalmonPath,
                 RockfishPath,
                 MulletPath,
@@ -207,6 +235,7 @@ namespace SashimiBoy.EditorTools
 
         private static void ApplyFishShop(
             GameObject displayInsidePrefab,
+            GameObject sashimiTablePrefab,
             GameObject salmonPrefab,
             GameObject rockfishPrefab,
             GameObject mulletPrefab)
@@ -215,46 +244,91 @@ namespace SashimiBoy.EditorTools
                 FishShopScenePath,
                 OpenSceneMode.Single);
             RequireFirstPersonCamera(scene, "FishShopDialogue");
-            DestroyNamedRoot(scene, "Task2_FishShopInteriorAssets");
-            GameObject root = CreateSceneRoot(
+            Dictionary<string, Vector3> preservedAnchors =
+                CaptureNamedPositions(
+                    scene,
+                    "Boss",
+                    "Kevin",
+                    "StartStage01_Placeholder",
+                    "Door_To_Street",
+                    "PlayerSpawnPoint",
+                    "Kevin_Player");
+            // Reuse valid generated objects so their scene-local file IDs stay
+            // stable across authoritative rebuilds.
+            GameObject root = GetOrCreateSceneRoot(
                 scene,
                 "Task2_FishShopInteriorAssets");
 
-            GameObject display = InstantiatePrefab(
+            GameObject display = GetOrCreatePrefabInstance(
                 displayInsidePrefab,
                 scene,
                 root.transform,
                 "DisplayInside_Validated");
-            display.transform.SetPositionAndRotation(
+            ConfigureGeneratedTransform(
+                display.transform,
                 new Vector3(4.45f, 0.08f, 2.85f),
-                Quaternion.Euler(0f, 180f, 0f));
+                Quaternion.Euler(0f, 180f, 0f),
+                0);
             RemoveDecorativeColliders(display);
 
-            GameObject fishShelf = new GameObject("FishDisplay_Shelf");
-            fishShelf.transform.SetParent(root.transform, false);
-            fishShelf.transform.position = new Vector3(0f, 2.34f, 3.18f);
+            GameObject tableLeft = GetOrCreatePrefabInstance(
+                sashimiTablePrefab,
+                scene,
+                root.transform,
+                "SashimiTable_Left_Validated");
+            ConfigureGeneratedTransform(
+                tableLeft.transform,
+                new Vector3(-1.35f, 0.08f, 1.72f),
+                Quaternion.Euler(0f, 180f, 0f),
+                1);
+            RemoveDecorativeColliders(tableLeft);
 
-            CreateDisplayFish(
+            GameObject tableRight = GetOrCreatePrefabInstance(
+                sashimiTablePrefab,
+                scene,
+                root.transform,
+                "SashimiTable_Right_Validated");
+            ConfigureGeneratedTransform(
+                tableRight.transform,
+                new Vector3(1.35f, 0.08f, 1.72f),
+                Quaternion.Euler(0f, 180f, 0f),
+                2);
+            RemoveDecorativeColliders(tableRight);
+
+            GameObject fishShelf = GetOrCreateSceneChild(
+                scene,
+                root.transform,
+                "FishDisplay_SurfaceAnchor");
+            ConfigureGeneratedTransform(
+                fishShelf.transform,
+                new Vector3(0f, 1.38f, 1.4f),
+                Quaternion.identity,
+                3);
+
+            GameObject salmon = GetOrCreateDisplayFish(
                 salmonPrefab,
                 scene,
                 fishShelf.transform,
                 "DisplayFish_Salmon",
-                new Vector3(-2f, 0.04f, 0f),
-                Quaternion.Euler(0f, 90f, 0f));
-            CreateDisplayFish(
+                new Vector3(-1.55f, 0.02f, 0f),
+                Quaternion.Euler(0f, 90f, 0f),
+                0);
+            GameObject rockfish = GetOrCreateDisplayFish(
                 rockfishPrefab,
                 scene,
                 fishShelf.transform,
                 "DisplayFish_Rockfish",
-                new Vector3(0f, 0.04f, 0f),
-                Quaternion.Euler(0f, 90f, 0f));
-            CreateDisplayFish(
+                new Vector3(0f, 0.02f, 0f),
+                Quaternion.Euler(0f, 90f, 0f),
+                1);
+            GameObject mullet = GetOrCreateDisplayFish(
                 mulletPrefab,
                 scene,
                 fishShelf.transform,
                 "DisplayFish_Mullet",
-                new Vector3(2f, 0.04f, 0f),
-                Quaternion.Euler(0f, 90f, 0f));
+                new Vector3(1.55f, 0.02f, 0f),
+                Quaternion.Euler(0f, 90f, 0f),
+                2);
 
             GameObject placeholder = FindNamed(scene, "Placeholder_Fish");
             if (placeholder != null)
@@ -263,27 +337,46 @@ namespace SashimiBoy.EditorTools
                 placeholder.SetActive(false);
             }
 
+            HideLegacyFishShopPresentation(scene);
+            ValidatePrefabSource(display, displayInsidePrefab);
+            ValidatePrefabSource(tableLeft, sashimiTablePrefab);
+            ValidatePrefabSource(tableRight, sashimiTablePrefab);
+            ValidatePrefabSource(salmon, salmonPrefab);
+            ValidatePrefabSource(rockfish, rockfishPrefab);
+            ValidatePrefabSource(mullet, mulletPrefab);
+            ValidatePositiveScale(root.transform);
+            ValidateFishDisplay(
+                fishShelf.transform.position.y,
+                salmon,
+                rockfish,
+                mullet);
+            ValidateNamedPositions(scene, preservedAnchors);
+
             EditorSceneManager.MarkSceneDirty(scene);
             EditorSceneManager.SaveScene(scene, FishShopScenePath);
         }
 
-        private static void CreateDisplayFish(
+        private static GameObject GetOrCreateDisplayFish(
             GameObject prefab,
             Scene scene,
             Transform parent,
             string name,
             Vector3 localPosition,
-            Quaternion localRotation)
+            Quaternion localRotation,
+            int siblingIndex)
         {
-            GameObject fish = InstantiatePrefab(
+            GameObject fish = GetOrCreatePrefabInstance(
                 prefab,
                 scene,
                 parent,
                 name);
-            fish.transform.localPosition = localPosition;
-            fish.transform.localRotation = localRotation;
-            fish.transform.localScale = Vector3.one;
+            ConfigureGeneratedTransform(
+                fish.transform,
+                localPosition,
+                localRotation,
+                siblingIndex);
             RemoveDecorativeColliders(fish);
+            return fish;
         }
 
         private static void ApplyStage(
@@ -831,6 +924,136 @@ namespace SashimiBoy.EditorTools
             return instance;
         }
 
+        private static GameObject GetOrCreatePrefabInstance(
+            GameObject prefab,
+            Scene scene,
+            Transform parent,
+            string name)
+        {
+            GameObject instance = FindUniqueDirectChild(parent, name);
+            if (instance != null &&
+                PrefabUtility.GetCorrespondingObjectFromSource(instance) !=
+                prefab)
+            {
+                UnityEngine.Object.DestroyImmediate(instance);
+                instance = null;
+            }
+
+            if (instance == null)
+            {
+                instance = InstantiatePrefab(prefab, scene, parent, name);
+            }
+
+            instance.name = name;
+            instance.SetActive(true);
+            return instance;
+        }
+
+        private static GameObject GetOrCreateSceneRoot(
+            Scene scene,
+            string name)
+        {
+            GameObject root = null;
+            GameObject[] roots = scene.GetRootGameObjects();
+            for (int i = 0; i < roots.Length; i++)
+            {
+                if (roots[i].name != name)
+                {
+                    continue;
+                }
+
+                if (root != null)
+                {
+                    throw new InvalidOperationException(
+                        "Duplicate generated FishShop scene root: `" +
+                        name + "`.");
+                }
+
+                root = roots[i];
+            }
+
+            if (root == null)
+            {
+                root = CreateSceneRoot(scene, name);
+            }
+            else if (PrefabUtility.IsPartOfPrefabInstance(root))
+            {
+                throw new InvalidOperationException(
+                    "Generated FishShop scene root must not be a prefab " +
+                    "instance: `" + name + "`.");
+            }
+
+            root.name = name;
+            root.SetActive(true);
+            root.transform.SetPositionAndRotation(
+                Vector3.zero,
+                Quaternion.identity);
+            root.transform.localScale = Vector3.one;
+            root.transform.SetAsLastSibling();
+            return root;
+        }
+
+        private static GameObject GetOrCreateSceneChild(
+            Scene scene,
+            Transform parent,
+            string name)
+        {
+            GameObject child = FindUniqueDirectChild(parent, name);
+            if (child != null && PrefabUtility.IsPartOfPrefabInstance(child))
+            {
+                UnityEngine.Object.DestroyImmediate(child);
+                child = null;
+            }
+
+            if (child == null)
+            {
+                child = CreateSceneRoot(scene, name);
+                child.transform.SetParent(parent, false);
+            }
+
+            child.name = name;
+            child.SetActive(true);
+            return child;
+        }
+
+        private static GameObject FindUniqueDirectChild(
+            Transform parent,
+            string name)
+        {
+            GameObject result = null;
+            for (int i = 0; i < parent.childCount; i++)
+            {
+                GameObject child = parent.GetChild(i).gameObject;
+                if (child.name != name)
+                {
+                    continue;
+                }
+
+                if (result != null)
+                {
+                    throw new InvalidOperationException(
+                        "Duplicate generated FishShop child under `" +
+                        parent.name + "`: `" + name + "`.");
+                }
+
+                result = child;
+            }
+
+            return result;
+        }
+
+        private static void ConfigureGeneratedTransform(
+            Transform target,
+            Vector3 localPosition,
+            Quaternion localRotation,
+            int siblingIndex)
+        {
+            target.localPosition = localPosition;
+            target.localRotation = localRotation;
+            target.localScale = Vector3.one;
+            target.SetSiblingIndex(siblingIndex);
+        }
+
         private static GameObject CreateSceneRoot(Scene scene, string name)
         {
             GameObject root = new GameObject(name);
@@ -844,6 +1067,163 @@ namespace SashimiBoy.EditorTools
             for (int i = 0; i < colliders.Length; i++)
             {
                 UnityEngine.Object.DestroyImmediate(colliders[i]);
+            }
+        }
+
+        private static void HideLegacyFishShopPresentation(Scene scene)
+        {
+            string[] names =
+            {
+                "Counter",
+                "Cutting_Board",
+                "Placeholder_Fish",
+                "Placeholder_Fish_Fallback",
+                "Boss",
+                "Kevin",
+                "CounterFront",
+                "CounterTrim",
+                "PrepBench_Left",
+                "PrepBench_Right",
+                "Shelf",
+                "KnifeRail",
+                "Boss_Visual",
+                "Kevin_Visual",
+            };
+            for (int i = 0; i < names.Length; i++)
+            {
+                HideRenderers(FindNamed(scene, names[i]));
+            }
+
+            for (int i = 1; i <= 4; i++)
+            {
+                HideRenderers(FindNamed(
+                    scene,
+                    "IngredientTray_" + i.ToString("00")));
+                HideRenderers(FindNamed(
+                    scene,
+                    "WallKnife_" + i.ToString("00")));
+            }
+        }
+
+        private static void HideRenderers(GameObject target)
+        {
+            if (target == null)
+            {
+                return;
+            }
+
+            Renderer[] renderers =
+                target.GetComponentsInChildren<Renderer>(true);
+            for (int i = 0; i < renderers.Length; i++)
+            {
+                renderers[i].enabled = false;
+            }
+        }
+
+        private static Dictionary<string, Vector3> CaptureNamedPositions(
+            Scene scene,
+            params string[] names)
+        {
+            Dictionary<string, Vector3> result =
+                new Dictionary<string, Vector3>();
+            for (int i = 0; i < names.Length; i++)
+            {
+                GameObject target = FindNamed(scene, names[i]);
+                if (target == null)
+                {
+                    throw new InvalidOperationException(
+                        "Required FishShop anchor is missing: `" +
+                        names[i] + "`.");
+                }
+
+                result.Add(names[i], target.transform.position);
+            }
+
+            return result;
+        }
+
+        private static void ValidateNamedPositions(
+            Scene scene,
+            Dictionary<string, Vector3> expected)
+        {
+            foreach (KeyValuePair<string, Vector3> item in expected)
+            {
+                GameObject target = FindNamed(scene, item.Key);
+                if (target == null || target.transform.position != item.Value)
+                {
+                    throw new InvalidOperationException(
+                        "FishShop gameplay anchor changed: `" +
+                        item.Key + "`.");
+                }
+            }
+        }
+
+        private static void ValidatePrefabSource(
+            GameObject instance,
+            GameObject expectedPrefab)
+        {
+            GameObject source =
+                PrefabUtility.GetCorrespondingObjectFromSource(instance);
+            if (source != expectedPrefab)
+            {
+                throw new InvalidOperationException(
+                    "Scene object is not connected to canonical prefab `" +
+                    AssetDatabase.GetAssetPath(expectedPrefab) + "`.");
+            }
+        }
+
+        private static void ValidatePositiveScale(Transform root)
+        {
+            Transform[] transforms =
+                root.GetComponentsInChildren<Transform>(true);
+            for (int i = 0; i < transforms.Length; i++)
+            {
+                Vector3 scale = transforms[i].localScale;
+                if (scale.x <= 0f || scale.y <= 0f || scale.z <= 0f)
+                {
+                    throw new InvalidOperationException(
+                        "FishShop art uses non-positive scale at `" +
+                        transforms[i].name + "`.");
+                }
+            }
+        }
+
+        private static void ValidateFishDisplay(
+            float surfaceY,
+            params GameObject[] fish)
+        {
+            Bounds[] bounds = new Bounds[fish.Length];
+            for (int i = 0; i < fish.Length; i++)
+            {
+                if (!TryGetBounds(fish[i], out bounds[i]))
+                {
+                    throw new InvalidOperationException(
+                        "Display fish has no renderer bounds: `" +
+                        fish[i].name + "`.");
+                }
+
+                if (Mathf.Abs(bounds[i].min.y - surfaceY) > 0.04f)
+                {
+                    throw new InvalidOperationException(
+                        "Display fish pivot is not aligned to its surface: `" +
+                        fish[i].name + "`.");
+                }
+            }
+
+            for (int first = 0; first < bounds.Length; first++)
+            {
+                for (int second = first + 1;
+                     second < bounds.Length;
+                     second++)
+                {
+                    if (bounds[first].Intersects(bounds[second]))
+                    {
+                        throw new InvalidOperationException(
+                            "Display fish bounds overlap: `" +
+                            fish[first].name + "` and `" +
+                            fish[second].name + "`.");
+                    }
+                }
             }
         }
 
