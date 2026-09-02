@@ -48,6 +48,8 @@ namespace SashimiBoy.EditorTools
             SalmonPrefabsRoot + "/PF_Stage01_SalmonAssembly.prefab";
         private const string ProceduralFallbackPath =
             GeneratedRoot + "/Prefabs/Stage01/PF_Stage01_ProceduralSalmon.prefab";
+        // Increment this whenever the generated hierarchy or import contract changes.
+        private const string PipelineRevision = "Stage01SalmonButchery-v2";
 
         private static readonly Vector3 WrapperModelRotation =
             new Vector3(0f, 270f, 0f);
@@ -127,6 +129,14 @@ namespace SashimiBoy.EditorTools
             EnsureFolders();
             AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport);
             ValidateSourceManifest();
+            string generationSignature = GetGenerationSignature();
+            if (GeneratedAssetsAreCurrent(generationSignature))
+            {
+                Debug.Log(
+                    "[Sashimi Boy] Stage01 salmon assembly is current: " +
+                    generationSignature);
+                return;
+            }
 
             List<BuildResult> results = new List<BuildResult>();
             for (int i = 0; i < SourceSpecs.Length; i++)
@@ -143,9 +153,101 @@ namespace SashimiBoy.EditorTools
             WriteInventoryReport(results);
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport);
+            MarkGeneratedAssetsCurrent(generationSignature);
             Debug.Log(
                 "[Sashimi Boy] Stage01 salmon assembly build complete: " +
-                AssemblyPrefabPath);
+                    AssemblyPrefabPath);
+        }
+
+        private static string GetGenerationSignature()
+        {
+            return PipelineRevision + ":" +
+                ComputeSha256(AssetPathToAbsolutePath(ManifestPath));
+        }
+
+        private static bool GeneratedAssetsAreCurrent(string generationSignature)
+        {
+            AssetImporter assemblyImporter = AssetImporter.GetAtPath(AssemblyPrefabPath);
+            if (assemblyImporter == null ||
+                !string.Equals(
+                    assemblyImporter.userData,
+                    generationSignature,
+                    StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            if (!File.Exists(AssetPathToAbsolutePath(InventoryReportPath)))
+            {
+                return false;
+            }
+
+            for (int i = 0; i < SourceSpecs.Length; i++)
+            {
+                SourceSpec spec = SourceSpecs[i];
+                if (AssetDatabase.LoadAssetAtPath<Material>(spec.MaterialPath) == null ||
+                    AssetDatabase.LoadAssetAtPath<Texture2D>(spec.PackedMapPath) == null ||
+                    AssetDatabase.LoadAssetAtPath<GameObject>(spec.PrefabPath) == null)
+                {
+                    return false;
+                }
+            }
+
+            GameObject assembly =
+                AssetDatabase.LoadAssetAtPath<GameObject>(AssemblyPrefabPath);
+            SalmonAssemblyView view =
+                assembly != null ? assembly.GetComponent<SalmonAssemblyView>() : null;
+            if (view == null ||
+                !IsCurrentPiece(view.head, SalmonAssemblyView.HeadId) ||
+                !IsCurrentPiece(view.body, SalmonAssemblyView.BodyId) ||
+                !IsCurrentPiece(view.fins, SalmonAssemblyView.FinsId) ||
+                !IsCurrentPiece(view.spine, SalmonAssemblyView.SpineId) ||
+                !IsCurrentPiece(view.fillet, SalmonAssemblyView.FilletId) ||
+                view.pinBones == null ||
+                view.pinBones.Length != 8 ||
+                view.proceduralSalmonFallbackPrefab == null)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < view.pinBones.Length; i++)
+            {
+                if (!IsCurrentPiece(view.pinBones[i], "PinBone." + i.ToString("00")))
+                {
+                    return false;
+                }
+            }
+
+            Transform[] transforms = assembly.GetComponentsInChildren<Transform>(true);
+            for (int i = 0; i < transforms.Length; i++)
+            {
+                if (GameObjectUtility.GetMonoBehavioursWithMissingScriptCount(
+                        transforms[i].gameObject) != 0)
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        private static bool IsCurrentPiece(
+            SalmonAssemblyPieceView piece,
+            string expectedStableId)
+        {
+            return piece != null &&
+                string.Equals(
+                    piece.StableId,
+                    expectedStableId,
+                    StringComparison.Ordinal);
+        }
+
+        private static void MarkGeneratedAssetsCurrent(string generationSignature)
+        {
+            AssetImporter assemblyImporter = AssetImporter.GetAtPath(AssemblyPrefabPath);
+            Require(assemblyImporter != null, "Assembly prefab importer is missing.");
+            assemblyImporter.userData = generationSignature;
+            assemblyImporter.SaveAndReimport();
         }
 
         private static void ConfigureImporters(SourceSpec spec)

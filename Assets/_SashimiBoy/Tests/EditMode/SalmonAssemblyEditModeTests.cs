@@ -237,21 +237,17 @@ namespace SashimiBoy.Tests
         {
             Dictionary<string, string> ownerByGuid =
                 new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-            foreach (string metaPath in Directory.EnumerateFiles(
-                         Application.dataPath,
-                         "*.meta",
-                         SearchOption.AllDirectories))
+            foreach (string assetPath in AssetDatabase.GetAllAssetPaths()
+                         .Where(path => path.StartsWith("Assets/", StringComparison.Ordinal)))
             {
-                string guidLine = File.ReadLines(metaPath)
-                    .FirstOrDefault(line => line.StartsWith("guid: ", StringComparison.Ordinal));
-                Assert.That(guidLine, Is.Not.Null, metaPath);
-                string guid = guidLine.Substring("guid: ".Length).Trim();
+                string guid = AssetDatabase.AssetPathToGUID(assetPath);
+                Assert.That(guid, Is.Not.Empty, assetPath);
                 string previous;
                 Assert.That(
                     ownerByGuid.TryGetValue(guid, out previous),
                     Is.False,
-                    "Duplicate GUID " + guid + ": " + previous + " and " + metaPath);
-                ownerByGuid.Add(guid, metaPath);
+                    "Duplicate GUID " + guid + ": " + previous + " and " + assetPath);
+                ownerByGuid.Add(guid, assetPath);
             }
         }
 
