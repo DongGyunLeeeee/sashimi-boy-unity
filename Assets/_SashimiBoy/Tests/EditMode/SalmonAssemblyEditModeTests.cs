@@ -414,7 +414,10 @@ namespace SashimiBoy.Tests
         {
             AssertNamedAnchor(anchor, name);
             Assert.That(anchor.position, Is.EqualTo(piece.position));
-            Assert.That(anchor.rotation, Is.EqualTo(piece.rotation));
+            Assert.That(
+                Quaternion.Angle(anchor.rotation, piece.rotation),
+                Is.LessThan(0.001f),
+                name + " rotation");
         }
 
         private static void AssertNamedAnchor(Transform anchor, string name)

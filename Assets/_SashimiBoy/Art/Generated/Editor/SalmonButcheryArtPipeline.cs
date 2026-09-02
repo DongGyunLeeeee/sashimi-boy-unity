@@ -161,8 +161,16 @@ namespace SashimiBoy.EditorTools
 
         private static string GetGenerationSignature()
         {
-            return PipelineRevision + ":" +
-                ComputeSha256(AssetPathToAbsolutePath(ManifestPath));
+            string[] manifestLines = File.ReadAllLines(
+                AssetPathToAbsolutePath(ManifestPath));
+            byte[] normalizedManifest = Encoding.UTF8.GetBytes(
+                string.Join("\n", manifestLines));
+            using (SHA256 sha = SHA256.Create())
+            {
+                return PipelineRevision + ":" +
+                    BitConverter.ToString(sha.ComputeHash(normalizedManifest))
+                        .Replace("-", string.Empty);
+            }
         }
 
         private static bool GeneratedAssetsAreCurrent(string generationSignature)
