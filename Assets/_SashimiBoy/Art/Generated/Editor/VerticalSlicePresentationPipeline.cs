@@ -69,6 +69,26 @@ namespace SashimiBoy.EditorTools
             BuildAll(false, false);
         }
 
+        public static void ApplyFishShopSignFacingToStreetBatch()
+        {
+            Scene scene = OpenRequiredScene(StreetScenePath);
+            GameObject board = FindNamed(scene, "FishShop_Sign_Board");
+            GameObject text = FindNamed(scene, "FishShop_Sign_Text");
+            if (board == null || text == null ||
+                text.GetComponent<TextMesh>() == null)
+            {
+                throw new InvalidOperationException(
+                    "Street FishShop sign hierarchy is incomplete.");
+            }
+
+            ConfigureWorldSignTextFacing(
+                text.transform,
+                board.transform,
+                WorldSignFace.PositiveZ);
+            EditorSceneManager.MarkSceneDirty(scene);
+            SaveScene(scene, StreetScenePath);
+        }
+
         private static void BuildAll(bool rebuildStage, bool showDialog)
         {
             EnsureFolder(MaterialRoot);
@@ -386,7 +406,8 @@ namespace SashimiBoy.EditorTools
             CreateWorldSign(facade, "FishShop_Sign", "SASHIMI",
                 new Vector3(-3.5f, 2.32f, -2.7f),
                 new Vector3(2.75f, 0.52f, 0.14f),
-                materials.wood, new Color(0.62f, 0.95f, 0.95f, 1f));
+                materials.wood, new Color(0.62f, 0.95f, 0.95f, 1f),
+                WorldSignFace.PositiveZ);
             CreatePointLight(facade, "FishShop_EntryLight",
                 new Vector3(-3.5f, 2.4f, -2.3f),
                 new Color(0.2f, 0.85f, 0.88f), 1.1f, 3.4f);
@@ -427,7 +448,8 @@ namespace SashimiBoy.EditorTools
             CreateWorldSign(facade, "EquipmentShop_Sign", "GEAR SHOP",
                 new Vector3(0f, 2.95f, 2.98f),
                 new Vector3(3.35f, 0.58f, 0.14f),
-                materials.darkWall, new Color(1f, 0.72f, 0.25f, 1f));
+                materials.darkWall, new Color(1f, 0.72f, 0.25f, 1f),
+                WorldSignFace.NegativeZ);
             CreatePointLight(facade, "EquipmentShop_EntryLight",
                 new Vector3(0f, 2.45f, 2.65f),
                 new Color(1f, 0.48f, 0.12f), 1.25f, 3.4f);
@@ -458,7 +480,8 @@ namespace SashimiBoy.EditorTools
             CreateWorldSign(facade, "Club_Sign", "CLUB",
                 new Vector3(7f, 3.0f, -0.88f),
                 new Vector3(2.55f, 0.62f, 0.14f),
-                materials.darkWall, new Color(1f, 0.2f, 0.34f, 1f));
+                materials.darkWall, new Color(1f, 0.2f, 0.34f, 1f),
+                WorldSignFace.NegativeZ);
             CreatePointLight(facade, "Club_EntryLight",
                 new Vector3(7f, 2.35f, -1.45f),
                 new Color(0.95f, 0.04f, 0.28f), 1.45f, 3.8f);
@@ -1111,15 +1134,20 @@ namespace SashimiBoy.EditorTools
             Vector3 position,
             Vector3 scale,
             Material material,
-            Color textColor)
+            Color textColor,
+            WorldSignFace face)
         {
-            Primitive(name + "_Board", parent, PrimitiveType.Cube,
+            GameObject board = Primitive(
+                name + "_Board",
+                parent,
+                PrimitiveType.Cube,
                 position, scale, material);
             GameObject textObject = new GameObject(name + "_Text");
             textObject.transform.SetParent(parent, false);
-            textObject.transform.localPosition =
-                position + new Vector3(0f, 0f, -scale.z * 0.58f);
-            textObject.transform.localRotation = Quaternion.identity;
+            ConfigureWorldSignTextFacing(
+                textObject.transform,
+                board.transform,
+                face);
             TextMesh text = textObject.AddComponent<TextMesh>();
             text.text = label;
             text.anchor = TextAnchor.MiddleCenter;
@@ -1128,6 +1156,28 @@ namespace SashimiBoy.EditorTools
             text.fontSize = 72;
             text.characterSize = 0.045f;
             text.color = textColor;
+        }
+
+        private static void ConfigureWorldSignTextFacing(
+            Transform text,
+            Transform board,
+            WorldSignFace face)
+        {
+            float faceDirection = face == WorldSignFace.PositiveZ ? 1f : -1f;
+            text.localPosition = board.localPosition + new Vector3(
+                0f,
+                0f,
+                faceDirection * board.localScale.z * 0.58f);
+            text.localRotation = face == WorldSignFace.PositiveZ
+                ? Quaternion.Euler(0f, 180f, 0f)
+                : Quaternion.identity;
+            text.localScale = Vector3.one;
+        }
+
+        private enum WorldSignFace
+        {
+            NegativeZ,
+            PositiveZ,
         }
 
         private static void CreateCharacter(

@@ -45,6 +45,8 @@ namespace SashimiBoy.EditorTools
             NewAssetsKevinCameraPipeline.
                 RebuildForPrototypeGenerator();
             NewFishShopAssetsScenePipeline.
+                RebuildStreetFishShopFrontageBatch();
+            NewFishShopAssetsScenePipeline.
                 ApplyFishShopArtPassForPrototypeGenerator();
             AddScenesToBuildSettings();
             AssetDatabase.SaveAssets();

@@ -95,6 +95,26 @@ namespace SashimiBoy.EditorTools
                 "were applied without changing gameplay anchors.");
         }
 
+        public static void ApplyStreetFrontageForPrototypeGenerator()
+        {
+            AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport);
+            Dictionary<string, GameObject> prefabs = LoadRequiredPrefabs();
+            ApplyStreet(prefabs[DisplayOutsidePath]);
+            AssetDatabase.SaveAssets();
+            AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport);
+            Debug.Log(
+                "[Sashimi Boy] Street FishShop frontage, story anchors, " +
+                "and canonical exterior display were applied without " +
+                "changing SceneDoor state.");
+        }
+
+        public static void RebuildStreetFishShopFrontageBatch()
+        {
+            VerticalSlicePresentationPipeline.
+                ApplyFishShopSignFacingToStreetBatch();
+            ApplyStreetFrontageForPrototypeGenerator();
+        }
+
         private static void ApplyAll(bool showDialog)
         {
             AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport);
@@ -102,6 +122,8 @@ namespace SashimiBoy.EditorTools
             EnsureBackups();
 
             SceneSnapshot stageBefore = CaptureStageSnapshot();
+            VerticalSlicePresentationPipeline.
+                ApplyFishShopSignFacingToStreetBatch();
             ApplyStreet(prefabs[DisplayOutsidePath]);
             ApplyFishShop(
                 prefabs[DisplayInsidePath],
@@ -196,21 +218,6 @@ namespace SashimiBoy.EditorTools
                 StreetScenePath,
                 OpenSceneMode.Single);
             RequireFirstPersonCamera(scene, "Street");
-            DestroyNamedRoot(scene, "Task2_FishShopExteriorAssets");
-            GameObject root = CreateSceneRoot(
-                scene,
-                "Task2_FishShopExteriorAssets");
-
-            GameObject display = InstantiatePrefab(
-                displayOutsidePrefab,
-                scene,
-                root.transform,
-                "DisplayOutside_Validated");
-            display.transform.SetPositionAndRotation(
-                new Vector3(-5.05f, 0.12f, -2.15f),
-                Quaternion.Euler(0f, 180f, 0f));
-            RemoveDecorativeColliders(display);
-
             SceneDoor fishDoor = GetSceneComponents<SceneDoor>(scene)
                 .FirstOrDefault(door => door.sceneName ==
                     SashimiBoyConstants.Scenes.FishShopDialogue);
@@ -220,17 +227,211 @@ namespace SashimiBoy.EditorTools
                     "Street FishShop SceneDoor is missing.");
             }
 
-            if (BoundsOverlapExpanded(
-                    display,
-                    fishDoor.gameObject,
-                    new Vector3(0.45f, 1f, 0.45f)))
-            {
-                display.transform.position =
-                    new Vector3(-5.25f, 0.12f, -1.85f);
-            }
+            StreetDoorSnapshot doorBefore =
+                StreetDoorSnapshot.Capture(fishDoor);
+            GameObject root = GetOrCreateSceneRoot(
+                scene,
+                "Task2_FishShopExteriorAssets");
+            GameObject display = GetOrCreatePrefabInstance(
+                displayOutsidePrefab,
+                scene,
+                root.transform,
+                "DisplayOutside_Validated");
+            ConfigureGeneratedTransform(
+                display.transform,
+                new Vector3(-5.6f, 0.12f, -1.65f),
+                Quaternion.identity,
+                0);
+            display.transform.localScale = Vector3.one * 0.72f;
+            RemoveDecorativeColliders(display);
+
+            GameObject storyAnchors = GetOrCreateSceneChild(
+                scene,
+                root.transform,
+                "StreetStoryAnchors");
+            ConfigureGeneratedTransform(
+                storyAnchors.transform,
+                Vector3.zero,
+                Quaternion.identity,
+                1);
+            ConfigureStreetStoryAnchors(scene, storyAnchors.transform);
+
+            ValidatePrefabSource(display, displayOutsidePrefab);
+            ValidatePositiveScale(root.transform);
+            ValidateStreetFrontage(
+                scene,
+                root,
+                display,
+                fishDoor,
+                doorBefore);
 
             EditorSceneManager.MarkSceneDirty(scene);
             EditorSceneManager.SaveScene(scene, StreetScenePath);
+        }
+
+        private static void ConfigureStreetStoryAnchors(
+            Scene scene,
+            Transform parent)
+        {
+            ConfigureStreetStoryAnchor(
+                scene,
+                parent,
+                "NPCSpawn_Morning",
+                new Vector3(-6.7f, 0.18f, -0.65f),
+                Quaternion.Euler(0f, 90f, 0f),
+                0);
+            ConfigureStreetStoryAnchor(
+                scene,
+                parent,
+                "NPCDialogueStanding_Morning",
+                new Vector3(-5.75f, 0.18f, -0.65f),
+                Quaternion.Euler(0f, 270f, 0f),
+                1);
+            ConfigureStreetStoryAnchor(
+                scene,
+                parent,
+                "NPCDialogueCamera_Morning",
+                new Vector3(-6.2f, 1.65f, -1.55f),
+                Quaternion.Euler(8f, 0f, 0f),
+                2);
+            ConfigureStreetStoryAnchor(
+                scene,
+                parent,
+                "NPCSpawn_AfterWork",
+                new Vector3(3.25f, 0.18f, 1.55f),
+                Quaternion.Euler(0f, 180f, 0f),
+                3);
+            ConfigureStreetStoryAnchor(
+                scene,
+                parent,
+                "NPCDialogueStanding_AfterWork",
+                new Vector3(3.25f, 0.18f, 0.55f),
+                Quaternion.identity,
+                4);
+            ConfigureStreetStoryAnchor(
+                scene,
+                parent,
+                "NPCDialogueCamera_AfterWork",
+                new Vector3(4.15f, 1.65f, 1.05f),
+                Quaternion.Euler(8f, 270f, 0f),
+                5);
+        }
+
+        private static void ConfigureStreetStoryAnchor(
+            Scene scene,
+            Transform parent,
+            string name,
+            Vector3 position,
+            Quaternion rotation,
+            int siblingIndex)
+        {
+            GameObject anchor = GetOrCreateSceneChild(scene, parent, name);
+            ConfigureGeneratedTransform(
+                anchor.transform,
+                position,
+                rotation,
+                siblingIndex);
+        }
+
+        private static void ValidateStreetFrontage(
+            Scene scene,
+            GameObject root,
+            GameObject display,
+            SceneDoor fishDoor,
+            StreetDoorSnapshot doorBefore)
+        {
+            doorBefore.ValidateUnchanged(fishDoor);
+            GameObject displayCounter = FindNamed(scene, "DisplayCounter");
+            GameObject signBoard = FindNamed(scene, "FishShop_Sign_Board");
+            GameObject signText = FindNamed(scene, "FishShop_Sign_Text");
+            if (displayCounter == null || signBoard == null ||
+                signText == null)
+            {
+                throw new InvalidOperationException(
+                    "Street FishShop facade is incomplete.");
+            }
+
+            TextMesh text = signText.GetComponent<TextMesh>();
+            if (text == null || text.text != "SASHIMI" ||
+                signText.transform.position.z <= signBoard.transform.position.z ||
+                Vector3.Dot(-signText.transform.forward, Vector3.forward) <
+                0.999f)
+            {
+                throw new InvalidOperationException(
+                    "Street FishShop SASHIMI text does not face +Z.");
+            }
+
+            if (display.transform.rotation != Quaternion.identity)
+            {
+                throw new InvalidOperationException(
+                    "DisplayOutside must keep the canonical wrapper +Z front.");
+            }
+
+            RequireBoundsClearance(
+                display,
+                fishDoor.gameObject,
+                new Vector3(0.45f, 1f, 0.45f),
+                "FishShop door approach");
+            RequireBoundsClearance(
+                display,
+                displayCounter,
+                new Vector3(0.12f, 0.12f, 0.12f),
+                "existing storefront display counter");
+
+            Collider[] decorativeColliders =
+                root.GetComponentsInChildren<Collider>(true);
+            if (decorativeColliders.Length != 0)
+            {
+                throw new InvalidOperationException(
+                    "Street frontage art must not add decorative colliders.");
+            }
+
+            string[] anchorNames =
+            {
+                "NPCSpawn_Morning",
+                "NPCDialogueStanding_Morning",
+                "NPCDialogueCamera_Morning",
+                "NPCSpawn_AfterWork",
+                "NPCDialogueStanding_AfterWork",
+                "NPCDialogueCamera_AfterWork",
+            };
+            for (int i = 0; i < anchorNames.Length; i++)
+            {
+                GameObject anchor = FindNamed(scene, anchorNames[i]);
+                if (anchor == null ||
+                    anchor.GetComponentsInChildren<Renderer>(true).Length != 0 ||
+                    anchor.GetComponentsInChildren<Collider>(true).Length != 0)
+                {
+                    throw new InvalidOperationException(
+                        "Street story anchor is missing or obstructive: `" +
+                        anchorNames[i] + "`.");
+                }
+            }
+        }
+
+        private static void RequireBoundsClearance(
+            GameObject first,
+            GameObject second,
+            Vector3 expansion,
+            string label)
+        {
+            Bounds firstBounds;
+            Bounds secondBounds;
+            if (!TryGetBounds(first, out firstBounds) ||
+                !TryGetBounds(second, out secondBounds))
+            {
+                throw new InvalidOperationException(
+                    "Could not measure Street frontage bounds for " + label +
+                    ".");
+            }
+
+            secondBounds.Expand(expansion);
+            if (firstBounds.Intersects(secondBounds))
+            {
+                throw new InvalidOperationException(
+                    "DisplayOutside overlaps the " + label + ". Display=" +
+                    firstBounds + "; protected=" + secondBounds + ".");
+            }
         }
 
         private static void ApplyFishShop(
@@ -1360,6 +1561,56 @@ namespace SashimiBoy.EditorTools
                 return string.Concat(hash.ComputeHash(bytes)
                     .Select(value => value.ToString("x2",
                         CultureInfo.InvariantCulture)));
+            }
+        }
+
+        private sealed class StreetDoorSnapshot
+        {
+            private Transform parent;
+            private int siblingIndex;
+            private Vector3 localPosition;
+            private Quaternion localRotation;
+            private Vector3 localScale;
+            private bool activeSelf;
+            private bool enabled;
+            private string prompt;
+            private string sceneName;
+            private GameLocation destinationLocation;
+
+            public static StreetDoorSnapshot Capture(SceneDoor door)
+            {
+                return new StreetDoorSnapshot
+                {
+                    parent = door.transform.parent,
+                    siblingIndex = door.transform.GetSiblingIndex(),
+                    localPosition = door.transform.localPosition,
+                    localRotation = door.transform.localRotation,
+                    localScale = door.transform.localScale,
+                    activeSelf = door.gameObject.activeSelf,
+                    enabled = door.enabled,
+                    prompt = door.prompt,
+                    sceneName = door.sceneName,
+                    destinationLocation = door.destinationLocation,
+                };
+            }
+
+            public void ValidateUnchanged(SceneDoor door)
+            {
+                if (door.transform.parent != parent ||
+                    door.transform.GetSiblingIndex() != siblingIndex ||
+                    door.transform.localPosition != localPosition ||
+                    door.transform.localRotation != localRotation ||
+                    door.transform.localScale != localScale ||
+                    door.gameObject.activeSelf != activeSelf ||
+                    door.enabled != enabled ||
+                    door.prompt != prompt ||
+                    door.sceneName != sceneName ||
+                    door.destinationLocation != destinationLocation)
+                {
+                    throw new InvalidOperationException(
+                        "Street FishShop SceneDoor transform, component, " +
+                        "or destination reference changed.");
+                }
             }
         }
 
