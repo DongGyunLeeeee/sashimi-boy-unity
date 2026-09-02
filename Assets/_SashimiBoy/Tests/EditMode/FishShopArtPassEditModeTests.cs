@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Linq;
 using NUnit.Framework;
 using UnityEditor;
@@ -172,6 +173,54 @@ namespace SashimiBoy.Tests
             }
         }
 
+        [Test]
+        public void RebuildFishShopArtPass_FirstAndSecondRun_KeepSceneBytes()
+        {
+            string absoluteScenePath = AssetPathToAbsolutePath(ScenePath);
+            byte[] committedBytes = File.ReadAllBytes(absoluteScenePath);
+            byte[] firstRunBytes = null;
+            byte[] secondRunBytes = null;
+
+            try
+            {
+                RuntimeReflection.InvokeStatic(
+                    "SashimiBoy.EditorTools.NewFishShopAssetsScenePipeline",
+                    "RebuildFishShopArtPassBatch");
+                firstRunBytes = File.ReadAllBytes(absoluteScenePath);
+
+                RuntimeReflection.InvokeStatic(
+                    "SashimiBoy.EditorTools.NewFishShopAssetsScenePipeline",
+                    "RebuildFishShopArtPassBatch");
+                secondRunBytes = File.ReadAllBytes(absoluteScenePath);
+            }
+            finally
+            {
+                try
+                {
+                    EditorSceneManager.NewScene(
+                        NewSceneSetup.EmptyScene,
+                        NewSceneMode.Single);
+                }
+                finally
+                {
+                    RestoreSceneBytes(
+                        absoluteScenePath,
+                        committedBytes);
+                }
+            }
+
+            bool firstRunMatches = firstRunBytes != null &&
+                committedBytes.SequenceEqual(firstRunBytes);
+            bool secondRunMatches = secondRunBytes != null &&
+                committedBytes.SequenceEqual(secondRunBytes);
+            Assert.That(
+                firstRunMatches && secondRunMatches,
+                Is.True,
+                "The authoritative generator rewrote " + ScenePath +
+                ". First run clean: " + firstRunMatches +
+                "; second run clean: " + secondRunMatches + ".");
+        }
+
         private static void AssertPrefabPath(
             Scene scene,
             string objectName,
@@ -230,6 +279,39 @@ namespace SashimiBoy.Tests
             }
 
             return result;
+        }
+
+        private static string AssetPathToAbsolutePath(string assetPath)
+        {
+            string projectRoot = Directory.GetParent(Application.dataPath)
+                ?.FullName;
+            if (string.IsNullOrEmpty(projectRoot))
+            {
+                throw new InvalidOperationException(
+                    "Could not resolve the Unity project root.");
+            }
+
+            return Path.Combine(
+                projectRoot,
+                assetPath.Replace('/', Path.DirectorySeparatorChar));
+        }
+
+        private static void RestoreSceneBytes(
+            string absoluteScenePath,
+            byte[] expectedBytes)
+        {
+            if (File.Exists(absoluteScenePath) &&
+                File.ReadAllBytes(absoluteScenePath)
+                    .SequenceEqual(expectedBytes))
+            {
+                return;
+            }
+
+            File.WriteAllBytes(absoluteScenePath, expectedBytes);
+            AssetDatabase.ImportAsset(
+                ScenePath,
+                ImportAssetOptions.ForceSynchronousImport |
+                ImportAssetOptions.ForceUpdate);
         }
 
         private static GameObject FindNamed(Scene scene, string name)
