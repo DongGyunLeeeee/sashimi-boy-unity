@@ -57,6 +57,22 @@ namespace SashimiBoy.EditorTools
             8f,
         };
 
+        private static readonly Vector3[] BarTablePositions =
+        {
+            new Vector3(6.55f, 0f, -0.05f),
+            new Vector3(6.55f, 0f, 0.95f),
+            new Vector3(6.55f, 0f, 1.95f),
+            new Vector3(6.55f, 0f, 2.95f),
+        };
+
+        private static readonly float[] BarTableRotations =
+        {
+            -6f,
+            5f,
+            -4f,
+            7f,
+        };
+
         [MenuItem("Sashimi Boy/Art/Build Club Art Pass")]
         public static void BuildClubArtPass()
         {
@@ -118,25 +134,28 @@ namespace SashimiBoy.EditorTools
             Scene scene = EditorSceneManager.OpenScene(
                 SourceScenePath,
                 OpenSceneMode.Single);
-            GameObject existingArt = FindRootObject(scene, "ClubArtRoot");
-            if (existingArt != null)
-            {
-                UnityEngine.Object.DestroyImmediate(existingArt);
-            }
-
+            string sceneStateBefore = CaptureSceneState(scene);
             ExistingSceneSnapshot snapshot =
-                ExistingSceneSnapshot.Capture(scene);
+                ExistingSceneSnapshot.Capture(scene, "ClubArtRoot");
             PlacementStats stats = BuildArtPassScene(
                 scene,
                 catalog,
                 clusters);
             ValidateArtPass(scene, snapshot, stats);
 
-            EditorSceneManager.MarkSceneDirty(scene);
-            if (!EditorSceneManager.SaveScene(scene, SourceScenePath))
+            string sceneStateAfter = CaptureSceneState(scene);
+            bool sceneChanged = !string.Equals(
+                sceneStateBefore,
+                sceneStateAfter,
+                StringComparison.Ordinal);
+            if (sceneChanged)
             {
-                throw new InvalidOperationException(
-                    "Could not save " + SourceScenePath);
+                EditorSceneManager.MarkSceneDirty(scene);
+                if (!EditorSceneManager.SaveScene(scene, SourceScenePath))
+                {
+                    throw new InvalidOperationException(
+                        "Could not save " + SourceScenePath);
+                }
             }
 
             AssetDatabase.SaveAssets();
@@ -171,7 +190,7 @@ namespace SashimiBoy.EditorTools
                 SourceScenePath,
                 OpenSceneMode.Single);
             ExistingSceneSnapshot snapshot =
-                ExistingSceneSnapshot.Capture(sourceScene);
+                ExistingSceneSnapshot.Capture(sourceScene, "ClubArtRoot");
             if (!EditorSceneManager.SaveScene(
                     sourceScene,
                     OutputScenePath,
@@ -370,23 +389,16 @@ namespace SashimiBoy.EditorTools
             ClubAssetCatalog catalog,
             Dictionary<string, GameObject> clusters)
         {
-            GameObject oldRoot = FindRootObject(scene, "ClubArtRoot");
-            if (oldRoot != null)
-            {
-                UnityEngine.Object.DestroyImmediate(oldRoot);
-            }
-
-            GameObject artRoot = CreateSceneObject(
+            GameObject artRoot = GetOrCreateSceneRoot(
                 scene,
-                "ClubArtRoot",
-                null);
+                "ClubArtRoot");
             Transform architecture = CreateChild(
                 artRoot.transform,
                 "Architecture");
             Transform entrance = CreateChild(architecture, "Entrance");
             Transform djArea = CreateChild(architecture, "DJArea");
             CreateChild(architecture, "AudienceArea");
-            CreateChild(architecture, "BarArea");
+            Transform barArea = CreateChild(architecture, "BarArea");
 
             Transform props = CreateChild(artRoot.transform, "Props");
             Transform tables = CreateChild(props, "Tables");
@@ -491,6 +503,22 @@ namespace SashimiBoy.EditorTools
 
             stats.Add("PF_Club_BarTable", TablePositions.Length);
 
+            var barTableTops = new float[BarTablePositions.Length];
+            for (int i = 0; i < BarTablePositions.Length; i++)
+            {
+                GameObject barTable = InstantiateCatalogPrefab(
+                    catalog,
+                    "BarTable",
+                    barArea,
+                    $"BarTable_{i + 1:00}_PF_Club_BarTable",
+                    BarTablePositions[i],
+                    new Vector3(0f, BarTableRotations[i], 0f));
+                barTableTops[i] =
+                    GetRendererBounds(barTable).max.y + 0.002f;
+            }
+
+            stats.Add("PF_Club_BarTable", BarTablePositions.Length);
+
             string[] clusterPaths =
             {
                 BeerPairCluster,
@@ -518,20 +546,16 @@ namespace SashimiBoy.EditorTools
                     clusterPaths[i]));
             }
 
-            Vector3[] barClusterPositions =
-            {
-                new Vector3(6.55f, 1.602f, -0.05f),
-                new Vector3(6.55f, 1.602f, 0.95f),
-                new Vector3(6.55f, 1.602f, 1.95f),
-                new Vector3(6.55f, 1.602f, 2.95f),
-            };
             for (int i = 0; i < clusterPaths.Length; i++)
             {
                 PlacePrefab(
                     clusters[clusterPaths[i]],
                     drinks,
                     $"Bar_{clusterNames[i]}",
-                    barClusterPositions[i],
+                    new Vector3(
+                        BarTablePositions[i].x,
+                        barTableTops[i],
+                        BarTablePositions[i].z),
                     new Vector3(0f, i % 2 == 0 ? -90f : 90f, 0f));
                 stats.Add(Path.GetFileNameWithoutExtension(
                     clusterPaths[i]));
@@ -715,6 +739,7 @@ namespace SashimiBoy.EditorTools
             ValidatePerformanceConditions(controller);
             ValidateGeneratedPrefabSources(artRoot);
             ValidateMaterials(artRoot);
+            ValidatePositiveScales(artRoot);
             ValidateColliders(artRoot);
             ValidateDjEquipment(artRoot);
             ValidateGrounding(artRoot);
@@ -756,6 +781,7 @@ namespace SashimiBoy.EditorTools
                 "Label_ReturnDoor",
                 "PerformanceGate",
                 "DJ_Booth",
+                "Bar",
             };
             for (int i = 0; i < hiddenRenderers.Length; i++)
             {
@@ -772,12 +798,23 @@ namespace SashimiBoy.EditorTools
                 }
             }
 
-            GameObject oldDjBooth = FindObject(scene, "DJ_Booth");
-            if (oldDjBooth.GetComponentsInChildren<Collider>(true)
-                .Any(collider => collider.enabled))
+            string[] disabledColliderRoots =
             {
-                throw new InvalidOperationException(
-                    "Hidden DJ_Booth placeholder collider is still active.");
+                "DJ_Booth",
+                "Bar",
+            };
+            for (int i = 0; i < disabledColliderRoots.Length; i++)
+            {
+                GameObject target = FindObject(
+                    scene,
+                    disabledColliderRoots[i]);
+                if (target.GetComponentsInChildren<Collider>(true)
+                    .Any(collider => collider.enabled))
+                {
+                    throw new InvalidOperationException(
+                        "Hidden placeholder collider is still active: " +
+                        disabledColliderRoots[i]);
+                }
             }
         }
 
@@ -945,6 +982,22 @@ namespace SashimiBoy.EditorTools
             }
         }
 
+        private static void ValidatePositiveScales(GameObject artRoot)
+        {
+            Transform[] transforms =
+                artRoot.GetComponentsInChildren<Transform>(true);
+            for (int i = 0; i < transforms.Length; i++)
+            {
+                Vector3 scale = transforms[i].localScale;
+                if (scale.x <= 0f || scale.y <= 0f || scale.z <= 0f)
+                {
+                    throw new InvalidOperationException(
+                        "Club art uses a non-positive scale: " +
+                        transforms[i].name);
+                }
+            }
+        }
+
         private static void ValidateColliders(GameObject artRoot)
         {
             Physics.SyncTransforms();
@@ -1061,9 +1114,13 @@ namespace SashimiBoy.EditorTools
         {
             Transform entrance = artRoot.transform.Find(
                 "Architecture/Entrance");
+            Transform barArea = artRoot.transform.Find(
+                "Architecture/BarArea");
             Transform tables = artRoot.transform.Find("Props/Tables");
             Renderer[] renderers = entrance
                 .GetComponentsInChildren<Renderer>(true)
+                .Concat(
+                    barArea.GetComponentsInChildren<Renderer>(true))
                 .Concat(
                     tables.GetComponentsInChildren<Renderer>(true))
                 .ToArray();
@@ -1093,22 +1150,15 @@ namespace SashimiBoy.EditorTools
                     "Generated Club prefab is missing for " + assetId);
             }
 
-            GameObject instance =
-                PrefabUtility.InstantiatePrefab(
-                    entry.generatedPrefab,
-                    parent.gameObject.scene) as GameObject;
-            if (instance == null)
-            {
-                throw new InvalidOperationException(
-                    "Could not instantiate " + assetId);
-            }
-
-            instance.name = instanceName;
-            instance.transform.SetParent(parent, false);
+            GameObject instance = GetOrCreatePrefabInstance(
+                entry.generatedPrefab,
+                parent,
+                instanceName);
             instance.transform.localPosition = localPosition;
             instance.transform.localRotation =
                 Quaternion.Euler(entry.defaultRotation + sceneRotation);
             instance.transform.localScale = Vector3.one;
+            instance.transform.SetAsLastSibling();
 
             Transform model = instance.transform.Find("Model");
             if (model == null ||
@@ -1129,22 +1179,48 @@ namespace SashimiBoy.EditorTools
             Vector3 localPosition,
             Vector3 localEuler)
         {
-            GameObject instance =
-                PrefabUtility.InstantiatePrefab(
-                    prefab,
-                    parent.gameObject.scene) as GameObject;
-            if (instance == null)
-            {
-                throw new InvalidOperationException(
-                    "Could not instantiate " + prefab.name);
-            }
-
-            instance.name = name;
-            instance.transform.SetParent(parent, false);
+            GameObject instance = GetOrCreatePrefabInstance(
+                prefab,
+                parent,
+                name);
             instance.transform.localPosition = localPosition;
             instance.transform.localRotation =
                 Quaternion.Euler(localEuler);
             instance.transform.localScale = Vector3.one;
+            instance.transform.SetAsLastSibling();
+            return instance;
+        }
+
+        private static GameObject GetOrCreatePrefabInstance(
+            GameObject prefab,
+            Transform parent,
+            string name)
+        {
+            GameObject instance = FindUniqueDirectChild(parent, name);
+            if (instance != null &&
+                PrefabUtility.GetCorrespondingObjectFromSource(instance) !=
+                prefab)
+            {
+                UnityEngine.Object.DestroyImmediate(instance);
+                instance = null;
+            }
+
+            if (instance == null)
+            {
+                instance = PrefabUtility.InstantiatePrefab(
+                    prefab,
+                    parent.gameObject.scene) as GameObject;
+                if (instance == null)
+                {
+                    throw new InvalidOperationException(
+                        "Could not instantiate " + prefab.name);
+                }
+
+                instance.transform.SetParent(parent, false);
+            }
+
+            instance.name = name;
+            instance.SetActive(true);
             return instance;
         }
 
@@ -1216,8 +1292,12 @@ namespace SashimiBoy.EditorTools
                 scene,
                 "DJ_Booth",
                 true);
-            stats.HiddenPlaceholderRendererCount = 4;
-            stats.DisabledPlaceholderColliderCount = 1;
+            DisableExistingRenderer(
+                scene,
+                "Bar",
+                true);
+            stats.HiddenPlaceholderRendererCount = 5;
+            stats.DisabledPlaceholderColliderCount = 2;
         }
 
         private static void DisableExistingRenderer(
@@ -1281,12 +1361,15 @@ namespace SashimiBoy.EditorTools
             float range,
             float angle)
         {
-            GameObject lightObject = new GameObject(name);
-            lightObject.transform.SetParent(parent, false);
+            GameObject lightObject = CreateChild(parent, name).gameObject;
             lightObject.transform.localPosition = position;
             lightObject.transform.LookAt(target);
 
-            Light light = lightObject.AddComponent<Light>();
+            Light light = lightObject.GetComponent<Light>();
+            if (light == null)
+            {
+                light = lightObject.AddComponent<Light>();
+            }
             light.type = LightType.Spot;
             light.color = color;
             light.intensity = intensity;
@@ -1305,11 +1388,14 @@ namespace SashimiBoy.EditorTools
             float intensity,
             float range)
         {
-            GameObject lightObject = new GameObject(name);
-            lightObject.transform.SetParent(parent, false);
+            GameObject lightObject = CreateChild(parent, name).gameObject;
             lightObject.transform.localPosition = position;
 
-            Light light = lightObject.AddComponent<Light>();
+            Light light = lightObject.GetComponent<Light>();
+            if (light == null)
+            {
+                light = lightObject.AddComponent<Light>();
+            }
             light.type = LightType.Point;
             light.color = color;
             light.intensity = intensity;
@@ -1318,18 +1404,47 @@ namespace SashimiBoy.EditorTools
             light.lightmapBakeType = LightmapBakeType.Realtime;
         }
 
-        private static GameObject CreateSceneObject(
+        private static GameObject GetOrCreateSceneRoot(
             Scene scene,
-            string name,
-            Transform parent)
+            string name)
         {
-            GameObject gameObject = new GameObject(name);
-            SceneManager.MoveGameObjectToScene(gameObject, scene);
-            if (parent != null)
+            GameObject gameObject = null;
+            GameObject[] roots = scene.GetRootGameObjects();
+            for (int i = 0; i < roots.Length; i++)
             {
-                gameObject.transform.SetParent(parent, false);
+                if (roots[i].name != name)
+                {
+                    continue;
+                }
+
+                if (gameObject != null)
+                {
+                    throw new InvalidOperationException(
+                        "Duplicate generated Club scene root: " + name);
+                }
+
+                gameObject = roots[i];
             }
 
+            if (gameObject == null)
+            {
+                gameObject = new GameObject(name);
+                SceneManager.MoveGameObjectToScene(gameObject, scene);
+            }
+            else if (PrefabUtility.IsPartOfPrefabInstance(gameObject))
+            {
+                throw new InvalidOperationException(
+                    "Generated Club scene root must not be a prefab " +
+                    "instance: " + name);
+            }
+
+            gameObject.name = name;
+            gameObject.SetActive(true);
+            gameObject.transform.SetPositionAndRotation(
+                Vector3.zero,
+                Quaternion.identity);
+            gameObject.transform.localScale = Vector3.one;
+            gameObject.transform.SetAsLastSibling();
             return gameObject;
         }
 
@@ -1337,9 +1452,52 @@ namespace SashimiBoy.EditorTools
             Transform parent,
             string name)
         {
-            GameObject child = new GameObject(name);
-            child.transform.SetParent(parent, false);
+            GameObject child = FindUniqueDirectChild(parent, name);
+            if (child != null && PrefabUtility.IsPartOfPrefabInstance(child))
+            {
+                UnityEngine.Object.DestroyImmediate(child);
+                child = null;
+            }
+
+            if (child == null)
+            {
+                child = new GameObject(name);
+                child.transform.SetParent(parent, false);
+            }
+
+            child.name = name;
+            child.SetActive(true);
+            child.transform.localPosition = Vector3.zero;
+            child.transform.localRotation = Quaternion.identity;
+            child.transform.localScale = Vector3.one;
+            child.transform.SetAsLastSibling();
             return child.transform;
+        }
+
+        private static GameObject FindUniqueDirectChild(
+            Transform parent,
+            string name)
+        {
+            GameObject result = null;
+            for (int i = 0; i < parent.childCount; i++)
+            {
+                GameObject child = parent.GetChild(i).gameObject;
+                if (child.name != name)
+                {
+                    continue;
+                }
+
+                if (result != null)
+                {
+                    throw new InvalidOperationException(
+                        "Duplicate generated Club child under " +
+                        parent.name + ": " + name);
+                }
+
+                result = child;
+            }
+
+            return result;
         }
 
         private static void DisableColliders(GameObject root)
@@ -1425,6 +1583,58 @@ namespace SashimiBoy.EditorTools
             }
 
             return results.ToArray();
+        }
+
+        private static string CaptureSceneState(Scene scene)
+        {
+            var state = new StringBuilder();
+            GameObject[] roots = scene.GetRootGameObjects();
+            for (int i = 0; i < roots.Length; i++)
+            {
+                CaptureGameObjectState(roots[i].transform, state);
+            }
+
+            return state.ToString();
+        }
+
+        private static void CaptureGameObjectState(
+            Transform transform,
+            StringBuilder state)
+        {
+            GameObject gameObject = transform.gameObject;
+            UnityEngine.Object prefabSource =
+                PrefabUtility.GetCorrespondingObjectFromSource(gameObject);
+            state.Append(gameObject.GetEntityId()).Append('|')
+                .Append(gameObject.name).Append('|')
+                .Append(gameObject.activeSelf).Append('|')
+                .Append(gameObject.layer).Append('|')
+                .Append(gameObject.tag).Append('|')
+                .Append((int)GameObjectUtility.GetStaticEditorFlags(gameObject))
+                .Append('|')
+                .Append(AssetDatabase.GetAssetPath(prefabSource))
+                .AppendLine();
+
+            Component[] components = gameObject.GetComponents<Component>();
+            for (int i = 0; i < components.Length; i++)
+            {
+                Component component = components[i];
+                if (component == null)
+                {
+                    state.Append("<MissingScript>").AppendLine();
+                    continue;
+                }
+
+                state.Append(component.GetType().AssemblyQualifiedName)
+                    .Append('|')
+                    .Append(component.GetEntityId()).Append('|')
+                    .Append(EditorJsonUtility.ToJson(component))
+                    .AppendLine();
+            }
+
+            for (int i = 0; i < transform.childCount; i++)
+            {
+                CaptureGameObjectState(transform.GetChild(i), state);
+            }
         }
 
         private static void RequireCount<T>(
@@ -1605,8 +1815,7 @@ namespace SashimiBoy.EditorTools
                 stats.HiddenPlaceholderRendererCount);
             report.AppendLine(
                 "- Disabled legacy placeholder colliders: " +
-                stats.DisabledPlaceholderColliderCount +
-                " (DJ_Booth visual placeholder only)");
+                stats.DisabledPlaceholderColliderCount);
             report.AppendLine(
                 "- MeshCollider: " +
                 validation.MeshColliderCount);
@@ -1687,7 +1896,9 @@ namespace SashimiBoy.EditorTools
             public int SaveManagerCount;
             public int CameraCount;
 
-            public static ExistingSceneSnapshot Capture(Scene scene)
+            public static ExistingSceneSnapshot Capture(
+                Scene scene,
+                string ignoredRootName)
             {
                 var snapshot = new ExistingSceneSnapshot
                 {
@@ -1708,6 +1919,11 @@ namespace SashimiBoy.EditorTools
                 GameObject[] roots = scene.GetRootGameObjects();
                 for (int i = 0; i < roots.Length; i++)
                 {
+                    if (roots[i].name == ignoredRootName)
+                    {
+                        continue;
+                    }
+
                     snapshot.CaptureTransform(
                         roots[i].transform,
                         roots[i].name);
