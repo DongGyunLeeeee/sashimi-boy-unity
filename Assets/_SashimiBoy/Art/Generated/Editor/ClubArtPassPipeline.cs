@@ -57,6 +57,22 @@ namespace SashimiBoy.EditorTools
             8f,
         };
 
+        private static readonly Vector3[] BarTablePositions =
+        {
+            new Vector3(6.55f, 0f, -0.05f),
+            new Vector3(6.55f, 0f, 0.95f),
+            new Vector3(6.55f, 0f, 1.95f),
+            new Vector3(6.55f, 0f, 2.95f),
+        };
+
+        private static readonly float[] BarTableRotations =
+        {
+            -6f,
+            5f,
+            -4f,
+            7f,
+        };
+
         [MenuItem("Sashimi Boy/Art/Build Club Art Pass")]
         public static void BuildClubArtPass()
         {
@@ -386,7 +402,7 @@ namespace SashimiBoy.EditorTools
             Transform entrance = CreateChild(architecture, "Entrance");
             Transform djArea = CreateChild(architecture, "DJArea");
             CreateChild(architecture, "AudienceArea");
-            CreateChild(architecture, "BarArea");
+            Transform barArea = CreateChild(architecture, "BarArea");
 
             Transform props = CreateChild(artRoot.transform, "Props");
             Transform tables = CreateChild(props, "Tables");
@@ -491,6 +507,22 @@ namespace SashimiBoy.EditorTools
 
             stats.Add("PF_Club_BarTable", TablePositions.Length);
 
+            var barTableTops = new float[BarTablePositions.Length];
+            for (int i = 0; i < BarTablePositions.Length; i++)
+            {
+                GameObject barTable = InstantiateCatalogPrefab(
+                    catalog,
+                    "BarTable",
+                    barArea,
+                    $"BarTable_{i + 1:00}_PF_Club_BarTable",
+                    BarTablePositions[i],
+                    new Vector3(0f, BarTableRotations[i], 0f));
+                barTableTops[i] =
+                    GetRendererBounds(barTable).max.y + 0.002f;
+            }
+
+            stats.Add("PF_Club_BarTable", BarTablePositions.Length);
+
             string[] clusterPaths =
             {
                 BeerPairCluster,
@@ -518,20 +550,16 @@ namespace SashimiBoy.EditorTools
                     clusterPaths[i]));
             }
 
-            Vector3[] barClusterPositions =
-            {
-                new Vector3(6.55f, 1.602f, -0.05f),
-                new Vector3(6.55f, 1.602f, 0.95f),
-                new Vector3(6.55f, 1.602f, 1.95f),
-                new Vector3(6.55f, 1.602f, 2.95f),
-            };
             for (int i = 0; i < clusterPaths.Length; i++)
             {
                 PlacePrefab(
                     clusters[clusterPaths[i]],
                     drinks,
                     $"Bar_{clusterNames[i]}",
-                    barClusterPositions[i],
+                    new Vector3(
+                        BarTablePositions[i].x,
+                        barTableTops[i],
+                        BarTablePositions[i].z),
                     new Vector3(0f, i % 2 == 0 ? -90f : 90f, 0f));
                 stats.Add(Path.GetFileNameWithoutExtension(
                     clusterPaths[i]));
@@ -715,6 +743,7 @@ namespace SashimiBoy.EditorTools
             ValidatePerformanceConditions(controller);
             ValidateGeneratedPrefabSources(artRoot);
             ValidateMaterials(artRoot);
+            ValidatePositiveScales(artRoot);
             ValidateColliders(artRoot);
             ValidateDjEquipment(artRoot);
             ValidateGrounding(artRoot);
@@ -756,6 +785,7 @@ namespace SashimiBoy.EditorTools
                 "Label_ReturnDoor",
                 "PerformanceGate",
                 "DJ_Booth",
+                "Bar",
             };
             for (int i = 0; i < hiddenRenderers.Length; i++)
             {
@@ -772,12 +802,23 @@ namespace SashimiBoy.EditorTools
                 }
             }
 
-            GameObject oldDjBooth = FindObject(scene, "DJ_Booth");
-            if (oldDjBooth.GetComponentsInChildren<Collider>(true)
-                .Any(collider => collider.enabled))
+            string[] disabledColliderRoots =
             {
-                throw new InvalidOperationException(
-                    "Hidden DJ_Booth placeholder collider is still active.");
+                "DJ_Booth",
+                "Bar",
+            };
+            for (int i = 0; i < disabledColliderRoots.Length; i++)
+            {
+                GameObject target = FindObject(
+                    scene,
+                    disabledColliderRoots[i]);
+                if (target.GetComponentsInChildren<Collider>(true)
+                    .Any(collider => collider.enabled))
+                {
+                    throw new InvalidOperationException(
+                        "Hidden placeholder collider is still active: " +
+                        disabledColliderRoots[i]);
+                }
             }
         }
 
@@ -945,6 +986,22 @@ namespace SashimiBoy.EditorTools
             }
         }
 
+        private static void ValidatePositiveScales(GameObject artRoot)
+        {
+            Transform[] transforms =
+                artRoot.GetComponentsInChildren<Transform>(true);
+            for (int i = 0; i < transforms.Length; i++)
+            {
+                Vector3 scale = transforms[i].localScale;
+                if (scale.x <= 0f || scale.y <= 0f || scale.z <= 0f)
+                {
+                    throw new InvalidOperationException(
+                        "Club art uses a non-positive scale: " +
+                        transforms[i].name);
+                }
+            }
+        }
+
         private static void ValidateColliders(GameObject artRoot)
         {
             Physics.SyncTransforms();
@@ -1061,9 +1118,13 @@ namespace SashimiBoy.EditorTools
         {
             Transform entrance = artRoot.transform.Find(
                 "Architecture/Entrance");
+            Transform barArea = artRoot.transform.Find(
+                "Architecture/BarArea");
             Transform tables = artRoot.transform.Find("Props/Tables");
             Renderer[] renderers = entrance
                 .GetComponentsInChildren<Renderer>(true)
+                .Concat(
+                    barArea.GetComponentsInChildren<Renderer>(true))
                 .Concat(
                     tables.GetComponentsInChildren<Renderer>(true))
                 .ToArray();
@@ -1216,8 +1277,12 @@ namespace SashimiBoy.EditorTools
                 scene,
                 "DJ_Booth",
                 true);
-            stats.HiddenPlaceholderRendererCount = 4;
-            stats.DisabledPlaceholderColliderCount = 1;
+            DisableExistingRenderer(
+                scene,
+                "Bar",
+                true);
+            stats.HiddenPlaceholderRendererCount = 5;
+            stats.DisabledPlaceholderColliderCount = 2;
         }
 
         private static void DisableExistingRenderer(
@@ -1605,8 +1670,7 @@ namespace SashimiBoy.EditorTools
                 stats.HiddenPlaceholderRendererCount);
             report.AppendLine(
                 "- Disabled legacy placeholder colliders: " +
-                stats.DisabledPlaceholderColliderCount +
-                " (DJ_Booth visual placeholder only)");
+                stats.DisabledPlaceholderColliderCount);
             report.AppendLine(
                 "- MeshCollider: " +
                 validation.MeshColliderCount);
