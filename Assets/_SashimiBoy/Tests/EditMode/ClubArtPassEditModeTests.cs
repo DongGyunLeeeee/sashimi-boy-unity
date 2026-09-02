@@ -1,8 +1,7 @@
 using System;
-using System.Globalization;
 using System.IO;
 using System.Linq;
-using System.Text;
+using System.Security.Cryptography;
 using NUnit.Framework;
 using UnityEditor;
 using UnityEditor.SceneManagement;
@@ -186,114 +185,53 @@ namespace SashimiBoy.Tests
         }
 
         [Test]
-        public void RebuildClubArtPass_FirstAndSecondRun_KeepSceneSemantics()
+        public void RebuildClubArtPass_FirstAndSecondRun_KeepSceneBytes()
         {
             string absoluteScenePath = AssetPathToAbsolutePath(ScenePath);
             byte[] committedBytes = File.ReadAllBytes(absoluteScenePath);
-            string committedSignature = CaptureGeneratedSignature();
-            string firstRunSignature = null;
-            string secondRunSignature = null;
+            string committedHash = ComputeSha256(committedBytes);
+            byte[] firstRunBytes = null;
+            byte[] secondRunBytes = null;
 
             try
             {
                 RuntimeReflection.InvokeStatic(
                     "SashimiBoy.EditorTools.ClubArtPassPipeline",
                     "ApplyClubArtToMainSceneBatch");
-                firstRunSignature = CaptureGeneratedSignature();
+                firstRunBytes = File.ReadAllBytes(absoluteScenePath);
 
                 RuntimeReflection.InvokeStatic(
                     "SashimiBoy.EditorTools.ClubArtPassPipeline",
                     "ApplyClubArtToMainSceneBatch");
-                secondRunSignature = CaptureGeneratedSignature();
+                secondRunBytes = File.ReadAllBytes(absoluteScenePath);
             }
             finally
             {
-                try
-                {
-                    EditorSceneManager.NewScene(
-                        NewSceneSetup.EmptyScene,
-                        NewSceneMode.Single);
-                }
-                finally
-                {
-                    RestoreSceneBytes(absoluteScenePath, committedBytes);
-                }
+                EditorSceneManager.NewScene(
+                    NewSceneSetup.EmptyScene,
+                    NewSceneMode.Single);
             }
 
             Assert.That(
-                firstRunSignature,
-                Is.EqualTo(committedSignature),
-                "The committed Club scene does not match one generator run.");
+                ComputeSha256(firstRunBytes),
+                Is.EqualTo(committedHash),
+                "The first generator run changed the committed Club scene " +
+                "SHA-256.");
             Assert.That(
-                secondRunSignature,
-                Is.EqualTo(firstRunSignature),
-                "Repeated Club generator runs changed the generated " +
-                "hierarchy, transforms, prefab sources, or component states.");
-        }
-
-        private static string CaptureGeneratedSignature()
-        {
-            Scene scene = SceneManager.GetSceneByPath(ScenePath);
-            if (!scene.IsValid() || !scene.isLoaded)
-            {
-                scene = EditorSceneManager.OpenScene(
-                    ScenePath,
-                    OpenSceneMode.Single);
-            }
-
-            Transform root = FindNamed(scene, "ClubArtRoot").transform;
-            var signature = new StringBuilder();
-            foreach (Transform item in root
-                         .GetComponentsInChildren<Transform>(true)
-                         .OrderBy(HierarchyPath, StringComparer.Ordinal))
-            {
-                string prefabPath =
-                    PrefabUtility.GetPrefabAssetPathOfNearestInstanceRoot(
-                        item.gameObject);
-                signature.Append(HierarchyPath(item)).Append('|')
-                    .Append(FormatVector(item.localPosition)).Append('|')
-                    .Append(FormatQuaternion(item.localRotation)).Append('|')
-                    .Append(FormatVector(item.localScale)).Append('|')
-                    .Append(item.gameObject.activeSelf).Append('|')
-                    .Append(prefabPath).Append('|')
-                    .Append(string.Join(
-                        ",",
-                        item.GetComponents<Renderer>()
-                            .Select(renderer => renderer.enabled))).Append('|')
-                    .Append(string.Join(
-                        ",",
-                        item.GetComponents<Collider>()
-                            .Select(collider => collider.enabled)))
-                    .AppendLine();
-            }
-
-            return signature.ToString();
-        }
-
-        private static string HierarchyPath(Transform transform)
-        {
-            return transform.parent == null
-                ? transform.name
-                : HierarchyPath(transform.parent) + "/" + transform.name;
-        }
-
-        private static string FormatVector(Vector3 value)
-        {
-            return string.Join(
-                ",",
-                value.x.ToString("R", CultureInfo.InvariantCulture),
-                value.y.ToString("R", CultureInfo.InvariantCulture),
-                value.z.ToString("R", CultureInfo.InvariantCulture));
-        }
-
-        private static string FormatQuaternion(Quaternion value)
-        {
-            return string.Join(
-                ",",
-                value.x.ToString("R", CultureInfo.InvariantCulture),
-                value.y.ToString("R", CultureInfo.InvariantCulture),
-                value.z.ToString("R", CultureInfo.InvariantCulture),
-                value.w.ToString("R", CultureInfo.InvariantCulture));
+                firstRunBytes,
+                Is.EqualTo(committedBytes),
+                "The first generator run changed the committed Club scene " +
+                "bytes.");
+            Assert.That(
+                ComputeSha256(secondRunBytes),
+                Is.EqualTo(committedHash),
+                "The second generator run changed the committed Club scene " +
+                "SHA-256.");
+            Assert.That(
+                secondRunBytes,
+                Is.EqualTo(committedBytes),
+                "The second generator run changed the committed Club scene " +
+                "bytes.");
         }
 
         private static void AssertPrefabPath(
@@ -466,22 +404,13 @@ namespace SashimiBoy.Tests
                 assetPath.Replace('/', Path.DirectorySeparatorChar));
         }
 
-        private static void RestoreSceneBytes(
-            string absoluteScenePath,
-            byte[] expectedBytes)
+        private static string ComputeSha256(byte[] bytes)
         {
-            if (File.Exists(absoluteScenePath) &&
-                File.ReadAllBytes(absoluteScenePath)
-                    .SequenceEqual(expectedBytes))
+            using (SHA256 sha = SHA256.Create())
             {
-                return;
+                return BitConverter.ToString(sha.ComputeHash(bytes))
+                    .Replace("-", "");
             }
-
-            File.WriteAllBytes(absoluteScenePath, expectedBytes);
-            AssetDatabase.ImportAsset(
-                ScenePath,
-                ImportAssetOptions.ForceSynchronousImport |
-                ImportAssetOptions.ForceUpdate);
         }
 
         private static GameObject FindNamed(Scene scene, string name)
