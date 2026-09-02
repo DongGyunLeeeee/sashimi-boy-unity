@@ -360,9 +360,12 @@ namespace SashimiBoy.Tests
             foreach (Renderer renderer in
                      artRoot.GetComponentsInChildren<Renderer>(true))
             {
+                GameObject outermost =
+                    PrefabUtility.GetOutermostPrefabInstanceRoot(
+                        renderer.gameObject);
                 string prefabPath =
                     PrefabUtility.GetPrefabAssetPathOfNearestInstanceRoot(
-                        renderer.gameObject);
+                        outermost);
                 Assert.That(
                     prefabPath.StartsWith(
                         PrefabRoot,
