@@ -44,6 +44,8 @@ namespace SashimiBoy.EditorTools
                 RebuildForPrototypeGenerator();
             NewAssetsKevinCameraPipeline.
                 RebuildForPrototypeGenerator();
+            NewFishShopAssetsScenePipeline.
+                ApplyFishShopArtPassForPrototypeGenerator();
             AddScenesToBuildSettings();
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
@@ -93,6 +95,102 @@ namespace SashimiBoy.EditorTools
             else
             {
                 EditorUtility.DisplayDialog("Sashimi Boy", "Generate the prototype first.", "OK");
+            }
+        }
+
+        [MenuItem("Sashimi Boy/Migrate Equipment Shop Purchase Defaults")]
+        public static void MigrateEquipmentShopPurchaseDefaults()
+        {
+            string path = ScenesPath + "/" +
+                SashimiBoyConstants.Scenes.EquipmentShop + ".unity";
+            MigrateEquipmentShopScenePurchaseDefaults(path);
+
+            AssetDatabase.SaveAssets();
+        }
+
+        private static void MigrateEquipmentShopScenePurchaseDefaults(
+            string path)
+        {
+            if (!File.Exists(path))
+            {
+                throw new UnityException(
+                    "EquipmentShop scene is missing at " + path);
+            }
+
+            Scene scene = EditorSceneManager.OpenScene(
+                path,
+                OpenSceneMode.Single);
+            var controllers = new List<EquipmentShopController>();
+            int activeAudioListeners = 0;
+            int activeEventSystems = 0;
+
+            foreach (GameObject root in scene.GetRootGameObjects())
+            {
+                controllers.AddRange(
+                    root.GetComponentsInChildren<EquipmentShopController>(true));
+
+                AudioListener[] listeners =
+                    root.GetComponentsInChildren<AudioListener>(true);
+                for (int i = 0; i < listeners.Length; i++)
+                {
+                    if (listeners[i].isActiveAndEnabled)
+                    {
+                        activeAudioListeners++;
+                    }
+                }
+
+                EventSystem[] eventSystems =
+                    root.GetComponentsInChildren<EventSystem>(true);
+                for (int i = 0; i < eventSystems.Length; i++)
+                {
+                    if (eventSystems[i].isActiveAndEnabled)
+                    {
+                        activeEventSystems++;
+                    }
+                }
+
+                Transform[] transforms =
+                    root.GetComponentsInChildren<Transform>(true);
+                for (int i = 0; i < transforms.Length; i++)
+                {
+                    if (GameObjectUtility
+                            .GetMonoBehavioursWithMissingScriptCount(
+                                transforms[i].gameObject) != 0)
+                    {
+                        throw new UnityException(
+                            "EquipmentShop contains a missing script under " +
+                            transforms[i].name + ".");
+                    }
+                }
+            }
+
+            if (controllers.Count != 1 ||
+                controllers[0].titleText == null ||
+                controllers[0].kevinRequestText == null ||
+                controllers[0].shopkeeperText == null ||
+                controllers[0].itemNameText == null ||
+                controllers[0].itemDescriptionText == null ||
+                controllers[0].priceText == null ||
+                controllers[0].ownedText == null ||
+                controllers[0].buyButton == null ||
+                controllers[0].leaveButton == null)
+            {
+                throw new UnityException(
+                    "EquipmentShop controller references are incomplete.");
+            }
+
+            if (activeAudioListeners != 1 || activeEventSystems != 1)
+            {
+                throw new UnityException(
+                    "EquipmentShop must contain exactly one active " +
+                    "AudioListener and EventSystem.");
+            }
+
+            EditorSceneManager.MarkSceneDirty(scene);
+            if (!EditorSceneManager.SaveScene(scene, path))
+            {
+                throw new UnityException(
+                    "EquipmentShop scene could not be saved.");
             }
         }
 

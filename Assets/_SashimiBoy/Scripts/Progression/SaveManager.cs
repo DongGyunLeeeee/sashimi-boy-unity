@@ -136,26 +136,90 @@ namespace SashimiBoy
             RaiseChanged();
         }
 
-        public bool TryPurchaseReward(StageRuntimeData stage, bool allowFreePrototypePurchase)
+        public static bool CanPurchaseReward(
+            SaveData save,
+            StageRuntimeData stage)
         {
-            if (stage == null)
+            return CanPurchaseReward(save, stage, out _);
+        }
+
+        private static bool CanPurchaseReward(
+            SaveData save,
+            StageRuntimeData stage,
+            out StageRuntimeData canonicalStage)
+        {
+            canonicalStage = null;
+            if (save == null ||
+                !TryResolvePurchaseMetadata(stage, out canonicalStage))
             {
                 return false;
             }
 
-            if (current.HasEquipment(stage.rewardEquipment))
-            {
-                return true;
-            }
-
-            bool paid = allowFreePrototypePurchase || current.TryConsumePlates(stage.fishType, stage.requiredPlatesForExchange);
-            if (!paid)
+            if (!save.IsStageCleared(canonicalStage.stageId) ||
+                save.HasEquipment(canonicalStage.rewardEquipment))
             {
                 return false;
             }
 
-            current.AddEquipment(stage.rewardEquipment);
+            return save.GetPlates(canonicalStage.fishType) >=
+                canonicalStage.requiredPlatesForExchange;
+        }
+
+        public bool TryPurchaseReward(StageRuntimeData stage)
+        {
+            if (!CanPurchaseReward(
+                    current,
+                    stage,
+                    out StageRuntimeData canonicalStage))
+            {
+                return false;
+            }
+
+            if (!current.TryConsumePlates(
+                    canonicalStage.fishType,
+                    canonicalStage.requiredPlatesForExchange))
+            {
+                return false;
+            }
+
+            current.AddEquipment(canonicalStage.rewardEquipment);
             RaiseChanged();
+            return true;
+        }
+
+        private static bool TryResolvePurchaseMetadata(
+            StageRuntimeData stage,
+            out StageRuntimeData canonicalStage)
+        {
+            canonicalStage = null;
+            if (stage == null ||
+                string.IsNullOrWhiteSpace(stage.stageId) ||
+                stage.requiredPlatesForExchange <= 0)
+            {
+                return false;
+            }
+
+            canonicalStage = ContentDefaults.FindStage(stage.stageId);
+            if (canonicalStage == null ||
+                string.IsNullOrWhiteSpace(canonicalStage.stageId) ||
+                canonicalStage.requiredPlatesForExchange <= 0 ||
+                canonicalStage.fishType != stage.fishType ||
+                canonicalStage.rewardEquipment != stage.rewardEquipment ||
+                canonicalStage.requiredPlatesForExchange !=
+                    stage.requiredPlatesForExchange)
+            {
+                canonicalStage = null;
+                return false;
+            }
+
+            EquipmentRuntimeData equipment = ContentDefaults.FindEquipment(
+                canonicalStage.rewardEquipment);
+            if (string.IsNullOrWhiteSpace(equipment.displayName))
+            {
+                canonicalStage = null;
+                return false;
+            }
+
             return true;
         }
     }

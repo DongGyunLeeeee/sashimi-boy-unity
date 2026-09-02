@@ -1,0 +1,19 @@
+{
+    "name": "SashimiBoy.EquipmentShop.PlayModeTests",
+    "rootNamespace": "SashimiBoy.EquipmentShopTests",
+    "references": [
+        "SashimiBoy.EquipmentShopTestSupport"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": false,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false,
+    "optionalUnityReferences": [
+        "TestAssemblies"
+    ]
+}

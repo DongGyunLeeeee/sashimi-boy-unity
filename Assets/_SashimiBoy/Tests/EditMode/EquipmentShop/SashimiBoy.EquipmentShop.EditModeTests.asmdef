@@ -1,0 +1,21 @@
+{
+    "name": "SashimiBoy.EquipmentShop.EditModeTests",
+    "rootNamespace": "SashimiBoy.EquipmentShopTests",
+    "references": [
+        "SashimiBoy.EquipmentShopTestSupport"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": false,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false,
+    "optionalUnityReferences": [
+        "TestAssemblies"
+    ]
+}

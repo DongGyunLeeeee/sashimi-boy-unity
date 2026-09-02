@@ -7211,8 +7211,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: d7640942c5c8b4d868d370564fc0c922, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::SashimiBoy.EquipmentShopController
-  allowFreePrototypePurchases: 1
-  simulateStageOneCleared: 1
   titleText: {fileID: 972195187}
   kevinRequestText: {fileID: 270158184}
   shopkeeperText: {fileID: 371918792}
