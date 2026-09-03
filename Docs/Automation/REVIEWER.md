@@ -133,9 +133,15 @@ checks remain Pending Manual Verification and do not block an automated
 
 - Report findings with severity, evidence, affected file or behavior, and a
   reproducible check.
-- If any Blocker or Major remains, post the focused findings and use
+- If any Blocker or Major remains, first post the focused finding and retain its
+  URL. Re-query the PR and confirm its state, Draft flag, `head.sha`, and
+  `head.ref` are unchanged. Use `Tools/Automation/New-AutomationHandoff.ps1`
+  to format the repository-defined `ReviewFix` marker for that exact head and
+  the non-empty absolute URL of the focused finding. Post it as a new, unedited
+  PR or Issue comment and read it back. Only then use
   `Tools/Automation/Set-GitHubProjectStatus.ps1` for
-  `Review -> In Progress`.
+  `Review -> In Progress`. Minor/PASS results never create a `ReviewFix`
+  handoff.
 - If automated verification passes with no Blocker or Major, post the exact
   human verification checklist and required evidence, then use the status tool
   for `Review -> Verification`.
@@ -144,6 +150,10 @@ checks remain Pending Manual Verification and do not block an automated
 
 Never merge the PR. The owner performs final verification, merge, Issue close,
 and `Done`.
+
+If the handoff was posted but the status transition fails, the Issue remains in
+`Review` and Developer selection ignores it. Report the partial marker URL and
+the exact failed status command; do not attempt another Issue.
 
 ## Failure and cleanup
 
