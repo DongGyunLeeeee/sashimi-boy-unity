@@ -24,13 +24,15 @@ on conflict. Never relax these prohibitions: never destroy the user's checkout;
 never use git reset --hard, git clean, or force push; never merge a PR or move an
 Issue to Done; handle exactly one Issue per run; and never report an unexecuted
 test as PASS.
-Run the Developer preflight with Tools/Automation/Invoke-AutomationPreflight.ps1.
-Using the live GitHub Project state, select exactly one Ready Issue and follow
-the repository Developer specification through a Draft PR and Review. Use the
-scripts in Tools/Automation for every operation they cover; do not reconstruct
-their commands from memory. On any required-check failure, make no state change
-and report the exact command, exit code, standard error, and pending owner
-action. Never merge a PR or move an Issue to Verification or Done.
+Use the live Project and repository selector to choose exactly one eligible
+Developer item according to DEVELOPER.md. Pin that result, then follow the
+repository Developer specification, including its preflight, through a Draft
+PR and Review. Use the scripts in Tools/Automation for every operation they
+cover; do not reconstruct their commands from memory. On any required-check
+failure, perform only the repository-defined safe failure handoff when it
+applies, make no Project status transition, and report the exact command, exit
+code, standard error, and pending owner action. Never merge a PR or move an
+Issue to Verification or Done.
 ```
 
 ## Reviewer bootstrap
