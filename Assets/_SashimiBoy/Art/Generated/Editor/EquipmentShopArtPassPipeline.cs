@@ -96,7 +96,6 @@ namespace SashimiBoy.EditorTools
         private static void BuildAll()
         {
             EnsureGeneratedFolders();
-            AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport);
 
             try
             {
@@ -460,27 +459,63 @@ namespace SashimiBoy.EditorTools
                     true);
                 output.SetPixels32(packedPixels);
                 output.Apply(false, false);
-                File.WriteAllBytes(
-                    AssetPathToAbsolutePath(outputPath),
-                    output.EncodeToPNG());
-                UnityEngine.Object.DestroyImmediate(output);
+                byte[] outputBytes;
+                try
+                {
+                    outputBytes = output.EncodeToPNG();
+                }
+                finally
+                {
+                    UnityEngine.Object.DestroyImmediate(output);
+                }
 
-                AssetDatabase.ImportAsset(
-                    outputPath,
-                    ImportAssetOptions.ForceSynchronousImport);
+                if (WriteGeneratedBytesIfDifferent(
+                        AssetPathToAbsolutePath(outputPath),
+                        outputBytes))
+                {
+                    AssetDatabase.ImportAsset(
+                        outputPath,
+                        ImportAssetOptions.ForceSynchronousImport);
+                }
+
                 TextureImporter outputImporter =
                     AssetImporter.GetAtPath(outputPath) as TextureImporter;
                 Require(outputImporter != null,
                     "Packed-map importer is unavailable: " + outputPath);
-                outputImporter.textureType = TextureImporterType.Default;
-                outputImporter.sRGBTexture = false;
-                outputImporter.mipmapEnabled = true;
-                outputImporter.alphaSource =
-                    TextureImporterAlphaSource.FromInput;
-                outputImporter.alphaIsTransparency = false;
-                outputImporter.isReadable = false;
-                outputImporter.maxTextureSize = spec.MaximumTextureSize;
-                outputImporter.SaveAndReimport();
+                bool importerChanged = false;
+                importerChanged |= SetIfDifferent(
+                    outputImporter.textureType,
+                    TextureImporterType.Default,
+                    value => outputImporter.textureType = value);
+                importerChanged |= SetIfDifferent(
+                    outputImporter.sRGBTexture,
+                    false,
+                    value => outputImporter.sRGBTexture = value);
+                importerChanged |= SetIfDifferent(
+                    outputImporter.mipmapEnabled,
+                    true,
+                    value => outputImporter.mipmapEnabled = value);
+                importerChanged |= SetIfDifferent(
+                    outputImporter.alphaSource,
+                    TextureImporterAlphaSource.FromInput,
+                    value => outputImporter.alphaSource = value);
+                importerChanged |= SetIfDifferent(
+                    outputImporter.alphaIsTransparency,
+                    false,
+                    value => outputImporter.alphaIsTransparency = value);
+                importerChanged |= SetIfDifferent(
+                    outputImporter.isReadable,
+                    false,
+                    value => outputImporter.isReadable = value);
+                importerChanged |= SetIfDifferent(
+                    outputImporter.maxTextureSize,
+                    spec.MaximumTextureSize,
+                    value => outputImporter.maxTextureSize = value);
+                if (importerChanged)
+                {
+                    outputImporter.SaveAndReimport();
+                }
+
                 return LoadTexture(outputPath);
             }
             finally
@@ -554,6 +589,67 @@ namespace SashimiBoy.EditorTools
 
             throw new IOException(
                 "Source texture remained unavailable: " + absolutePath,
+                lastFailure);
+        }
+
+        private static bool WriteGeneratedBytesIfDifferent(
+            string absolutePath,
+            byte[] desiredBytes)
+        {
+            Exception lastFailure = null;
+            for (int attempt = 0; attempt < 100; attempt++)
+            {
+                try
+                {
+                    if (File.Exists(absolutePath))
+                    {
+                        byte[] existingBytes;
+                        using (FileStream stream = new FileStream(
+                                   absolutePath,
+                                   FileMode.Open,
+                                   FileAccess.Read,
+                                   FileShare.ReadWrite | FileShare.Delete))
+                        using (MemoryStream buffer = new MemoryStream())
+                        {
+                            stream.CopyTo(buffer);
+                            existingBytes = buffer.ToArray();
+                        }
+
+                        if (existingBytes.SequenceEqual(desiredBytes))
+                        {
+                            return false;
+                        }
+                    }
+
+                    using (FileStream stream = new FileStream(
+                               absolutePath,
+                               FileMode.Create,
+                               FileAccess.Write,
+                               FileShare.Read))
+                    {
+                        stream.Write(desiredBytes, 0, desiredBytes.Length);
+                        stream.Flush(true);
+                    }
+
+                    return true;
+                }
+                catch (IOException exception)
+                {
+                    lastFailure = exception;
+                }
+                catch (UnauthorizedAccessException exception)
+                {
+                    lastFailure = exception;
+                }
+
+                if (attempt < 99)
+                {
+                    System.Threading.Thread.Sleep(50);
+                }
+            }
+
+            throw new IOException(
+                "Generated asset remained unavailable: " + absolutePath,
                 lastFailure);
         }
 
