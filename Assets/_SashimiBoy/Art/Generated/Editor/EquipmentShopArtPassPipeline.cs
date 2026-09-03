@@ -517,11 +517,6 @@ namespace SashimiBoy.EditorTools
                     roughnessImporter.isReadable = roughnessReadable;
                     roughnessImporter.SaveAndReimport();
                 }
-
-                NormalizeSerializedFile(
-                    AssetPathToAbsolutePath(set.MetallicPath + ".meta"));
-                NormalizeSerializedFile(
-                    AssetPathToAbsolutePath(set.RoughnessPath + ".meta"));
             }
         }
 
@@ -1648,11 +1643,77 @@ namespace SashimiBoy.EditorTools
 
         private static void NormalizeSerializedOutputs()
         {
+            NormalizeSourceImporterMetadata();
             NormalizeSerializedFile(AssetPathToAbsolutePath(MainScenePath));
             NormalizeSerializedFile(AssetPathToAbsolutePath(GalleryScenePath));
             NormalizeSerializedFiles(MaterialsRoot, "*.mat");
             NormalizeSerializedFiles(PackedMapsRoot, "*.meta");
             NormalizeSerializedFiles(PrefabsRoot, "*.prefab");
+        }
+
+        private static void NormalizeSourceImporterMetadata()
+        {
+            HashSet<string> assetPaths = new HashSet<string>(
+                StringComparer.Ordinal);
+            for (int i = 0; i < AssetSpecs.Length; i++)
+            {
+                foreach (TextureSet set in FindTextureSets(AssetSpecs[i]).Values)
+                {
+                    if (!string.IsNullOrEmpty(set.MetallicPath))
+                    {
+                        assetPaths.Add(set.MetallicPath + ".meta");
+                    }
+
+                    if (!string.IsNullOrEmpty(set.RoughnessPath))
+                    {
+                        assetPaths.Add(set.RoughnessPath + ".meta");
+                    }
+                }
+            }
+
+            string[] orderedPaths = assetPaths
+                .OrderBy(path => path, StringComparer.Ordinal)
+                .ToArray();
+            for (int attempt = 0; attempt < 3; attempt++)
+            {
+                List<string> unavailable = new List<string>();
+                for (int i = 0; i < orderedPaths.Length; i++)
+                {
+                    string absolutePath =
+                        AssetPathToAbsolutePath(orderedPaths[i]);
+                    try
+                    {
+                        if (!File.Exists(absolutePath))
+                        {
+                            throw new FileNotFoundException(
+                                "Source importer metadata is unavailable.",
+                                absolutePath);
+                        }
+
+                        NormalizeSerializedFile(absolutePath);
+                    }
+                    catch (IOException)
+                    {
+                        unavailable.Add(orderedPaths[i]);
+                    }
+                }
+
+                if (unavailable.Count == 0)
+                {
+                    return;
+                }
+
+                if (attempt < 2)
+                {
+                    AssetDatabase.Refresh(
+                        ImportAssetOptions.ForceSynchronousImport);
+                    continue;
+                }
+
+                throw new IOException(
+                    "Source importer metadata remained unavailable: " +
+                    string.Join(", ", unavailable));
+            }
         }
 
         private static void NormalizeSerializedFiles(
