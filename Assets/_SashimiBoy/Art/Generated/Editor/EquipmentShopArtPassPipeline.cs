@@ -89,8 +89,8 @@ namespace SashimiBoy.EditorTools
             AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport);
             ApplyToMainScene(false);
             AssetDatabase.SaveAssets();
-            NormalizeSerializedOutputs();
             AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport);
+            NormalizeSerializedOutputs();
         }
 
         private static void BuildAll()
@@ -105,9 +105,9 @@ namespace SashimiBoy.EditorTools
                 ApplyToMainScene(true);
                 WriteReport(results);
                 AssetDatabase.SaveAssets();
-                NormalizeSerializedOutputs();
                 AssetDatabase.Refresh(
                     ImportAssetOptions.ForceSynchronousImport);
+                NormalizeSerializedOutputs();
                 Debug.Log(
                     "[Sashimi Boy] EquipmentShop art pass generated: " +
                     AssetSpecs.Length + " wrappers, gallery, and scene; " +
