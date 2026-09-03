@@ -427,8 +427,17 @@ namespace SashimiBoy.EditorTools
             {
                 metallic = LoadReadableSourceTexture(set.MetallicPath);
                 roughness = LoadReadableSourceTexture(set.RoughnessPath);
-                int width = Mathf.Min(metallic.width, roughness.width);
-                int height = Mathf.Min(metallic.height, roughness.height);
+                Texture2D importedMetallic = LoadTexture(set.MetallicPath);
+                Texture2D importedRoughness = LoadTexture(set.RoughnessPath);
+                Require(importedMetallic != null && importedRoughness != null,
+                    "Metallic/roughness texture failed to load for " +
+                    spec.AssetId + ".");
+                int width = Mathf.Min(
+                    importedMetallic.width,
+                    importedRoughness.width);
+                int height = Mathf.Min(
+                    importedMetallic.height,
+                    importedRoughness.height);
                 Color32[] metallicPixels =
                     ReadPixelsAtSize(metallic, width, height);
                 Color32[] roughnessPixels =
@@ -491,8 +500,6 @@ namespace SashimiBoy.EditorTools
         private static Texture2D LoadReadableSourceTexture(string assetPath)
         {
             string absolutePath = AssetPathToAbsolutePath(assetPath);
-            Require(File.Exists(absolutePath),
-                "Source texture is unavailable: " + assetPath);
             Texture2D texture = new Texture2D(
                 2,
                 2,
@@ -501,7 +508,7 @@ namespace SashimiBoy.EditorTools
                 true);
             if (!ImageConversion.LoadImage(
                     texture,
-                    File.ReadAllBytes(absolutePath),
+                    ReadSourceBytes(absolutePath),
                     false))
             {
                 UnityEngine.Object.DestroyImmediate(texture);
@@ -512,44 +519,91 @@ namespace SashimiBoy.EditorTools
             return texture;
         }
 
+        private static byte[] ReadSourceBytes(string absolutePath)
+        {
+            Exception lastFailure = null;
+            for (int attempt = 0; attempt < 100; attempt++)
+            {
+                try
+                {
+                    using (FileStream stream = new FileStream(
+                               absolutePath,
+                               FileMode.Open,
+                               FileAccess.Read,
+                               FileShare.ReadWrite | FileShare.Delete))
+                    using (MemoryStream buffer = new MemoryStream())
+                    {
+                        stream.CopyTo(buffer);
+                        return buffer.ToArray();
+                    }
+                }
+                catch (IOException exception)
+                {
+                    lastFailure = exception;
+                }
+                catch (UnauthorizedAccessException exception)
+                {
+                    lastFailure = exception;
+                }
+
+                if (attempt < 99)
+                {
+                    System.Threading.Thread.Sleep(50);
+                }
+            }
+
+            throw new IOException(
+                "Source texture remained unavailable: " + absolutePath,
+                lastFailure);
+        }
+
         private static Color32[] ReadPixelsAtSize(
             Texture2D source,
             int width,
             int height)
         {
+            Color32[] sourcePixels = source.GetPixels32();
             if (source.width == width && source.height == height)
             {
-                return source.GetPixels32();
+                return sourcePixels;
             }
 
-            RenderTexture temporary = RenderTexture.GetTemporary(
-                width,
-                height,
-                0,
-                RenderTextureFormat.ARGB32,
-                RenderTextureReadWrite.Linear);
-            RenderTexture previous = RenderTexture.active;
-            try
+            Color32[] resized = new Color32[width * height];
+            float xScale = (float)source.width / width;
+            float yScale = (float)source.height / height;
+            for (int y = 0; y < height; y++)
             {
-                Graphics.Blit(source, temporary);
-                RenderTexture.active = temporary;
-                Texture2D resized = new Texture2D(
-                    width,
-                    height,
-                    TextureFormat.RGBA32,
-                    false,
-                    true);
-                resized.ReadPixels(new Rect(0f, 0f, width, height), 0, 0);
-                resized.Apply(false, false);
-                Color32[] pixels = resized.GetPixels32();
-                UnityEngine.Object.DestroyImmediate(resized);
-                return pixels;
+                float sourceY = ((y + 0.5f) * yScale) - 0.5f;
+                int sourceY0 = Mathf.FloorToInt(sourceY);
+                int sourceY1 = sourceY0 + 1;
+                float yWeight = sourceY - sourceY0;
+                sourceY0 = Mathf.Clamp(sourceY0, 0, source.height - 1);
+                sourceY1 = Mathf.Clamp(sourceY1, 0, source.height - 1);
+                for (int x = 0; x < width; x++)
+                {
+                    float sourceX = ((x + 0.5f) * xScale) - 0.5f;
+                    int sourceX0 = Mathf.FloorToInt(sourceX);
+                    int sourceX1 = sourceX0 + 1;
+                    float xWeight = sourceX - sourceX0;
+                    sourceX0 = Mathf.Clamp(sourceX0, 0, source.width - 1);
+                    sourceX1 = Mathf.Clamp(sourceX1, 0, source.width - 1);
+
+                    Color32 bottomLeft = sourcePixels[
+                        (sourceY0 * source.width) + sourceX0];
+                    Color32 bottomRight = sourcePixels[
+                        (sourceY0 * source.width) + sourceX1];
+                    Color32 topLeft = sourcePixels[
+                        (sourceY1 * source.width) + sourceX0];
+                    Color32 topRight = sourcePixels[
+                        (sourceY1 * source.width) + sourceX1];
+                    resized[(y * width) + x] = Color32.Lerp(
+                        Color32.Lerp(bottomLeft, bottomRight, xWeight),
+                        Color32.Lerp(topLeft, topRight, xWeight),
+                        yWeight);
+                }
             }
-            finally
-            {
-                RenderTexture.active = previous;
-                RenderTexture.ReleaseTemporary(temporary);
-            }
+
+            return resized;
         }
 
         private static int AssignGeneratedMaterials(
