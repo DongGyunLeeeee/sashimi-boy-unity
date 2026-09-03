@@ -418,39 +418,15 @@ namespace SashimiBoy.EditorTools
                 return null;
             }
 
-            TextureImporter metallicImporter =
-                AssetImporter.GetAtPath(set.MetallicPath) as TextureImporter;
-            TextureImporter roughnessImporter =
-                AssetImporter.GetAtPath(set.RoughnessPath) as TextureImporter;
-            Require(metallicImporter != null && roughnessImporter != null,
-                "Metallic/roughness importer is unavailable for " +
-                spec.AssetId + ".");
-            bool metallicReadable = metallicImporter.isReadable;
-            bool roughnessReadable = roughnessImporter.isReadable;
             string outputPath = PackedMapsRoot +
                 "/MS_EquipmentShop_" + spec.AssetId + suffix + ".png";
+            Texture2D metallic = null;
+            Texture2D roughness = null;
 
             try
             {
-                if (!metallicReadable)
-                {
-                    metallicImporter.isReadable = true;
-                    metallicImporter.SaveAndReimport();
-                }
-
-                roughnessImporter = AssetImporter.GetAtPath(
-                    set.RoughnessPath) as TextureImporter;
-                if (roughnessImporter != null && !roughnessReadable)
-                {
-                    roughnessImporter.isReadable = true;
-                    roughnessImporter.SaveAndReimport();
-                }
-
-                Texture2D metallic = LoadTexture(set.MetallicPath);
-                Texture2D roughness = LoadTexture(set.RoughnessPath);
-                Require(metallic != null && roughness != null,
-                    "Metallic/roughness texture failed to load for " +
-                    spec.AssetId + ".");
+                metallic = LoadReadableSourceTexture(set.MetallicPath);
+                roughness = LoadReadableSourceTexture(set.RoughnessPath);
                 int width = Mathf.Min(metallic.width, roughness.width);
                 int height = Mathf.Min(metallic.height, roughness.height);
                 Color32[] metallicPixels =
@@ -500,24 +476,40 @@ namespace SashimiBoy.EditorTools
             }
             finally
             {
-                metallicImporter = AssetImporter.GetAtPath(
-                    set.MetallicPath) as TextureImporter;
-                roughnessImporter = AssetImporter.GetAtPath(
-                    set.RoughnessPath) as TextureImporter;
-                if (metallicImporter != null &&
-                    metallicImporter.isReadable != metallicReadable)
+                if (metallic != null)
                 {
-                    metallicImporter.isReadable = metallicReadable;
-                    metallicImporter.SaveAndReimport();
+                    UnityEngine.Object.DestroyImmediate(metallic);
                 }
 
-                if (roughnessImporter != null &&
-                    roughnessImporter.isReadable != roughnessReadable)
+                if (roughness != null)
                 {
-                    roughnessImporter.isReadable = roughnessReadable;
-                    roughnessImporter.SaveAndReimport();
+                    UnityEngine.Object.DestroyImmediate(roughness);
                 }
             }
+        }
+
+        private static Texture2D LoadReadableSourceTexture(string assetPath)
+        {
+            string absolutePath = AssetPathToAbsolutePath(assetPath);
+            Require(File.Exists(absolutePath),
+                "Source texture is unavailable: " + assetPath);
+            Texture2D texture = new Texture2D(
+                2,
+                2,
+                TextureFormat.RGBA32,
+                false,
+                true);
+            if (!ImageConversion.LoadImage(
+                    texture,
+                    File.ReadAllBytes(absolutePath),
+                    false))
+            {
+                UnityEngine.Object.DestroyImmediate(texture);
+                throw new IOException(
+                    "Source texture failed to decode: " + assetPath);
+            }
+
+            return texture;
         }
 
         private static Color32[] ReadPixelsAtSize(
@@ -1643,77 +1635,11 @@ namespace SashimiBoy.EditorTools
 
         private static void NormalizeSerializedOutputs()
         {
-            NormalizeSourceImporterMetadata();
             NormalizeSerializedFile(AssetPathToAbsolutePath(MainScenePath));
             NormalizeSerializedFile(AssetPathToAbsolutePath(GalleryScenePath));
             NormalizeSerializedFiles(MaterialsRoot, "*.mat");
             NormalizeSerializedFiles(PackedMapsRoot, "*.meta");
             NormalizeSerializedFiles(PrefabsRoot, "*.prefab");
-        }
-
-        private static void NormalizeSourceImporterMetadata()
-        {
-            HashSet<string> assetPaths = new HashSet<string>(
-                StringComparer.Ordinal);
-            for (int i = 0; i < AssetSpecs.Length; i++)
-            {
-                foreach (TextureSet set in FindTextureSets(AssetSpecs[i]).Values)
-                {
-                    if (!string.IsNullOrEmpty(set.MetallicPath))
-                    {
-                        assetPaths.Add(set.MetallicPath + ".meta");
-                    }
-
-                    if (!string.IsNullOrEmpty(set.RoughnessPath))
-                    {
-                        assetPaths.Add(set.RoughnessPath + ".meta");
-                    }
-                }
-            }
-
-            string[] orderedPaths = assetPaths
-                .OrderBy(path => path, StringComparer.Ordinal)
-                .ToArray();
-            for (int attempt = 0; attempt < 3; attempt++)
-            {
-                List<string> unavailable = new List<string>();
-                for (int i = 0; i < orderedPaths.Length; i++)
-                {
-                    string absolutePath =
-                        AssetPathToAbsolutePath(orderedPaths[i]);
-                    try
-                    {
-                        if (!File.Exists(absolutePath))
-                        {
-                            throw new FileNotFoundException(
-                                "Source importer metadata is unavailable.",
-                                absolutePath);
-                        }
-
-                        NormalizeSerializedFile(absolutePath);
-                    }
-                    catch (IOException)
-                    {
-                        unavailable.Add(orderedPaths[i]);
-                    }
-                }
-
-                if (unavailable.Count == 0)
-                {
-                    return;
-                }
-
-                if (attempt < 2)
-                {
-                    AssetDatabase.Refresh(
-                        ImportAssetOptions.ForceSynchronousImport);
-                    continue;
-                }
-
-                throw new IOException(
-                    "Source importer metadata remained unavailable: " +
-                    string.Join(", ", unavailable));
-            }
         }
 
         private static void NormalizeSerializedFiles(
