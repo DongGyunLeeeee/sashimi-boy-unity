@@ -207,7 +207,7 @@ namespace SashimiBoy.EquipmentShopTests
         }
 
         [Test]
-        public void RebuildEquipmentShopArtPass_TwoRunsKeepSceneBytes()
+        public void BuildEquipmentShopArtPassBatch_TwoRunsKeepSceneBytes()
         {
             string absoluteScenePath = AssetPathToAbsolutePath(ScenePath);
             byte[] committedBytes = File.ReadAllBytes(absoluteScenePath);
@@ -219,12 +219,12 @@ namespace SashimiBoy.EquipmentShopTests
             {
                 RuntimeReflection.InvokeStatic(
                     "SashimiBoy.EditorTools.EquipmentShopArtPassPipeline",
-                    "ApplyEquipmentShopArtToMainSceneBatch");
+                    "BuildEquipmentShopArtPassBatch");
                 AssertGeneratedYamlHasNoTrailingWhitespace();
                 firstRunBytes = File.ReadAllBytes(absoluteScenePath);
                 RuntimeReflection.InvokeStatic(
                     "SashimiBoy.EditorTools.EquipmentShopArtPassPipeline",
-                    "ApplyEquipmentShopArtToMainSceneBatch");
+                    "BuildEquipmentShopArtPassBatch");
                 AssertGeneratedYamlHasNoTrailingWhitespace();
                 secondRunBytes = File.ReadAllBytes(absoluteScenePath);
             }
@@ -443,7 +443,12 @@ namespace SashimiBoy.EquipmentShopTests
                 "Assets/_SashimiBoy/Art/Generated/Scenes/" +
                     "EquipmentShopAssetGallery.unity",
                 MaterialRoot,
+                "Assets/_SashimiBoy/Art/Generated/PackedMaps/EquipmentShop/",
                 PrefabRoot,
+                "Assets/_SashimiBoy/Art/Source/Characters/" +
+                    "EquipmentShopOwner/",
+                "Assets/_SashimiBoy/Art/Source/Environment/" +
+                    "EquipmentShop/",
             };
 
             foreach (string assetPath in roots)
@@ -457,6 +462,7 @@ namespace SashimiBoy.EquipmentShopTests
                     : new[] { absolutePath };
                 foreach (string path in files.Where(item =>
                              item.EndsWith(".mat", StringComparison.Ordinal) ||
+                             item.EndsWith(".meta", StringComparison.Ordinal) ||
                              item.EndsWith(".prefab", StringComparison.Ordinal) ||
                              item.EndsWith(".unity", StringComparison.Ordinal)))
                 {

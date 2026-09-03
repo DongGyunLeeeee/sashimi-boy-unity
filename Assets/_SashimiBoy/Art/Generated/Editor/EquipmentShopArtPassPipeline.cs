@@ -110,7 +110,10 @@ namespace SashimiBoy.EditorTools
                     ImportAssetOptions.ForceSynchronousImport);
                 Debug.Log(
                     "[Sashimi Boy] EquipmentShop art pass generated: " +
-                    AssetSpecs.Length + " wrappers, gallery, scene, and previews.");
+                    AssetSpecs.Length + " wrappers, gallery, and scene; " +
+                    (Application.isBatchMode
+                        ? "previews preserved in batch mode."
+                        : "previews generated."));
             }
             catch (Exception exception)
             {
@@ -621,9 +624,15 @@ namespace SashimiBoy.EditorTools
         private static void BuildGalleryScene(
             List<AssetBuildResult> results)
         {
-            Scene scene = EditorSceneManager.NewScene(
-                NewSceneSetup.EmptyScene,
-                NewSceneMode.Single);
+            SceneAsset galleryAsset =
+                AssetDatabase.LoadAssetAtPath<SceneAsset>(GalleryScenePath);
+            Scene scene = galleryAsset == null
+                ? EditorSceneManager.NewScene(
+                    NewSceneSetup.EmptyScene,
+                    NewSceneMode.Single)
+                : EditorSceneManager.OpenScene(
+                    GalleryScenePath,
+                    OpenSceneMode.Single);
             Material floor = BuildArchitectureMaterial(
                 "GalleryFloor",
                 new Color(0.08f, 0.095f, 0.11f, 1f),
@@ -640,7 +649,9 @@ namespace SashimiBoy.EditorTools
                 0.15f,
                 0.5f);
 
-            GameObject galleryRoot = new GameObject("EquipmentShopGalleryRoot");
+            GameObject galleryRoot = GetOrCreateSceneRoot(
+                scene,
+                "EquipmentShopGalleryRoot");
             CreatePrimitive(
                 galleryRoot.transform,
                 "GalleryFloor",
@@ -684,8 +695,13 @@ namespace SashimiBoy.EditorTools
                     position + new Vector3(0f, 0.18f, -1.28f));
             }
 
-            GameObject cameraObject = new GameObject("Main Camera");
-            Camera camera = cameraObject.AddComponent<Camera>();
+            GameObject cameraObject = GetOrCreateSceneRoot(scene, "Main Camera");
+            Camera camera = cameraObject.GetComponent<Camera>();
+            if (camera == null)
+            {
+                camera = cameraObject.AddComponent<Camera>();
+            }
+
             cameraObject.tag = "MainCamera";
             camera.clearFlags = CameraClearFlags.SolidColor;
             camera.backgroundColor = new Color(0.025f, 0.03f, 0.04f, 1f);
@@ -1090,6 +1106,14 @@ namespace SashimiBoy.EditorTools
 
         private static void RenderPreview(Camera camera, string assetPath)
         {
+            if (Application.isBatchMode)
+            {
+                Debug.Log(
+                    "[Sashimi Boy] Skipping EquipmentShop preview rendering " +
+                    "in batch mode: " + assetPath);
+                return;
+            }
+
             const int width = 1600;
             const int height = 900;
             RenderTexture renderTexture = new RenderTexture(width, height, 24);
@@ -1175,7 +1199,7 @@ namespace SashimiBoy.EditorTools
             report.AppendLine("4. Exercise purchase and leave controls and confirm the first-person camera remains suspended while UI is open.");
             File.WriteAllText(
                 AssetPathToAbsolutePath(ReportPath),
-                report.ToString(),
+                report.ToString().Replace("\r\n", "\n"),
                 new UTF8Encoding(false));
             AssetDatabase.ImportAsset(
                 ReportPath,
@@ -1381,10 +1405,16 @@ namespace SashimiBoy.EditorTools
             Vector3 rotation,
             float intensity)
         {
-            GameObject lightObject = new GameObject(name);
-            SceneManager.MoveGameObjectToScene(lightObject, scene);
+            GameObject lightObject = GetOrCreateSceneRoot(scene, name);
+            lightObject.transform.position = Vector3.zero;
             lightObject.transform.rotation = Quaternion.Euler(rotation);
-            Light light = lightObject.AddComponent<Light>();
+            lightObject.transform.localScale = Vector3.one;
+            Light light = lightObject.GetComponent<Light>();
+            if (light == null)
+            {
+                light = lightObject.AddComponent<Light>();
+            }
+
             light.type = LightType.Directional;
             light.color = new Color(1f, 0.86f, 0.72f);
             light.intensity = intensity;
@@ -1616,7 +1646,12 @@ namespace SashimiBoy.EditorTools
             NormalizeSerializedFile(AssetPathToAbsolutePath(MainScenePath));
             NormalizeSerializedFile(AssetPathToAbsolutePath(GalleryScenePath));
             NormalizeSerializedFiles(MaterialsRoot, "*.mat");
+            NormalizeSerializedFiles(PackedMapsRoot, "*.meta");
             NormalizeSerializedFiles(PrefabsRoot, "*.prefab");
+            for (int i = 0; i < AssetSpecs.Length; i++)
+            {
+                NormalizeSerializedFiles(AssetSpecs[i].SourceFolder, "*.meta");
+            }
         }
 
         private static void NormalizeSerializedFiles(
