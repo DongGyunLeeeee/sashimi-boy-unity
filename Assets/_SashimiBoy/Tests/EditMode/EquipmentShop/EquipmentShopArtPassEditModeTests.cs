@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
+using System.Text.RegularExpressions;
 using NUnit.Framework;
 using UnityEditor;
 using UnityEditor.SceneManagement;
@@ -19,6 +20,10 @@ namespace SashimiBoy.EquipmentShopTests
             "Assets/_SashimiBoy/Art/Generated/Materials/EquipmentShop/";
         private const string ScenePath =
             "Assets/_SashimiBoy/Scenes/EquipmentShop.unity";
+
+        private static readonly Regex TrailingWhitespaceRegex = new Regex(
+            @"[ \t]+(?=\r?$)",
+            RegexOptions.Compiled | RegexOptions.Multiline);
 
         private static readonly string[] AssetIds =
         {
@@ -215,10 +220,12 @@ namespace SashimiBoy.EquipmentShopTests
                 RuntimeReflection.InvokeStatic(
                     "SashimiBoy.EditorTools.EquipmentShopArtPassPipeline",
                     "ApplyEquipmentShopArtToMainSceneBatch");
+                AssertGeneratedYamlHasNoTrailingWhitespace();
                 firstRunBytes = File.ReadAllBytes(absoluteScenePath);
                 RuntimeReflection.InvokeStatic(
                     "SashimiBoy.EditorTools.EquipmentShopArtPassPipeline",
                     "ApplyEquipmentShopArtToMainSceneBatch");
+                AssertGeneratedYamlHasNoTrailingWhitespace();
                 secondRunBytes = File.ReadAllBytes(absoluteScenePath);
             }
             finally
@@ -426,6 +433,39 @@ namespace SashimiBoy.EquipmentShopTests
             return Path.Combine(
                 projectRoot,
                 assetPath.Replace('/', Path.DirectorySeparatorChar));
+        }
+
+        private static void AssertGeneratedYamlHasNoTrailingWhitespace()
+        {
+            string[] roots =
+            {
+                ScenePath,
+                "Assets/_SashimiBoy/Art/Generated/Scenes/" +
+                    "EquipmentShopAssetGallery.unity",
+                MaterialRoot,
+                PrefabRoot,
+            };
+
+            foreach (string assetPath in roots)
+            {
+                string absolutePath = AssetPathToAbsolutePath(assetPath);
+                IEnumerable<string> files = Directory.Exists(absolutePath)
+                    ? Directory.EnumerateFiles(
+                        absolutePath,
+                        "*.*",
+                        SearchOption.AllDirectories)
+                    : new[] { absolutePath };
+                foreach (string path in files.Where(item =>
+                             item.EndsWith(".mat", StringComparison.Ordinal) ||
+                             item.EndsWith(".prefab", StringComparison.Ordinal) ||
+                             item.EndsWith(".unity", StringComparison.Ordinal)))
+                {
+                    Assert.That(
+                        TrailingWhitespaceRegex.IsMatch(File.ReadAllText(path)),
+                        Is.False,
+                        path + " contains trailing whitespace.");
+                }
+            }
         }
 
         private static string ComputeSha256(byte[] bytes)

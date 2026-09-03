@@ -89,6 +89,7 @@ namespace SashimiBoy.EditorTools
             AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport);
             ApplyToMainScene(false);
             AssetDatabase.SaveAssets();
+            NormalizeSerializedOutputs();
             AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport);
         }
 
@@ -104,6 +105,7 @@ namespace SashimiBoy.EditorTools
                 ApplyToMainScene(true);
                 WriteReport(results);
                 AssetDatabase.SaveAssets();
+                NormalizeSerializedOutputs();
                 AssetDatabase.Refresh(
                     ImportAssetOptions.ForceSynchronousImport);
                 Debug.Log(
@@ -1607,6 +1609,60 @@ namespace SashimiBoy.EditorTools
             return Path.Combine(
                 projectRoot,
                 assetPath.Replace('/', Path.DirectorySeparatorChar));
+        }
+
+        private static void NormalizeSerializedOutputs()
+        {
+            NormalizeSerializedFile(AssetPathToAbsolutePath(MainScenePath));
+            NormalizeSerializedFile(AssetPathToAbsolutePath(GalleryScenePath));
+            NormalizeSerializedFiles(MaterialsRoot, "*.mat");
+            NormalizeSerializedFiles(PrefabsRoot, "*.prefab");
+        }
+
+        private static void NormalizeSerializedFiles(
+            string assetDirectory,
+            string searchPattern)
+        {
+            string absoluteDirectory =
+                AssetPathToAbsolutePath(assetDirectory);
+            if (!Directory.Exists(absoluteDirectory))
+            {
+                return;
+            }
+
+            foreach (string path in Directory
+                         .EnumerateFiles(
+                             absoluteDirectory,
+                             searchPattern,
+                             SearchOption.AllDirectories)
+                         .OrderBy(item => item, StringComparer.Ordinal))
+            {
+                NormalizeSerializedFile(path);
+            }
+        }
+
+        private static void NormalizeSerializedFile(string absolutePath)
+        {
+            if (!File.Exists(absolutePath))
+            {
+                return;
+            }
+
+            string original = File.ReadAllText(absolutePath);
+            string normalized = Regex.Replace(
+                original,
+                @"[ \t]+(?=\r?$)",
+                string.Empty,
+                RegexOptions.Multiline);
+            if (string.Equals(original, normalized, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            File.WriteAllText(
+                absolutePath,
+                normalized,
+                new UTF8Encoding(false));
         }
 
         private static void EnsureGeneratedFolders()
