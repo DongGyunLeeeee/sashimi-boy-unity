@@ -421,34 +421,11 @@ namespace SashimiBoy.EditorTools
                 "/MS_EquipmentShop_" + spec.AssetId + suffix + ".png";
             Texture2D metallic = null;
             Texture2D roughness = null;
-            Texture2D existingPackedMap = LoadTexture(outputPath);
 
             try
             {
-                if (SourceTextureIsUnavailable(set.MetallicPath) ||
-                    SourceTextureIsUnavailable(set.RoughnessPath))
-                {
-                    return ReusePackedMapOrThrow(
-                        existingPackedMap,
-                        outputPath,
-                        spec.AssetId,
-                        null);
-                }
-
-                try
-                {
-                    metallic = LoadReadableSourceTexture(set.MetallicPath);
-                    roughness = LoadReadableSourceTexture(set.RoughnessPath);
-                }
-                catch (IOException exception)
-                {
-                    return ReusePackedMapOrThrow(
-                        existingPackedMap,
-                        outputPath,
-                        spec.AssetId,
-                        exception);
-                }
-
+                metallic = LoadReadableSourceTexture(set.MetallicPath);
+                roughness = LoadReadableSourceTexture(set.RoughnessPath);
                 Texture2D importedMetallic = LoadTexture(set.MetallicPath);
                 Texture2D importedRoughness = LoadTexture(set.RoughnessPath);
                 Require(importedMetallic != null && importedRoughness != null,
@@ -553,35 +530,6 @@ namespace SashimiBoy.EditorTools
                     UnityEngine.Object.DestroyImmediate(roughness);
                 }
             }
-        }
-
-        private static bool SourceTextureIsUnavailable(string assetPath)
-        {
-            return !File.Exists(AssetPathToAbsolutePath(assetPath));
-        }
-
-        private static Texture2D ReusePackedMapOrThrow(
-            Texture2D existingPackedMap,
-            string outputPath,
-            string assetId,
-            IOException sourceFailure)
-        {
-            if (existingPackedMap == null)
-            {
-                if (sourceFailure != null)
-                {
-                    throw sourceFailure;
-                }
-
-                throw new IOException(
-                    "Packed-map sources and generated fallback are " +
-                    "unavailable for " + assetId + ".");
-            }
-
-            Debug.LogWarning(
-                "[Sashimi Boy] Reusing committed packed map while source " +
-                "bytes are unavailable: " + outputPath);
-            return existingPackedMap;
         }
 
         private static Texture2D LoadReadableSourceTexture(string assetPath)
@@ -1830,9 +1778,18 @@ namespace SashimiBoy.EditorTools
         private static string AssetPathToAbsolutePath(string assetPath)
         {
             string projectRoot = Directory.GetParent(Application.dataPath).FullName;
-            return Path.Combine(
+            string absolutePath = Path.Combine(
                 projectRoot,
                 assetPath.Replace('/', Path.DirectorySeparatorChar));
+            if (Path.DirectorySeparatorChar == '\\' &&
+                !absolutePath.StartsWith(@"\\?\", StringComparison.Ordinal))
+            {
+                return absolutePath.StartsWith(@"\\", StringComparison.Ordinal)
+                    ? @"\\?\UNC\" + absolutePath.Substring(2)
+                    : @"\\?\" + absolutePath;
+            }
+
+            return absolutePath;
         }
 
         private static void NormalizeSerializedOutputs()

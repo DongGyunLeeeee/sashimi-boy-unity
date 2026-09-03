@@ -430,9 +430,18 @@ namespace SashimiBoy.EquipmentShopTests
                     "Could not resolve the Unity project root.");
             }
 
-            return Path.Combine(
+            string absolutePath = Path.Combine(
                 projectRoot,
                 assetPath.Replace('/', Path.DirectorySeparatorChar));
+            if (Path.DirectorySeparatorChar == '\\' &&
+                !absolutePath.StartsWith(@"\\?\", StringComparison.Ordinal))
+            {
+                return absolutePath.StartsWith(@"\\", StringComparison.Ordinal)
+                    ? @"\\?\UNC\" + absolutePath.Substring(2)
+                    : @"\\?\" + absolutePath;
+            }
+
+            return absolutePath;
         }
 
         private static void AssertGeneratedYamlHasNoTrailingWhitespace()
