@@ -517,6 +517,11 @@ namespace SashimiBoy.EditorTools
                     roughnessImporter.isReadable = roughnessReadable;
                     roughnessImporter.SaveAndReimport();
                 }
+
+                NormalizeSerializedFile(
+                    AssetPathToAbsolutePath(set.MetallicPath + ".meta"));
+                NormalizeSerializedFile(
+                    AssetPathToAbsolutePath(set.RoughnessPath + ".meta"));
             }
         }
 
@@ -1648,10 +1653,6 @@ namespace SashimiBoy.EditorTools
             NormalizeSerializedFiles(MaterialsRoot, "*.mat");
             NormalizeSerializedFiles(PackedMapsRoot, "*.meta");
             NormalizeSerializedFiles(PrefabsRoot, "*.prefab");
-            for (int i = 0; i < AssetSpecs.Length; i++)
-            {
-                NormalizeSerializedFiles(AssetSpecs[i].SourceFolder, "*.meta");
-            }
         }
 
         private static void NormalizeSerializedFiles(
