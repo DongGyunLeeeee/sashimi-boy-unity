@@ -5,6 +5,7 @@ using System.Linq;
 using System.Security.Cryptography;
 using System.Text.RegularExpressions;
 using NUnit.Framework;
+using Unity.Collections;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
@@ -20,6 +21,11 @@ namespace SashimiBoy.EquipmentShopTests
             "Assets/_SashimiBoy/Art/Generated/Materials/EquipmentShop/";
         private const string ScenePath =
             "Assets/_SashimiBoy/Scenes/EquipmentShop.unity";
+        private const string OwnerPrefabPath =
+            PrefabRoot + "PF_EquipmentShop_EquipmentShopOwner.prefab";
+        private const string GalleryScenePath =
+            "Assets/_SashimiBoy/Art/Generated/Scenes/" +
+            "EquipmentShopAssetGallery.unity";
 
         private static readonly Regex TrailingWhitespaceRegex = new Regex(
             @"[ \t]+(?=\r?$)",
@@ -72,6 +78,25 @@ namespace SashimiBoy.EquipmentShopTests
                             "EquipmentShop material.");
                     }
                 }
+            }
+        }
+
+        [Test]
+        public void OwnerWrapperAndGallery_KeepHeadAboveFeet()
+        {
+            AssertOwnerUpright(
+                AssetDatabase.LoadAssetAtPath<GameObject>(OwnerPrefabPath));
+            Scene scene = EditorSceneManager.OpenScene(
+                GalleryScenePath,
+                OpenSceneMode.Additive);
+            try
+            {
+                AssertOwnerUpright(
+                    FindNamed(scene, "EquipmentShopOwner_Gallery"));
+            }
+            finally
+            {
+                EditorSceneManager.CloseScene(scene, true);
             }
         }
 
@@ -142,6 +167,7 @@ namespace SashimiBoy.EquipmentShopTests
                     FindNamed(scene, "EquipmentInspectAnchor_Instrument"),
                     Is.Not.Null);
                 AssertStorySightline(scene);
+                AssertOwnerClearsCounter(scene);
 
                 AssertPosition(
                     scene,
@@ -207,13 +233,17 @@ namespace SashimiBoy.EquipmentShopTests
         }
 
         [Test]
-        public void BuildEquipmentShopArtPassBatch_TwoRunsKeepSceneBytes()
+        public void BuildEquipmentShopArtPassBatch_TwoRunsKeepSceneAndOwnerBytes()
         {
             string absoluteScenePath = AssetPathToAbsolutePath(ScenePath);
+            string absoluteOwnerPath = AssetPathToAbsolutePath(OwnerPrefabPath);
             byte[] committedBytes = File.ReadAllBytes(absoluteScenePath);
+            byte[] committedOwnerBytes = File.ReadAllBytes(absoluteOwnerPath);
             string committedHash = ComputeSha256(committedBytes);
             byte[] firstRunBytes = null;
             byte[] secondRunBytes = null;
+            byte[] firstRunOwnerBytes = null;
+            byte[] secondRunOwnerBytes = null;
 
             try
             {
@@ -221,12 +251,20 @@ namespace SashimiBoy.EquipmentShopTests
                     "SashimiBoy.EditorTools.EquipmentShopArtPassPipeline",
                     "BuildEquipmentShopArtPassBatch");
                 AssertGeneratedYamlHasNoTrailingWhitespace();
+                AssertOwnerUpright(
+                    AssetDatabase.LoadAssetAtPath<GameObject>(OwnerPrefabPath));
+                AssertOwnerClearsCounter(SceneManager.GetActiveScene());
                 firstRunBytes = File.ReadAllBytes(absoluteScenePath);
+                firstRunOwnerBytes = File.ReadAllBytes(absoluteOwnerPath);
                 RuntimeReflection.InvokeStatic(
                     "SashimiBoy.EditorTools.EquipmentShopArtPassPipeline",
                     "BuildEquipmentShopArtPassBatch");
                 AssertGeneratedYamlHasNoTrailingWhitespace();
+                AssertOwnerUpright(
+                    AssetDatabase.LoadAssetAtPath<GameObject>(OwnerPrefabPath));
+                AssertOwnerClearsCounter(SceneManager.GetActiveScene());
                 secondRunBytes = File.ReadAllBytes(absoluteScenePath);
+                secondRunOwnerBytes = File.ReadAllBytes(absoluteOwnerPath);
             }
             finally
             {
@@ -251,6 +289,89 @@ namespace SashimiBoy.EquipmentShopTests
                 secondRunBytes,
                 Is.EqualTo(committedBytes),
                 "The second generator run changed the committed scene bytes.");
+            Assert.That(
+                firstRunOwnerBytes,
+                Is.EqualTo(committedOwnerBytes),
+                "The first generator run changed the committed owner prefab bytes.");
+            Assert.That(
+                secondRunOwnerBytes,
+                Is.EqualTo(committedOwnerBytes),
+                "The second generator run changed the committed owner prefab bytes.");
+        }
+
+        private static Vector3 AssertOwnerUpright(GameObject owner)
+        {
+            Assert.That(owner, Is.Not.Null, "Owner wrapper is missing.");
+            MeshFilter[] filters = owner.GetComponentsInChildren<MeshFilter>(true);
+            Assert.That(filters.Length, Is.EqualTo(1),
+                "The approved owner source has one unrigged mesh.");
+            MeshFilter filter = filters[0];
+            Mesh mesh = filter.sharedMesh;
+            Assert.That(mesh, Is.Not.Null);
+
+            // The approved FBX has no bones. Its unrotated mesh has feet at
+            // local Z=0 and the crown at Z=0.9795227. Use actual vertex bands
+            // so a tall but inverted bounding box cannot satisfy this test.
+            Assert.That(mesh.bounds.min.z, Is.EqualTo(0f).Within(0.001f));
+            Assert.That(mesh.bounds.max.z,
+                Is.EqualTo(0.9795227f).Within(0.001f));
+            Vector3 headSum = Vector3.zero;
+            Vector3 feetSum = Vector3.zero;
+            int headCount = 0;
+            int feetCount = 0;
+            using (Mesh.MeshDataArray data =
+                   MeshUtility.AcquireReadOnlyMeshData(mesh))
+            using (NativeArray<Vector3> vertices = new NativeArray<Vector3>(
+                       data[0].vertexCount, Allocator.Temp))
+            {
+                data[0].GetVertices(vertices);
+                foreach (Vector3 vertex in vertices)
+                {
+                    float height = Mathf.InverseLerp(
+                        mesh.bounds.min.z, mesh.bounds.max.z, vertex.z);
+                    if (height >= 0.85f)
+                    {
+                        headSum += vertex;
+                        headCount++;
+                    }
+                    else if (height <= 0.1f)
+                    {
+                        feetSum += vertex;
+                        feetCount++;
+                    }
+                }
+            }
+
+            Assert.That(headCount, Is.GreaterThan(0));
+            Assert.That(feetCount, Is.GreaterThan(0));
+            Vector3 head = filter.transform.TransformPoint(headSum / headCount);
+            Vector3 feet = filter.transform.TransformPoint(feetSum / feetCount);
+            Assert.That(head.y - feet.y, Is.GreaterThan(1.4f),
+                owner.name + " has its head below its feet or is not upright.");
+            Assert.That(feet.y - owner.transform.position.y,
+                Is.InRange(-0.01f, 0.2f),
+                owner.name + " feet are not grounded at the wrapper pivot.");
+            AssertPositiveScale(owner.transform);
+            return head;
+        }
+
+        private static void AssertOwnerClearsCounter(Scene scene)
+        {
+            Vector3 head = AssertOwnerUpright(FindNamed(scene, "Owner_Canonical"));
+            Vector3 entry =
+                FindNamed(scene, "StoryObjectiveSightline_FromEntry")
+                    .transform.position;
+            Vector3 sightline = head - entry;
+            Ray ray = new Ray(entry, sightline.normalized);
+            foreach (string name in new[] { "CounterFace", "CounterTop" })
+            {
+                Renderer counter = FindNamed(scene, name).GetComponent<Renderer>();
+                Assert.That(head.y, Is.GreaterThan(counter.bounds.max.y + 0.25f),
+                    "The owner's head is hidden below " + name + ".");
+                bool intersects = counter.bounds.IntersectRay(ray, out float distance);
+                Assert.That(intersects && distance < sightline.magnitude, Is.False,
+                    name + " hides the owner's head from the entrance sightline.");
+            }
         }
 
         private static void AssertPrefabPath(

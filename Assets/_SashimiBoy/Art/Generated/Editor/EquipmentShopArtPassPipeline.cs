@@ -35,6 +35,8 @@ namespace SashimiBoy.EditorTools
             PreviewsRoot + "/EquipmentShopAssetGallery.png";
         private const string MainPreviewPath =
             PreviewsRoot + "/EquipmentShopArtPass.png";
+        private const string EntrancePreviewPath =
+            PreviewsRoot + "/EquipmentShopEntrance.png";
         private const string ReportPath =
             ReportsRoot + "/EquipmentShopArtPassReport.md";
         private const string ArtRootName = "EquipmentShopArtRoot";
@@ -45,7 +47,10 @@ namespace SashimiBoy.EditorTools
 
         private static readonly AssetSpec[] AssetSpecs =
         {
-            AssetSpec.Character("EquipmentShopOwner", 1.85f, 2048, 180f),
+            // This source mesh is +Z from feet to head. Bounds alone cannot
+            // distinguish upright from inverted; -90 X maps that axis to +Y.
+            AssetSpec.Character("EquipmentShopOwner", 1.85f, 2048,
+                new Vector3(-90f, 180f, 0f)),
             AssetSpec.Furniture("WoodenSofa", 2.4f, 2048),
             AssetSpec.Equipment("EffectsPedals", 0.55f, 1024),
             AssetSpec.Equipment("ElectronicDrumKit", 2.15f, 2048),
@@ -174,12 +179,8 @@ namespace SashimiBoy.EditorTools
                 int fallbackSlots = AssignGeneratedMaterials(
                     imported,
                     materials);
-                Vector3 wrapperRotation = spec.AutoUpright
-                    ? FindUprightRotation(root, modelContainer)
-                    : Vector3.zero;
-                wrapperRotation.y = spec.WrapperYaw;
                 modelContainer.transform.localRotation =
-                    Quaternion.Euler(wrapperRotation);
+                    Quaternion.Euler(spec.WrapperRotation);
 
                 Bounds rawBounds = RendererBounds(root);
                 float largest = Mathf.Max(
@@ -829,7 +830,9 @@ namespace SashimiBoy.EditorTools
                     results[i].Spec,
                     results[i].Spec.AssetId + "_Gallery",
                     position + new Vector3(0f, 0.24f, 0f),
-                    new Vector3(0f, 180f, 0f));
+                    results[i].Spec.AssetId == "EquipmentShopOwner"
+                        ? Vector3.zero
+                        : new Vector3(0f, 180f, 0f));
                 CreateLabel(
                     cell,
                     results[i].Spec.AssetId + "_Label",
@@ -1239,6 +1242,12 @@ namespace SashimiBoy.EditorTools
             try
             {
                 RenderPreview(camera, MainPreviewPath);
+                Transform entry =
+                    FindNamed(scene, "StoryObjectiveSightline_FromEntry")
+                        .transform;
+                cameraObject.transform.SetPositionAndRotation(
+                    entry.position, entry.rotation);
+                RenderPreview(camera, EntrancePreviewPath);
             }
             finally
             {
@@ -1293,7 +1302,10 @@ namespace SashimiBoy.EditorTools
                 ImportAssetOptions.ForceSynchronousImport);
             TextureImporter importer =
                 AssetImporter.GetAtPath(assetPath) as TextureImporter;
-            if (importer != null)
+            if (importer != null &&
+                (importer.textureType != TextureImporterType.Default ||
+                 !importer.sRGBTexture || importer.mipmapEnabled ||
+                 importer.isReadable || importer.maxTextureSize != 2048))
             {
                 importer.textureType = TextureImporterType.Default;
                 importer.sRGBTexture = true;
@@ -1647,38 +1659,6 @@ namespace SashimiBoy.EditorTools
             return filter != null ? filter.sharedMesh : null;
         }
 
-        private static Vector3 FindUprightRotation(
-            GameObject root,
-            GameObject modelContainer)
-        {
-            Vector3[] candidates =
-            {
-                Vector3.zero,
-                new Vector3(90f, 0f, 0f),
-                new Vector3(-90f, 0f, 0f),
-                new Vector3(0f, 0f, 90f),
-                new Vector3(0f, 0f, -90f),
-            };
-            Vector3 best = Vector3.zero;
-            float bestScore = float.MinValue;
-            for (int i = 0; i < candidates.Length; i++)
-            {
-                modelContainer.transform.localRotation =
-                    Quaternion.Euler(candidates[i]);
-                Bounds bounds = RendererBounds(root);
-                float horizontal = Mathf.Max(bounds.size.x, bounds.size.z);
-                float score = bounds.size.y / Mathf.Max(0.0001f, horizontal);
-                if (score > bestScore)
-                {
-                    bestScore = score;
-                    best = candidates[i];
-                }
-            }
-
-            modelContainer.transform.localRotation = Quaternion.identity;
-            return best;
-        }
-
         private static TextureKind GetTextureKind(string path)
         {
             string name = Path.GetFileNameWithoutExtension(path).ToLowerInvariant();
@@ -1798,6 +1778,7 @@ namespace SashimiBoy.EditorTools
             NormalizeSerializedFile(AssetPathToAbsolutePath(GalleryScenePath));
             NormalizeSerializedFiles(MaterialsRoot, "*.mat");
             NormalizeSerializedFiles(PackedMapsRoot, "*.meta");
+            NormalizeSerializedFiles(PreviewsRoot, "*.meta");
             NormalizeSerializedFiles(PrefabsRoot, "*.prefab");
         }
 
@@ -1909,23 +1890,20 @@ namespace SashimiBoy.EditorTools
                 string sourceFolder,
                 float targetLargestDimension,
                 int maximumTextureSize,
-                float wrapperYaw,
-                bool autoUpright)
+                Vector3 wrapperRotation)
             {
                 AssetId = assetId;
                 SourceFolder = sourceFolder;
                 TargetLargestDimension = targetLargestDimension;
                 MaximumTextureSize = maximumTextureSize;
-                WrapperYaw = wrapperYaw;
-                AutoUpright = autoUpright;
+                WrapperRotation = wrapperRotation;
             }
 
             public string AssetId { get; private set; }
             public string SourceFolder { get; private set; }
             public float TargetLargestDimension { get; private set; }
             public int MaximumTextureSize { get; private set; }
-            public float WrapperYaw { get; private set; }
-            public bool AutoUpright { get; private set; }
+            public Vector3 WrapperRotation { get; private set; }
             public string ModelPath
             {
                 get { return SourceFolder + "/Models/" + AssetId + ".fbx"; }
@@ -1947,15 +1925,14 @@ namespace SashimiBoy.EditorTools
                 string assetId,
                 float targetLargestDimension,
                 int maximumTextureSize,
-                float wrapperYaw)
+                Vector3 wrapperRotation)
             {
                 return new AssetSpec(
                     assetId,
                     "Assets/_SashimiBoy/Art/Source/Characters/" + assetId,
                     targetLargestDimension,
                     maximumTextureSize,
-                    wrapperYaw,
-                    true);
+                    wrapperRotation);
             }
 
             public static AssetSpec Furniture(
@@ -1969,8 +1946,7 @@ namespace SashimiBoy.EditorTools
                     "EquipmentShop/Furniture/" + assetId,
                     targetLargestDimension,
                     maximumTextureSize,
-                    0f,
-                    false);
+                    Vector3.zero);
             }
 
             public static AssetSpec Equipment(
@@ -1984,8 +1960,7 @@ namespace SashimiBoy.EditorTools
                     "EquipmentShop/Equipment/" + assetId,
                     targetLargestDimension,
                     maximumTextureSize,
-                    0f,
-                    false);
+                    Vector3.zero);
             }
         }
 
