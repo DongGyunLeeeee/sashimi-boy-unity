@@ -59,8 +59,10 @@ Review every value. The configuration contract includes:
   `%LOCALAPPDATA%\SashimiBoyAutomation\Runs`;
 - `ArtifactRetentionDays`: `14` by default;
 - absolute canonical, local `.exe` paths for PowerShell, Unity, Git, Git LFS,
-  GitHub CLI, and Codex exactly as shown in `Config.example.json`; bare names
-  and PATH lookup are rejected;
+  GitHub CLI, and the reviewed Codex installation source exactly as shown in
+  `Config.example.json`; bare names and PATH lookup are rejected. The installer
+  copies Codex to a SHA-keyed protected Program Files distribution and the
+  installed configuration references only that copy;
 - `GitAuthorName` and `GitAuthorEmail`, the fixed identity written only to each
   new run clone for Host-owned commits and synthetic merges;
 - `Security.AuthorizedPrAuthors`, the explicit PR-author allowlist;
@@ -72,12 +74,19 @@ Review every value. The configuration contract includes:
 
 Environment-variable expansion in path values is performed by the Host only
 where the schema allows it. Do not add tokens, passwords, Codex credentials,
-save data, arbitrary command strings, or user-profile files to the config.
+save data, arbitrary command strings, endpoint/proxy/CA/auth-location fields,
+or user-profile files to the config. Configuration JSON is an exact recursive
+schema: duplicate keys (including case variants), unknown keys, wrong shapes,
+and secret-bearing fields are rejected. The installed copy is a canonical
+allowlisted projection, never the raw source bytes.
 
 ## Validate before installation
 
-Run the parser, offline fixture suite, environment smoke, installer preview,
-and orchestrator preview from the repository root:
+Run the parser, offline fixture suite, environment smoke, and orchestrator
+preview from the repository root. Run the installer preview only through the
+Owner-pinned Step 1 launcher in
+[Install the scheduled task](#install-the-scheduled-task); even a DryRun
+bootstrap must be authenticated before PowerShell begins executing it.
 
 ```powershell
 $Pwsh = 'C:\Program Files\PowerShell\7\pwsh.exe'
@@ -89,10 +98,6 @@ $ConfigPath = Join-Path $env:LOCALAPPDATA 'SashimiBoyAutomation\Config.json'
 & $Pwsh -NoLogo -NoProfile -NonInteractive -File `
   .\Tools\HostAutomation\Test-SashimiHostAutomation.ps1 `
   -ConfigPath $ConfigPath -EnvironmentSmoke
-
-& $Pwsh -NoLogo -NoProfile -NonInteractive -File `
-  .\Tools\HostAutomation\Install-SashimiHostAutomation.ps1 `
-  -ConfigPath $ConfigPath -DryRun
 
 & $Pwsh -NoLogo -NoProfile -NonInteractive -File `
   .\Tools\HostAutomation\Invoke-SashimiHostOrchestrator.ps1 `
@@ -130,6 +135,11 @@ First review the installer DryRun output. It must describe exactly:
 - PowerShell Core version `7.5.0` or newer;
 - a SHA-256 content-addressed bundle below
   `C:\Program Files\SashimiBoyAutomation\Bundles`;
+- a SHA-256-keyed Codex distribution below
+  `C:\Program Files\SashimiBoyAutomation\CodexDistributions`;
+- a deterministic lowercase 64-character `BundleId` covering the runtime,
+  canonical config, executable identities, Codex source identity, and installer
+  bootstrap identity;
 - a `HostIntegrity.json` manifest covering the exact runtime scripts, staged
   `Config.json`, and generated `ExecutableIdentity.json`, including file
   lengths and SHA-256 hashes;
@@ -144,15 +154,19 @@ First review the installer DryRun output. It must describe exactly:
 The installer rejects missing, relative, non-file, or reparse-point executable
 targets, hashes all six tools, validates the source files without following a
 reparse point, computes the complete bundle identity, and renders the Task
-Scheduler XML. The protected entry point rechecks every executable before it
-loads Common or configuration; Common rechecks a bound executable immediately
-before each launch.
+Scheduler XML. It prepares bundle and Codex payloads in marker-owned sibling
+staging directories, verifies their closed file sets and ACLs, and makes them
+visible only by atomic rename. The protected entry point rechecks every
+executable before it loads Common or configuration; Common rechecks a bound
+executable immediately before each launch. Codex additionally requires a
+no-reparse, non-user-writable Program Files ancestry and is held under a
+no-write/no-delete-sharing lease through process creation.
 Installer and uninstaller startup additionally require the stable PowerShell
 process and matching `PSHOME`, replace `PSModulePath` with the exact PowerShell
 and Windows system module roots, verify Microsoft Authenticode/code-signing
 provenance and unchanged hashes for required Security and ScheduledTasks module
 files, and resolve the ACL/scheduler commands by module-qualified name.
-`-DryRun` reports the bundle, hashes, ACL plan, detected PowerShell version,
+`-DryRun` reports the bundle ID, bootstrap identity, hashes, ACL plan, detected PowerShell version,
 and task XML without creating a directory, changing an ACL, or registering a
 task. Its result therefore keeps `Staged`, `AclVerified`, and `HashesVerified`
 false even though source hashes were computed. Outside `-DryRun`, it stages
@@ -166,20 +180,247 @@ To update code or configuration, review and run the installer again; changed
 content creates a new bundle ID, after which the installer replaces the task
 definition. Older bundles are retained for deliberate Owner inspection.
 
-After the preview matches that contract, the Owner can register the real task:
+Before preview, obtain the exact installer SHA-256 recorded with the reviewed
+PR/main commit and keep it outside the mutable checkout. After the preview
+matches that contract, the Owner records its exact `BundleId` and supplies both
+values unchanged to the install. The installer's self-reported hash is a
+cross-check only; a script cannot establish its own trust before PowerShell has
+already read and begun executing it.
+
+Run both steps from a newly opened, elevated, exact
+`C:\Program Files\PowerShell\7\pwsh.exe -NoLogo -NoProfile` session as `02031`.
+Paste the following reviewed function directly into that session. Do not save
+it as another repository script: a file-backed launcher would only move the
+unverified-bootstrap problem to that new mutable wrapper.
 
 ```powershell
-$Pwsh = 'C:\Program Files\PowerShell\7\pwsh.exe'
-$ConfigPath = Join-Path $env:LOCALAPPDATA 'SashimiBoyAutomation\Config.json'
+function Invoke-OwnerPinnedInstaller {
+  [CmdletBinding()]
+  param(
+    [Parameter(Mandatory)][string]$InstallerPath,
+    [Parameter(Mandatory)][string[]]$InstallerArgumentList,
+    [Parameter(Mandatory)]
+    [ValidatePattern('^[0-9a-f]{64}$')][string]$ExpectedInstallerSha256
+  )
 
-& $Pwsh -NoLogo -NoProfile -NonInteractive -File `
-  .\Tools\HostAutomation\Install-SashimiHostAutomation.ps1 `
-  -ConfigPath $ConfigPath
+  $TrustedPwsh = 'C:\Program Files\PowerShell\7\pwsh.exe'
+  if (-not [string]::Equals(
+      [IO.Path]::GetFullPath([Environment]::ProcessPath),
+      $TrustedPwsh,
+      [StringComparison]::OrdinalIgnoreCase)) {
+    throw "Run the Owner launcher only inside exact protected PowerShell: $TrustedPwsh"
+  }
+
+  $Installer = [IO.Path]::GetFullPath($InstallerPath)
+  if (-not [IO.File]::Exists($Installer)) {
+    throw 'The reviewed installer path is not an existing file.'
+  }
+
+  $Lease = $null
+  $Process = $null
+  $Document = $null
+  try {
+    # FileShare.Read permits the child to read -File, but denies every writer
+    # and delete/rename handle. Keep this external lease through child exit.
+    $Lease = [IO.FileStream]::new(
+      $Installer,
+      [IO.FileMode]::Open,
+      [IO.FileAccess]::Read,
+      [IO.FileShare]::Read)
+
+    $Cursor = $Installer
+    while (-not [string]::IsNullOrWhiteSpace($Cursor)) {
+      if (([IO.File]::GetAttributes($Cursor) -band
+          [IO.FileAttributes]::ReparsePoint) -ne 0) {
+        throw 'The installer path or an ancestor is a reparse point.'
+      }
+      $Parent = [IO.Path]::GetDirectoryName($Cursor)
+      if ([string]::IsNullOrWhiteSpace($Parent) -or
+          [string]::Equals($Parent, $Cursor, [StringComparison]::OrdinalIgnoreCase)) {
+        break
+      }
+      $Cursor = $Parent
+    }
+
+    $Lease.Position = 0
+    $ExternalSha256 = [Convert]::ToHexString(
+      [Security.Cryptography.SHA256]::HashData($Lease)).ToLowerInvariant()
+    if ($ExpectedInstallerSha256 -cne $ExternalSha256) {
+      throw 'The installer differs from the independently retained Owner hash.'
+    }
+
+    # Recheck the lexical path after acquiring the lease and immediately before
+    # process creation. The open leaf prevents a non-admin rename/replacement.
+    $Cursor = $Installer
+    while (-not [string]::IsNullOrWhiteSpace($Cursor)) {
+      if (([IO.File]::GetAttributes($Cursor) -band
+          [IO.FileAttributes]::ReparsePoint) -ne 0) {
+        throw 'The installer path changed to a reparse traversal.'
+      }
+      $Parent = [IO.Path]::GetDirectoryName($Cursor)
+      if ([string]::IsNullOrWhiteSpace($Parent) -or
+          [string]::Equals($Parent, $Cursor, [StringComparison]::OrdinalIgnoreCase)) {
+        break
+      }
+      $Cursor = $Parent
+    }
+
+    $Start = [Diagnostics.ProcessStartInfo]::new()
+    $Start.FileName = $TrustedPwsh
+    $Start.UseShellExecute = $false
+    $Start.CreateNoWindow = $true
+    $Start.RedirectStandardOutput = $true
+    $Start.RedirectStandardError = $true
+    $Start.StandardOutputEncoding = [Text.UTF8Encoding]::new($false)
+    $Start.StandardErrorEncoding = [Text.UTF8Encoding]::new($false)
+    $Start.Environment.Clear()
+
+    $Windows = [Environment]::GetFolderPath([Environment+SpecialFolder]::Windows)
+    $System = [Environment]::GetFolderPath([Environment+SpecialFolder]::System)
+    $LocalAppData = [Environment]::GetFolderPath(
+      [Environment+SpecialFolder]::LocalApplicationData)
+    $SafeEnvironment = [ordered]@{
+      SystemRoot = $Windows
+      WINDIR = $Windows
+      ProgramData = [Environment]::GetFolderPath(
+        [Environment+SpecialFolder]::CommonApplicationData)
+      ProgramFiles = [Environment]::GetFolderPath(
+        [Environment+SpecialFolder]::ProgramFiles)
+      'ProgramFiles(x86)' = [Environment]::GetFolderPath(
+        [Environment+SpecialFolder]::ProgramFilesX86)
+      CommonProgramFiles = [Environment]::GetFolderPath(
+        [Environment+SpecialFolder]::CommonProgramFiles)
+      'CommonProgramFiles(x86)' = [Environment]::GetFolderPath(
+        [Environment+SpecialFolder]::CommonProgramFilesX86)
+      USERPROFILE = [Environment]::GetFolderPath(
+        [Environment+SpecialFolder]::UserProfile)
+      LOCALAPPDATA = $LocalAppData
+      APPDATA = [Environment]::GetFolderPath(
+        [Environment+SpecialFolder]::ApplicationData)
+      TEMP = [IO.Path]::Combine($LocalAppData, 'Temp')
+      TMP = [IO.Path]::Combine($LocalAppData, 'Temp')
+      COMSPEC = [IO.Path]::Combine($System, 'cmd.exe')
+      PATH = [string]::Join([IO.Path]::PathSeparator, @(
+        [IO.Path]::GetDirectoryName($TrustedPwsh), $System, $Windows))
+      PSModulePath = [string]::Join([IO.Path]::PathSeparator, @(
+        [IO.Path]::Combine([IO.Path]::GetDirectoryName($TrustedPwsh), 'Modules'),
+        [IO.Path]::Combine($Windows, 'System32', 'WindowsPowerShell', 'v1.0', 'Modules')))
+    }
+    foreach ($Name in $SafeEnvironment.Keys) {
+      if (-not [string]::IsNullOrWhiteSpace([string]$SafeEnvironment[$Name])) {
+        $Start.Environment[[string]$Name] = [string]$SafeEnvironment[$Name]
+      }
+    }
+
+    foreach ($Argument in @(
+        '-NoLogo', '-NoProfile', '-NonInteractive', '-File', $Installer) +
+        $InstallerArgumentList) {
+      [void]$Start.ArgumentList.Add([string]$Argument)
+    }
+
+    $Process = [Diagnostics.Process]::new()
+    $Process.StartInfo = $Start
+    if (-not $Process.Start()) { throw 'Protected PowerShell did not start.' }
+    $StdoutTask = $Process.StandardOutput.ReadToEndAsync()
+    $StderrTask = $Process.StandardError.ReadToEndAsync()
+    $Process.WaitForExit()
+    $Stdout = $StdoutTask.GetAwaiter().GetResult()
+    $Stderr = $StderrTask.GetAwaiter().GetResult()
+    if ($Process.ExitCode -ne 0) {
+      throw "Pinned installer exited $($Process.ExitCode): $Stderr"
+    }
+
+    $Document = [Text.Json.JsonDocument]::Parse($Stdout)
+    $Root = $Document.RootElement
+    $Success = $Root.GetProperty('Success').GetBoolean()
+    $ReportedExitCode = $Root.GetProperty('ExitCode').GetInt32()
+    $BundleId = $Root.GetProperty('BundleId').GetString()
+    $ReportedInstallerSha256 =
+      $Root.GetProperty('InstallerBootstrapSha256').GetString()
+    if (-not $Success -or $ReportedExitCode -ne 0) {
+      throw 'Installer JSON did not report Success=true and ExitCode=0.'
+    }
+    if ($ReportedInstallerSha256 -cne $ExternalSha256) {
+      throw 'Installer self-report differs from the external open-handle hash.'
+    }
+    if ($BundleId -cnotmatch '^[0-9a-f]{64}$') {
+      throw 'Installer JSON did not contain an exact BundleId.'
+    }
+
+    [pscustomobject][ordered]@{
+      Success = $true
+      BundleId = $BundleId
+      ExternalInstallerSha256 = $ExternalSha256
+      InstallerBootstrapSha256 = $ReportedInstallerSha256
+      ResultJson = $Root.GetRawText()
+    }
+  }
+  finally {
+    if ($null -ne $Document) { $Document.Dispose() }
+    if ($null -ne $Process) { $Process.Dispose() }
+    if ($null -ne $Lease) { $Lease.Dispose() }
+  }
+}
 ```
 
-Run this command in an elevated PowerShell 7 window as `02031`; staging and
-ACL-protecting the Program Files bundle requires administrative authority. Do
-not substitute another task identity or provide a password to the task.
+Step 1 — from the exact commit whose PR/main diff was reviewed, acquire the
+external lease and run the real installer DryRun through `pwsh -File`:
+
+```powershell
+$InstallerPath = [IO.Path]::GetFullPath(
+  '.\Tools\HostAutomation\Install-SashimiHostAutomation.ps1')
+$ConfigPath = Join-Path $env:LOCALAPPDATA 'SashimiBoyAutomation\Config.json'
+$OrchestratorPath = [IO.Path]::GetFullPath(
+  '.\Tools\HostAutomation\Invoke-SashimiHostOrchestrator.ps1')
+$ReviewedInstallerSha256 = '<exact SHA-256 from the independent review evidence>'
+
+$Preview = Invoke-OwnerPinnedInstaller `
+  -InstallerPath $InstallerPath `
+  -ExpectedInstallerSha256 $ReviewedInstallerSha256 `
+  -InstallerArgumentList @(
+    '-ConfigPath', $ConfigPath,
+    '-OrchestratorPath', $OrchestratorPath,
+    '-DryRun')
+$Preview.ResultJson
+$Preview | Select-Object BundleId, ExternalInstallerSha256,
+  InstallerBootstrapSha256
+```
+
+Confirm `Success=True`, inspect `ResultJson`, and confirm the independently
+reviewed, external-handle, and reported installer hashes are all identical.
+Record the exact lowercase 64-character `BundleId` outside the mutable checkout.
+
+Step 2 — type or paste those two reviewed values explicitly. The second call
+must not derive either authorization value from a new installer self-report:
+
+```powershell
+$ExpectedBundleId = '<exact reviewed BundleId from step 1>'
+$ExpectedInstallerSha256 = $ReviewedInstallerSha256
+if ($ExpectedBundleId -cnotmatch '^[0-9a-f]{64}$' -or
+    $ExpectedInstallerSha256 -cnotmatch '^[0-9a-f]{64}$') {
+  throw 'Both exact Owner authorization identities are required.'
+}
+
+$Install = Invoke-OwnerPinnedInstaller `
+  -InstallerPath $InstallerPath `
+  -ExpectedInstallerSha256 $ExpectedInstallerSha256 `
+  -InstallerArgumentList @(
+    '-ConfigPath', $ConfigPath,
+    '-OrchestratorPath', $OrchestratorPath,
+    '-ExpectedBundleId', $ExpectedBundleId,
+    '-ExpectedInstallerSha256', $ExpectedInstallerSha256)
+$Install.ResultJson
+```
+
+The external lease prevents a task-user process from replacing, rewriting, or
+deleting the installer between the independent hash and any of its execution.
+The second call refuses a changed installer before process creation; the
+installer then refuses any changed payload before Program Files creation, ACL
+changes, or Task Scheduler. An actor already holding local administrator or
+SYSTEM authority remains outside this same-administrator threat boundary. Do
+not substitute another task identity, provide a stored password, or recalculate
+and accept new identities after an unexpected mismatch; return to reviewed
+source and investigate first.
 
 Read-only inspection commands are:
 
@@ -211,14 +452,24 @@ One task invocation performs these phases:
 5. Create a marker-owned run directory and clone into
    `Runs\<run-id>\Repository`.
 6. Revalidate the pin and execute exactly one Developer or Reviewer workflow.
-7. Validate Codex JSONL and its explicit result, then run all required Host
-   checks.
-8. Revalidate the authenticated actor and complete pin immediately before every
+7. Validate bounded original Codex JSONL and its explicit result in memory
+   before redaction or persistence, then run all required Host checks.
+8. Revalidate complete Git-control state after each Unity stage and immediately
+   before commit, LFS, and push. Use the configured canonical repository URL
+   and an exact source/destination refspec, never mutable `origin.pushurl`.
+   Git LFS pull/push also uses the immutable canonical `/info/lfs` endpoint;
+   repository-local LFS URLs, custom transfer agents, and `.lfsconfig` are
+   terminal failures, and implicit smudging is disabled before the pinned pull.
+   Every `.git` control entry except object/LFS payload data is manifested;
+   operation pseudorefs/directories, lock files, unknown control state, and
+   reparses fail closed, while optional locks and automatic maintenance are
+   disabled for Host inspection.
+9. Revalidate the authenticated actor and complete pin immediately before every
    remote mutation. Developer delivery also pins the fetched `origin/main` SHA
    and stops before any later delivery push or status transition if the live
    main ref advances.
-9. Publish sanitized evidence and only the role-authorized transition.
-10. Record the terminal state and clean run-owned processes and eligible
+10. Publish sanitized evidence and only the role-authorized transition.
+11. Record the terminal state and clean run-owned processes and eligible
     temporary resources in `finally`.
 
 `State\RunState.json` is the current machine-readable state;
@@ -241,6 +492,14 @@ contains only sequence/type metadata and hashes; `CodexProcessSummary.json`
 contains exit state, byte counts, and hashes. Raw Codex stdout, stderr, command
 text, and agent messages are deliberately not retained. Unity evidence is
 under `Artifacts\Unity`, whose summary is `UnityValidation.Summary.json`.
+That public tree is a recursive exact manifest. Sanitized logs are limited to
+8 MiB each, strict NUnit XML to 16 MiB, summaries/diffs/snapshots to 4 MiB,
+allowlisted PNG screenshot or preview hooks to 25 MiB, and the complete tree to
+128 MiB. The Host measures promoted files twice under no-write-sharing handles.
+An unexpected, changing, oversized, invalid-UTF-8, missing, unregistered, or
+reparse entry removes the entire public Unity tree through an atomic State
+quarantine and no-reparse-traversal deletion before the terminal failure is
+reported.
 Mode-dependent evidence may include
 `DraftPullRequest.md`, `HandoffCompletion.md`, `Failure.md`,
 `ReviewFinding.md`, `ReviewFixHandoff.md`, `OwnerVerificationChecklist.md`, or
@@ -261,8 +520,9 @@ infrastructure failure.
 A retry never relaxes pin checks, changes queue priority, or falls through to a
 second Issue. Product decisions, missing source assets, and other non-transient
 blockers are not retried as infrastructure errors. Failed work remains in its
-current Project state, normally `In Progress` for Developer delivery failures
-or `Review` for Reviewer infrastructure failures.
+current Project state: New Work remains `Ready` until untrusted execution and
+exact Git delivery checks finish, Developer resume work remains `In Progress`,
+and Reviewer infrastructure failures remain `Review`.
 
 ## Cancel an active run
 
@@ -297,6 +557,8 @@ Before a Developer push or Reviewer transition, the Host inspects:
 - Issue-specific generator validation and determinism when configured;
 - native exit code and strict NUnit XML agreement;
 - timeout and crash evidence;
+- bounded strict-UTF-8 Unity logs/XML and the recursive exact public-artifact
+  manifest, including per-file and 128 MiB total quotas;
 - `git diff --check`;
 - Git LFS availability and pointer integrity;
 - missing, duplicate, and orphan `.meta` files and duplicate GUIDs;
@@ -307,9 +569,9 @@ Before a Developer push or Reviewer transition, the Host inspects:
 Git processes do not inherit system or user-global Git configuration. The Host
 supplies a fixed isolated configuration stack that disables hooks, fsmonitor,
 external diff/editor/signing/proxy helpers and pins the exact GitHub CLI
-credential helper and Git LFS executable. Each run clone receives only the
-configured Git author name and email. Unity LFS inspection invokes the exact
-bound `GitLfsExecutable` directly.
+credential helper, Git LFS executable, and canonical LFS download/upload URL.
+Each run clone receives only the configured Git author name and email. Unity LFS
+inspection invokes the exact bound `GitLfsExecutable` directly.
 
 Zero tests, skipped tests, missing XML, malformed or negative counts,
 native/XML disagreement, unexpected Console errors, and out-of-scope mutation
@@ -344,6 +606,13 @@ Unity raw validation state has a closed cleanup allowlist. Any unexpected file,
 directory, or reparse point fails validation and is preserved outside the
 publishable `Artifacts` tree for investigation; the Host does not delete,
 publish, or silently normalize it.
+
+Public Unity artifacts have a separate closed-tree rule. If their exact
+manifest, stable hash/length, encoding, per-file quota, total quota, or
+no-reparse invariant fails, the Host atomically renames that entire public root
+into the run's State directory and deletes the quarantine without following
+reparse targets. If either rename or guarded deletion cannot be confirmed, the
+run remains failed and no artifact from that root is publishable.
 
 ## Uninstall
 

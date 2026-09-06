@@ -38,6 +38,20 @@ The protected entry point rehashes all six binaries before loading Common or
 configuration; Common matches the installed config to those identities and
 rehashes the exact bound path immediately before every launch. A PATH shadow or
 changed length or hash fails before the process can cross the mutation boundary.
+The installed Codex identity is not the task-user-writable installation source:
+the installer copies those reviewed bytes into a hash-keyed Program Files
+distribution. Runtime validation rejects a Codex executable or any distribution
+ancestor with a reparse point. The only accepted shape is exactly
+`CodexDistributions\<bound-lowercase-sha256>\codex.exe`. The executable and
+every ancestor through the protected `SashimiBoyAutomation` install root must
+be owned by Administrators, SYSTEM, or TrustedInstaller and must have no allow
+ACE granting the task user, Users, Authenticated Users, Everyone, or another
+untrusted principal write, modify, delete, change-permissions, take-ownership,
+or full-control rights. Immediately
+before launch the Host opens the exact file without write/delete sharing,
+rehashes that handle, holds it through process creation, and verifies identity
+again. This prevents task-user replacement; local Administrator/SYSTEM
+compromise remains explicitly outside the same-admin threat boundary.
 
 The task's `HighestAvailable` parent is an integrity bootstrap only. Before
 loading `HostAutomation.Common.ps1`, parsing `Config.json`, or invoking any
@@ -117,7 +131,11 @@ role:
 - Draft PR creation only for Developer New Work;
 - evidence comments and exact allowed Project transitions.
 
-Configuration import rejects any `Repository`, `ProjectOwner`, `ProjectNumber`,
+Configuration is strict UTF-8 under an exact recursive schema. Import rejects
+duplicate keys (including case variants), unknown or wrong-shaped fields, and
+secret-, endpoint-, proxy-, CA-, or authentication-location-bearing fields.
+The installer emits a canonical ordered projection rather than staging the raw
+input bytes. Import also rejects any `Repository`, `ProjectOwner`, `ProjectNumber`,
 `DefaultBranch`, `RemoteUrl`, `RunRoot`, or global mutex value outside the fixed
 production contract. Developer clones also compare `origin` with the exact
 configured canonical URL before delivery. The mandatory protected-path set
@@ -131,6 +149,13 @@ transports, then pins the exact GitHub CLI credential helper and Git LFS
 clean/smudge/process executable. Each new clone receives only the configured
 author name/email. User-global and repository-controlled executable helpers are
 therefore not authority at a Host Git boundary.
+
+Git LFS download and upload routing is separately bound at command scope to
+`https://github.com/DongGyunLeeeee/sashimi-boy-unity.git/info/lfs` for both
+`origin` and the Host-only `sashimi-canonical` remote. The Developer refuses any
+repository-local `lfs.url`, `lfs.pushurl`, remote-specific LFS URL, custom
+transfer-agent setting, or committed `.lfsconfig`. Implicit checkout and merge
+smudging remains disabled until the explicit pinned LFS pull.
 
 Before every Git or GitHub CLI launch, the shared process boundary removes all
 inherited credential-, token-, secret-, key-, password-, askpass-, and
@@ -174,17 +199,18 @@ state, title/body content digest, `head.sha`, and `head.ref`:
 - before a PR creation or evidence comment;
 - before every Project transition.
 
-For resume modes, the only permitted push destination is the originally
+For resume modes, the only permitted push destination is the configured
+canonical repository URL and originally
 pinned, freshly revalidated existing head ref:
 
 ```text
-git push origin HEAD:<existing-pr-head-ref>
+git push https://github.com/DongGyunLeeeee/sashimi-boy-unity.git <exact-delivery-sha>:refs/heads/<existing-pr-head-ref>
 ```
 
 Any mismatch stops the run. It is never resolved by force pushing, rebasing,
 changing the destination, or selecting a replacement Issue.
 
-Developer delivery separately pins the exact fetched `origin/main` commit used
+Developer delivery separately pins the exact fetched main commit used
 for New Work branch creation or a resume merge. Before delivery mutations it
 queries `refs/heads/main` directly; if the live main SHA advances, the run may
 publish independently revalidated sanitized failure evidence but performs no
@@ -204,29 +230,41 @@ Developer run targets non-interactive `codex exec` with:
 - `windows.sandbox=unelevated`;
 - workspace-write network access disabled;
 - user configuration ignored under strict configuration;
+- user/project exec-policy rules ignored;
+- both shell and unified-command execution capabilities disabled;
 - a Host-generated output schema.
 
 Reviewer analysis is read-only. Codex is never given Host GitHub mutation
 authority. The adapter fails if the installed CLI cannot enforce the required
 sandbox/approval contract.
 
-Every Codex `command_execution` start and completion is audited before the
-turn can succeed. The audit permits only explicitly recognized read-only
-inspection commands. It rejects Git mutation and unknown Git subcommands,
-write-capable Git LFS operations, `gh` and direct GitHub API access, Task
-Scheduler operations, unapproved interpreters and script-file wrappers,
-network clients, encoded or dynamically evaluated PowerShell, redirection,
-PowerShell providers, home aliases, rooted/UNC or parent-traversal paths,
-direct `.git`/`.codex` and credential/profile paths, Git options that can
-execute external helpers, ripgrep preprocessors, opaque grouping, and
-unrecognized pipeline segments.
+Command execution is prevented at launch, before model-controlled text can
+reach a shell. A single no-op `exec --help` capability probe uses the complete
+no-user-config, strict-config, ignored-rules, no-shell, and no-unified-exec
+security prefix. Its zero exit proves that the global options parse in their
+production positions, and its bounded help text proves the required exec
+options. No root-level `--version` or unprotected help probe is launched.
+An unsupported setting fails closed. Every probe and execution launch also
+uses the same hermetic environment and rejects repository-scoped `.codex`
+state before process creation. Any Codex `command_execution` event is a
+terminal policy violation. The remaining event parser is defense in depth and
+does not trust leaf names, PATH lookup, relative executables, aliases,
+functions, modules, call/background/pipeline-chain operators, scriptblocks,
+`cmd.exe` metacharacters or nested shells, Git/GitHub mutation, Task Scheduler,
+interpreters, profiles, `.git` control paths, or paths outside the approved
+workspace surface.
 Production edits must arrive through the workspace file-change capability;
 Git, GitHub, Unity, compilation, tests, and publication remain Host work.
-This event audit is defense in depth. The unelevated, network-disabled OS
-sandbox remains the primary Codex containment boundary.
+The no-command capability and unelevated, network-disabled OS sandbox are
+mandatory independent containment boundaries; post-run audit is not treated as
+prevention.
 
-Process exit code is necessary but insufficient. The Host parses every JSONL
-record in memory, rejects malformed JSON, `error`, `turn.failed`, approval
+Process exit code is necessary but insufficient. The Host reads Codex stdout
+and stderr under fixed byte/event/line quotas, strict-decodes the original
+UTF-8 in memory, and performs path, command, and result security validation
+before redaction. Every decoded JSON property name and string is audited too,
+so Unicode escaping cannot conceal a forbidden rooted/profile path. It rejects
+malformed JSON, `error`, `turn.failed`, approval
 requests, command mismatches, and unfinished command events, and requires one
 explicit schema-valid result. Host validation must also pass. A final message
 claiming success cannot override either JSONL or Host evidence.
@@ -262,6 +300,24 @@ removes the record only after confirmation. An identity mismatch or
 unconfirmed termination preserves the ledger, workspace, and evidence.
 `Get-Process Unity` is a secondary diagnostic, not an authority to kill
 arbitrary Unity processes, and CIM process enumeration is not a mandatory gate.
+Every Unity stage is additionally placed in a kill-on-close Windows job. After
+the direct stage process exits, the Host closes/terminates that job as required,
+confirms that its active-process count is zero, and only then trusts Git state.
+
+The Developer snapshots complete Git control state before untrusted execution
+and compares it after every Codex/Unity boundary and immediately before commit,
+LFS, and push. The snapshot covers canonical git/common/worktree directories,
+HEAD symbolic and resolved state, all refs, index bytes and staged tree,
+repository configuration and extensions, hooks paths/content, object
+alternates, all remote fetch/push URLs, attribute/filter inputs, worktree
+identity, expected branch, upstream, and every `.git` control file/directory
+except object and LFS payload stores. Merge, cherry-pick, revert, rebase,
+bisect, notes-merge, sequencer, lock, unknown-control, oversized-control, and
+reparse state fail even at baseline. Host Git inspection fixes
+`GIT_OPTIONAL_LOCKS=0` and disables automatic GC/maintenance so read-only
+checks do not rewrite the state being protected. Any drift is a terminal
+security failure; nothing is silently restored and the failure path cannot
+publish a comment or transition Project state.
 
 Recursive cleanup requires all of these to agree immediately before deletion:
 
@@ -285,15 +341,19 @@ publishable `Artifacts` tree, and diagnostics omit its path and contents.
 `Config.json` contains no secret. Authentication is obtained through the
 current user's approved GitHub CLI, Git credential, and Codex credential
 stores. Task registration uses `InteractiveToken` and stores no password.
-Before starting Codex, the Host replaces the inherited process environment
-with a narrow operational allowlist and removes token-, password-, secret-,
-credential-, and key-shaped variables. In particular, `OPENAI_API_KEY`,
-`CODEX_API_KEY`, GitHub tokens, askpass helpers, SSH agent variables, cloud
-credentials, and authenticated proxy values are not inherited. Codex runtime
+Before starting Codex or any Codex capability probe, the Host replaces
+the inherited process environment with fixed values reconstructed from trusted
+OS locations. It removes token-, password-, secret-, credential-, and
+key-shaped variables plus every casing of `OPENAI_BASE_URL`, `OPENAI_API_BASE`,
+`ALL_PROXY`, `HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY`, `SSL_CERT_FILE`,
+`SSL_CERT_DIR`, `CURL_CA_BUNDLE`, `REQUESTS_CA_BUNDLE`,
+`NODE_EXTRA_CA_CERTS`, `CODEX_HOME`, comparable endpoint/config/auth-location
+overrides, and all other nonessential ambient variables. Configuration has no
+model endpoint field. Codex runtime
 authentication must therefore use its current-user credential store;
-environment-only API-key authentication is intentionally unsupported. Profile
-locator variables needed to locate that store remain available, but command
-auditing forbids Codex from reading profile or credential content.
+environment-only API-key authentication is intentionally unsupported. Stable
+OS profile locations, if required by the credential-store implementation, are
+re-derived by the Host and are never accepted from ambient task variables.
 Environment stripping, path scanning, and redaction are defense in depth; they
 do not turn same-user Unity/editor execution into an OS sandbox.
 
@@ -319,6 +379,15 @@ Prefer allowlisted evidence files over denylist-only redaction: structured run
 state, sanitized command summaries, Unity logs and result XML, validation
 summaries, focused diffs, screenshots/previews requested by validation, and
 cleanup diagnostics. Treat artifacts as sensitive even after sanitization.
+Unity raw text is read under a no-write-sharing handle, bounded, and decoded as
+strict UTF-8 before sanitization. The public Unity tree then permits only
+Host-registered paths and directories with stable hashes and lengths: 8 MiB per
+log, 16 MiB per XML, 4 MiB per metadata artifact, 25 MiB per PNG hook, and
+128 MiB total. It is measured twice at each boundary. Any unknown, changing,
+oversized, invalid, missing, or reparse entry terminally invalidates the whole
+tree; the Host atomically quarantines it under run-owned State and removes it
+without traversing a reparse target, rather than retaining suspect bytes under
+`Artifacts`.
 The structured Unity summary is
 `Artifacts\Unity\UnityValidation.Summary.json`. Under `Artifacts\Codex`,
 `CodexEvents.jsonl` retains only event sequencing/types and hashes of item IDs
@@ -328,8 +397,9 @@ messages are never written as artifacts. Only the validated, constrained
 `CodexResult.json` may retain model-authored text alongside its schema. Failure
 diagnostics use stable Host codes, bounded numeric/boolean metadata, UTF-8 byte
 counts, and SHA-256 hashes only; probe stderr, event IDs, command tokens, and
-rejected result values are never copied into an error or failure artifact. The
-live capability version line is syntax- and length-validated before retention.
+rejected result values are never copied into an error or failure artifact. Live
+runs identify Codex by the protected executable's SHA-256 instead of launching
+an ambient-config-capable version probe.
 Top-level `RunResult.json` and orchestrator output retain only allowlisted
 selection/runner metadata; they omit Issue/PR bodies and titles, conversations,
 findings, `pendingCommand`, and raw linked-child streams.
@@ -353,6 +423,31 @@ at the staged entry point, staged configuration, and integrity manifest inside
 one verified bundle, never the editable source checkout or source config. A
 code or configuration update requires another reviewed installer run; do not
 grant the task identity write access or edit an installed bundle in place.
+Live installation additionally requires both the exact lowercase `BundleId`
+from the reviewed-checkout DryRun and an installer SHA-256 retained with the
+independent review before that DryRun. The Owner's exact in-memory launcher
+computes the current hash from an open
+read handle before process creation, compares it to the installer SHA-256
+retained with the independent review before preview, requires the installer's
+self-report to match it, starts only the protected PowerShell path with a
+separate `-File` argument, and retains a `FileShare.Read` lease through child
+exit. The lease allows reads but denies write/delete/rename sharing; it
+therefore closes the swap window before PowerShell reads or rereads the
+bootstrap. On install, the launcher compares the same retained external hash
+again before starting PowerShell and the installer receives it as
+`ExpectedInstallerSha256`.
+
+The `BundleId` includes the installer bootstrap, canonical config, runtime,
+executable identities, and Codex distribution source. The bootstrap hash is
+checked again at installer entry and during snapshot capture; any mismatch is
+checked before Program Files creation, ACL changes, or the single typed
+Task-Scheduler registration boundary. New payloads are verified in marker-owned
+sibling staging directories and exposed only by atomic rename. Another
+file-backed wrapper is not a trust anchor because it would need its own
+pre-execution verification; the Owner therefore pastes the reviewed launcher
+body into a fresh exact protected PowerShell `-NoProfile` session. A process
+already holding administrator or SYSTEM authority remains outside this local
+same-administrator boundary.
 The bootstrap suite validates this privilege boundary with parser/static order,
 source-tree fail-closed, fixture, and DryRun checks. It deliberately does not
 register the task or execute a real elevated-parent/linked-token relaunch;

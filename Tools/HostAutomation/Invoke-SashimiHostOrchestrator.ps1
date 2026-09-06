@@ -187,31 +187,63 @@ function Get-OrchestratorSidValue {
     return ([Security.Principal.NTAccount]::new([string]$Identity)).Translate([Security.Principal.SecurityIdentifier]).Value
 }
 
+function Assert-OrchestratorProtectedAclState {
+    param(
+        [Parameter(Mandatory = $true)][object]$Acl,
+        [Parameter(Mandatory = $true)][bool]$IsContainer,
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][Security.Principal.SecurityIdentifier]$UserSid
+    )
+
+    $administrators='S-1-5-32-544'; $system='S-1-5-18'
+    if (-not $acl.AreAccessRulesProtected) { throw "Protected host ACL inherits permissions: $Path" }
+    if ((Get-OrchestratorSidValue $acl.Owner) -cne $administrators) { throw "Protected host path is not owned by Administrators: $Path" }
+    $allowedSids=@($administrators,$system,$UserSid.Value)
+    $rulesBySid=@{}
+    $expectedInheritance=if ($IsContainer) {
+        [Security.AccessControl.InheritanceFlags]::ContainerInherit -bor [Security.AccessControl.InheritanceFlags]::ObjectInherit
+    }
+    else { [Security.AccessControl.InheritanceFlags]::None }
+    $expectedUserRights=[Security.AccessControl.FileSystemRights]::ReadAndExecute -bor [Security.AccessControl.FileSystemRights]::Synchronize
+    $granularWriteMask=[Security.AccessControl.FileSystemRights]::WriteData -bor
+        [Security.AccessControl.FileSystemRights]::AppendData -bor
+        [Security.AccessControl.FileSystemRights]::WriteExtendedAttributes -bor
+        [Security.AccessControl.FileSystemRights]::WriteAttributes -bor
+        [Security.AccessControl.FileSystemRights]::DeleteSubdirectoriesAndFiles -bor
+        [Security.AccessControl.FileSystemRights]::Delete -bor
+        [Security.AccessControl.FileSystemRights]::ChangePermissions -bor
+        [Security.AccessControl.FileSystemRights]::TakeOwnership
+    foreach ($rule in @($acl.Access)) {
+        $sid=Get-OrchestratorSidValue $rule.IdentityReference
+        if ($rule.IsInherited -or $rule.AccessControlType -ne [Security.AccessControl.AccessControlType]::Allow -or $allowedSids -cnotcontains $sid) { throw "Protected host ACL contains an unexpected access rule for '$sid': $Path" }
+        if ($rulesBySid.ContainsKey($sid)) { throw "Protected host ACL contains duplicate access rules for '$sid': $Path" }
+        if ($rule.InheritanceFlags -ne $expectedInheritance -or $rule.PropagationFlags -ne [Security.AccessControl.PropagationFlags]::None) {
+            throw "Protected host ACL contains incorrect inheritance flags for '$sid': $Path"
+        }
+        if ($sid -ceq $UserSid.Value) {
+            if (($rule.FileSystemRights -band $granularWriteMask) -ne 0) { throw "Task user has write access to protected host path: $Path" }
+            if ($rule.FileSystemRights -ne $expectedUserRights) { throw "Task user must have exactly ReadAndExecute plus Synchronize on protected host path: $Path" }
+        }
+        elseif ($rule.FileSystemRights -ne [Security.AccessControl.FileSystemRights]::FullControl) {
+            throw "Protected host ACL does not grant exact FullControl to '$sid': $Path"
+        }
+        $rulesBySid[$sid]=$rule
+    }
+    if ($rulesBySid.Count -ne 3 -or @($allowedSids | Where-Object { -not $rulesBySid.ContainsKey($_) }).Count -ne 0) {
+        throw "Protected host ACL is missing a required exact access rule: $Path"
+    }
+}
+
 function Assert-OrchestratorProtectedAcl {
     param(
         [Parameter(Mandatory = $true)][string]$Path,
         [Parameter(Mandatory = $true)][Security.Principal.SecurityIdentifier]$UserSid
     )
+
     $item = Get-Item -LiteralPath $Path -Force -ErrorAction Stop
     if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { throw "Protected host path is a reparse point: $Path" }
     $acl = Get-Acl -LiteralPath $Path -ErrorAction Stop
-    $administrators='S-1-5-32-544'; $system='S-1-5-18'
-    if (-not $acl.AreAccessRulesProtected) { throw "Protected host ACL inherits permissions: $Path" }
-    if ((Get-OrchestratorSidValue $acl.Owner) -cne $administrators) { throw "Protected host path is not owned by Administrators: $Path" }
-    $allowedSids=@($administrators,$system,$UserSid.Value)
-    $fullControlSids=[Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
-    $userRead=$false
-    $writeMask=[Security.AccessControl.FileSystemRights]::Write -bor [Security.AccessControl.FileSystemRights]::Modify -bor [Security.AccessControl.FileSystemRights]::Delete -bor [Security.AccessControl.FileSystemRights]::ChangePermissions -bor [Security.AccessControl.FileSystemRights]::TakeOwnership
-    foreach ($rule in @($acl.Access)) {
-        $sid=Get-OrchestratorSidValue $rule.IdentityReference
-        if ($rule.IsInherited -or $rule.AccessControlType -ne [Security.AccessControl.AccessControlType]::Allow -or $allowedSids -cnotcontains $sid) { throw "Protected host ACL contains an unexpected access rule for '$sid': $Path" }
-        if ($sid -ceq $UserSid.Value) {
-            if (($rule.FileSystemRights -band $writeMask) -ne 0) { throw "Task user has write access to protected host path: $Path" }
-            if (($rule.FileSystemRights -band [Security.AccessControl.FileSystemRights]::ReadAndExecute) -eq [Security.AccessControl.FileSystemRights]::ReadAndExecute) { $userRead=$true }
-        }
-        elseif (($rule.FileSystemRights -band [Security.AccessControl.FileSystemRights]::FullControl) -eq [Security.AccessControl.FileSystemRights]::FullControl) { [void]$fullControlSids.Add($sid) }
-    }
-    if (-not $userRead -or -not $fullControlSids.Contains($administrators) -or -not $fullControlSids.Contains($system)) { throw "Protected host ACL is missing a required rule: $Path" }
+    Assert-OrchestratorProtectedAclState -Acl $acl -IsContainer ([bool]$item.PSIsContainer) -Path $Path -UserSid $UserSid
 }
 
 function Get-OrchestratorFileSha256 {
@@ -255,6 +287,122 @@ function Get-OrchestratorTextSha256 {
     param([Parameter(Mandatory = $true)][AllowEmptyString()][string]$Text)
     $bytes=[Text.UTF8Encoding]::new($false).GetBytes($Text)
     return ([Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($bytes))).ToLowerInvariant()
+}
+
+function Get-OrchestratorJsonObjectMap {
+    param(
+        [Parameter(Mandatory = $true)][Text.Json.JsonElement]$Element,
+        [Parameter(Mandatory = $true)][string]$Context
+    )
+
+    if ($Element.ValueKind -ne [Text.Json.JsonValueKind]::Object) { throw "$Context must be a JSON object." }
+    $map=[Collections.Generic.Dictionary[string,Text.Json.JsonElement]]::new([StringComparer]::Ordinal)
+    $names=[Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    foreach ($property in $Element.EnumerateObject()) {
+        $name=[string]$property.Name
+        if (-not $names.Add($name)) { throw "$Context contains a duplicate or case-variant property '$name'." }
+        if (-not $map.TryAdd($name,$property.Value.Clone())) { throw "$Context contains duplicate property '$name'." }
+    }
+    return ,$map
+}
+
+function Assert-OrchestratorExactJsonObject {
+    param(
+        [Parameter(Mandatory = $true)][Text.Json.JsonElement]$Element,
+        [Parameter(Mandatory = $true)][string]$Context,
+        [Parameter(Mandatory = $true)][string[]]$PropertyNames
+    )
+
+    $map=Get-OrchestratorJsonObjectMap -Element $Element -Context $Context
+    if ($map.Count -ne $PropertyNames.Count) { throw "$Context must contain exactly: $([string]::Join(', ', $PropertyNames))." }
+    foreach ($propertyName in $PropertyNames) {
+        if (-not $map.ContainsKey($propertyName)) { throw "$Context is missing property '$propertyName'." }
+    }
+    foreach ($actualName in @($map.Keys)) {
+        if ($PropertyNames -cnotcontains $actualName) { throw "$Context contains unknown property '$actualName'." }
+    }
+    return ,$map
+}
+
+function Assert-OrchestratorJsonKind {
+    param(
+        [Parameter(Mandatory = $true)][Text.Json.JsonElement]$Element,
+        [Parameter(Mandatory = $true)][Text.Json.JsonValueKind]$Kind,
+        [Parameter(Mandatory = $true)][string]$Context
+    )
+
+    if ($Element.ValueKind -ne $Kind) { throw "$Context must be JSON $($Kind.ToString().ToLowerInvariant())." }
+}
+
+function Assert-OrchestratorJsonInt64 {
+    param(
+        [Parameter(Mandatory = $true)][Text.Json.JsonElement]$Element,
+        [Parameter(Mandatory = $true)][string]$Context
+    )
+
+    Assert-OrchestratorJsonKind -Element $Element -Kind Number -Context $Context
+    $integer=[int64]0
+    if (-not $Element.TryGetInt64([ref]$integer)) { throw "$Context must be a 64-bit JSON integer." }
+}
+
+function Assert-OrchestratorIntegrityManifestJsonSchema {
+    param([Parameter(Mandatory = $true)][string]$JsonText)
+
+    $document=$null
+    try {
+        $options=[Text.Json.JsonDocumentOptions]::new()
+        $options.AllowTrailingCommas=$false
+        $options.CommentHandling=[Text.Json.JsonCommentHandling]::Disallow
+        $options.MaxDepth=16
+        $document=[Text.Json.JsonDocument]::Parse($JsonText,$options)
+        $root=Assert-OrchestratorExactJsonObject -Element $document.RootElement -Context 'IntegrityManifest' -PropertyNames @(
+            'SchemaVersion','BundleId','MinimumPowerShellVersion','EntryPoint','ConfigFile','ExecutableIdentityFile',
+            'InstallerBootstrap','SourceConfig','CodexDistribution','Files'
+        )
+        Assert-OrchestratorJsonInt64 -Element $root['SchemaVersion'] -Context 'IntegrityManifest.SchemaVersion'
+        foreach ($name in @('BundleId','MinimumPowerShellVersion','EntryPoint','ConfigFile','ExecutableIdentityFile')) {
+            Assert-OrchestratorJsonKind -Element $root[$name] -Kind String -Context "IntegrityManifest.$name"
+        }
+        foreach ($name in @('InstallerBootstrap','SourceConfig')) {
+            $metadata=Assert-OrchestratorExactJsonObject -Element $root[$name] -Context "IntegrityManifest.$name" -PropertyNames @('Sha256','Length')
+            Assert-OrchestratorJsonKind -Element $metadata['Sha256'] -Kind String -Context "IntegrityManifest.$name.Sha256"
+            Assert-OrchestratorJsonInt64 -Element $metadata['Length'] -Context "IntegrityManifest.$name.Length"
+        }
+        $codex=Assert-OrchestratorExactJsonObject -Element $root['CodexDistribution'] -Context 'IntegrityManifest.CodexDistribution' -PropertyNames @('Sha256','Length','FileName')
+        Assert-OrchestratorJsonKind -Element $codex['Sha256'] -Kind String -Context 'IntegrityManifest.CodexDistribution.Sha256'
+        Assert-OrchestratorJsonInt64 -Element $codex['Length'] -Context 'IntegrityManifest.CodexDistribution.Length'
+        Assert-OrchestratorJsonKind -Element $codex['FileName'] -Kind String -Context 'IntegrityManifest.CodexDistribution.FileName'
+        Assert-OrchestratorJsonKind -Element $root['Files'] -Kind Array -Context 'IntegrityManifest.Files'
+        $index=0
+        foreach ($element in $root['Files'].EnumerateArray()) {
+            $entry=Assert-OrchestratorExactJsonObject -Element $element -Context "IntegrityManifest.Files[$index]" -PropertyNames @('RelativePath','Sha256','Length')
+            foreach ($name in @('RelativePath','Sha256')) { Assert-OrchestratorJsonKind -Element $entry[$name] -Kind String -Context "IntegrityManifest.Files[$index].$name" }
+            Assert-OrchestratorJsonInt64 -Element $entry['Length'] -Context "IntegrityManifest.Files[$index].Length"
+            $index++
+        }
+    }
+    finally { if ($null -ne $document) { $document.Dispose() } }
+}
+
+function Get-OrchestratorBundleIdentityFromManifest {
+    param(
+        [Parameter(Mandatory = $true)][object]$Manifest,
+        [Parameter(Mandatory = $true)][object[]]$Entries
+    )
+
+    foreach ($metadataName in @('InstallerBootstrap','SourceConfig','CodexDistribution')) {
+        $metadata=$Manifest.$metadataName
+        if ($null -eq $metadata -or [string]$metadata.Sha256 -cnotmatch '^[0-9a-f]{64}$' -or [int64]$metadata.Length -lt 1) {
+            throw "Integrity manifest has invalid '$metadataName' provenance."
+        }
+    }
+    if ([string]$Manifest.CodexDistribution.FileName -cne 'codex.exe') { throw 'Integrity manifest Codex distribution filename must be codex.exe.' }
+    $identityLines=@(
+        "installer-bootstrap`0$([string]$Manifest.InstallerBootstrap.Sha256)`0$([int64]$Manifest.InstallerBootstrap.Length)",
+        "source-config`0$([string]$Manifest.SourceConfig.Sha256)`0$([int64]$Manifest.SourceConfig.Length)",
+        "source-codex`0$([string]$Manifest.CodexDistribution.Sha256)`0$([int64]$Manifest.CodexDistribution.Length)"
+    ) + @($Entries | Sort-Object RelativePath | ForEach-Object { "$([string]$_.RelativePath)`0$([string]$_.Sha256)`0$([int64]$_.Length)" })
+    return Get-OrchestratorTextSha256 ([string]::Join("`n",$identityLines))
 }
 
 function Import-OrchestratorTrustedCoreModules {
@@ -735,8 +883,13 @@ function Assert-OrchestratorRuntimeIntegrity {
     $userSid=$identity.User
     foreach ($protectedPath in @($installRoot,$bundlesRoot,$bundleRoot,$expectedManifest,$expectedExecutableIdentity)) { Assert-OrchestratorProtectedAcl $protectedPath $userSid }
 
-    $manifestText=[IO.File]::ReadAllText((Get-OrchestratorFullPath $expectedManifest -MustExist),[Text.Encoding]::UTF8)
-    try { $manifest=$manifestText | ConvertFrom-Json -Depth 64 -DateKind String -ErrorAction Stop } catch { throw "Integrity manifest is invalid UTF-8 JSON: $($_.Exception.Message)" }
+    try {
+        $manifestBytes=[IO.File]::ReadAllBytes((Get-OrchestratorFullPath $expectedManifest -MustExist))
+        $manifestText=[Text.UTF8Encoding]::new($false,$true).GetString($manifestBytes)
+        Assert-OrchestratorIntegrityManifestJsonSchema -JsonText $manifestText
+        $manifest=$manifestText | ConvertFrom-Json -Depth 64 -DateKind String -ErrorAction Stop
+    }
+    catch { throw "Integrity manifest is not valid exact-schema UTF-8 JSON: $($_.Exception.Message)" }
     if ([int]$manifest.SchemaVersion -ne 1 -or [string]$manifest.BundleId -cne $bundleId -or
         [string]$manifest.MinimumPowerShellVersion -cne $script:MinimumPowerShellVersion.ToString() -or
         [string]$manifest.EntryPoint -cne 'Invoke-SashimiHostOrchestrator.ps1' -or [string]$manifest.ConfigFile -cne 'Config.json' -or
@@ -756,8 +909,9 @@ function Assert-OrchestratorRuntimeIntegrity {
     $actualItems=@(Get-ChildItem -LiteralPath $bundleRoot -Force -ErrorAction Stop)
     $expectedNames=@($script:RequiredBundleFiles)+@('HostIntegrity.json')
     if (@($actualItems | Where-Object { $_.PSIsContainer }).Count -ne 0 -or @($actualItems | Where-Object { -not $_.PSIsContainer }).Count -ne $expectedNames.Count -or @($actualItems | Where-Object { -not $_.PSIsContainer -and $expectedNames -cnotcontains $_.Name }).Count -ne 0) { throw 'Installed runtime bundle contains an unexpected or missing filesystem entry.' }
-    $identityText=[string]::Join("`n",@($entries | ForEach-Object { "$($_.RelativePath)`0$($_.Sha256)`0$($_.Length)" }))
-    if ((Get-OrchestratorTextSha256 $identityText) -cne $bundleId) { throw 'Installed runtime bundle identity hash does not match its manifest.' }
+    if ((Get-OrchestratorBundleIdentityFromManifest -Manifest $manifest -Entries $entries) -cne $bundleId) {
+        throw 'Installed runtime bundle identity hash does not match its manifest provenance and file set.'
+    }
     $verifiedExecutableCount=Assert-OrchestratorExecutableIdentity -Path $expectedExecutableIdentity
     return [pscustomobject]@{
         Required=$required; Verified=$true; BundleId=$bundleId; Manifest='HostIntegrity.json'

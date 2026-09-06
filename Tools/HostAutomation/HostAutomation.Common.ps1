@@ -18,6 +18,9 @@ $global:OutputEncoding = $script:SashimiUtf8NoBom
 $script:SashimiHostSchemaVersion = 1
 $script:SashimiExpectedRepository = 'DongGyunLeeeee/sashimi-boy-unity'
 $script:SashimiExpectedRemoteUrl = 'https://github.com/DongGyunLeeeee/sashimi-boy-unity.git'
+$script:SashimiExpectedGitLfsUrl = 'https://github.com/DongGyunLeeeee/sashimi-boy-unity.git/info/lfs'
+$script:SashimiExpectedGitAuthorName = 'DongGyunLeeeee'
+$script:SashimiExpectedGitAuthorEmail = '83210475+DongGyunLeeeee@users.noreply.github.com'
 $script:SashimiExpectedProjectOwner = 'DongGyunLeeeee'
 $script:SashimiExpectedProjectNumber = 1
 $script:SashimiTaskName = 'SASHIMI BOY Host Orchestrator'
@@ -29,6 +32,12 @@ $script:SashimiExecutableProperties = @('CodexExecutable','GitExecutable','GitLf
 $script:SashimiExecutableIdentityActive = $false
 $script:SashimiBoundExecutableIdentities = @()
 $script:SashimiConfiguredExecutablePaths = @{}
+$script:SashimiProtectedInstallRoot = [IO.Path]::Combine(
+    [Environment]::GetFolderPath([Environment+SpecialFolder]::ProgramFiles),
+    'SashimiBoyAutomation')
+$script:SashimiProtectedCodexDistributionRoot = [IO.Path]::Combine(
+    $script:SashimiProtectedInstallRoot,
+    'CodexDistributions')
 
 function ConvertTo-SashimiJson {
     [CmdletBinding()]
@@ -395,12 +404,342 @@ function Assert-SashimiBoundExecutableIdentity {
     }
 }
 
+function Test-SashimiExecutableIdentityActive {
+    [CmdletBinding()]
+    param()
+
+    return [bool]$script:SashimiExecutableIdentityActive
+}
+
+function Get-SashimiFileSystemAccessRules {
+    [CmdletBinding()]
+    param([Parameter(Mandatory = $true)][string]$Path)
+
+    $item = Get-Item -LiteralPath $Path -Force -ErrorAction Stop
+    $sections = [Security.AccessControl.AccessControlSections]::Access
+    $security = if ($item.PSIsContainer) {
+        [IO.FileSystemAclExtensions]::GetAccessControl([IO.DirectoryInfo]$item, $sections)
+    }
+    else {
+        [IO.FileSystemAclExtensions]::GetAccessControl([IO.FileInfo]$item, $sections)
+    }
+    return @($security.GetAccessRules($true, $true, [Security.Principal.SecurityIdentifier]))
+}
+
+function Get-SashimiFileSystemOwnerSid {
+    [CmdletBinding()]
+    param([Parameter(Mandatory = $true)][string]$Path)
+
+    $item = Get-Item -LiteralPath $Path -Force -ErrorAction Stop
+    $sections = [Security.AccessControl.AccessControlSections]::Owner
+    $security = if ($item.PSIsContainer) {
+        [IO.FileSystemAclExtensions]::GetAccessControl([IO.DirectoryInfo]$item, $sections)
+    }
+    else {
+        [IO.FileSystemAclExtensions]::GetAccessControl([IO.FileInfo]$item, $sections)
+    }
+    return [string]$security.GetOwner([Security.Principal.SecurityIdentifier]).Value
+}
+
+function Assert-SashimiProtectedCodexExecutable {
+    [CmdletBinding()]
+    param([Parameter(Mandatory = $true)][string]$FilePath)
+
+    $candidate = ConvertTo-SashimiExecutablePath -Name 'CodexExecutable' -Path $FilePath -RequireFile
+    if (-not $script:SashimiExecutableIdentityActive) {
+        if (Test-SashimiHarnessMode) { return $candidate }
+        throw 'A live Codex launch requires the protected executable identity manifest.'
+    }
+
+    $identityEntries = @($script:SashimiBoundExecutableIdentities | Where-Object {
+            [string]$_.Name -ceq 'CodexExecutable' -and
+            [string]::Equals([string]$_.Path, $candidate, [StringComparison]::OrdinalIgnoreCase)
+        })
+    if ($identityEntries.Count -ne 1) {
+        throw 'CodexExecutable is not the exact Codex identity bound by the protected manifest.'
+    }
+
+    $protectedInstallRoot = ConvertTo-SashimiPath -Path $script:SashimiProtectedInstallRoot -AllowMissing -Lexical
+    $protectedRoot = ConvertTo-SashimiPath -Path $script:SashimiProtectedCodexDistributionRoot -AllowMissing -Lexical
+    $expectedProtectedRoot = ConvertTo-SashimiPath -Path (Join-Path $protectedInstallRoot 'CodexDistributions') -AllowMissing -Lexical
+    if (-not (Test-SashimiPathEqual -Left $protectedRoot -Right $expectedProtectedRoot)) {
+        throw 'The protected Codex distribution root is not the exact child of the protected install root.'
+    }
+    $expectedDistributionRoot = ConvertTo-SashimiPath -Path (Join-Path $protectedRoot ([string]$identityEntries[0].Sha256)) -AllowMissing -Lexical
+    $expectedCodexPath = ConvertTo-SashimiPath -Path (Join-Path $expectedDistributionRoot 'codex.exe') -AllowMissing -Lexical
+    if (-not (Test-SashimiPathEqual -Left $candidate -Right $expectedCodexPath)) {
+        throw "CodexExecutable must be the exact content-addressed path '$expectedCodexPath'."
+    }
+    Assert-SashimiNoReparsePoint -Path $candidate
+
+    # Only Windows servicing identities may write the executable or a parent in
+    # the protected distribution. Read/execute ACEs for ordinary users are
+    # expected and do not intersect this deliberately granular write mask.
+    $trustedWriterSids = @(
+        'S-1-5-18',       # LOCAL SYSTEM
+        'S-1-5-32-544',   # BUILTIN\Administrators
+        'S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464' # TrustedInstaller
+    )
+    $writeMask = [Security.AccessControl.FileSystemRights]::WriteData -bor
+        [Security.AccessControl.FileSystemRights]::AppendData -bor
+        [Security.AccessControl.FileSystemRights]::WriteExtendedAttributes -bor
+        [Security.AccessControl.FileSystemRights]::WriteAttributes -bor
+        [Security.AccessControl.FileSystemRights]::DeleteSubdirectoriesAndFiles -bor
+        [Security.AccessControl.FileSystemRights]::Delete -bor
+        [Security.AccessControl.FileSystemRights]::ChangePermissions -bor
+        [Security.AccessControl.FileSystemRights]::TakeOwnership
+    $cursor = $candidate
+    while ($true) {
+        if (-not (Test-Path -LiteralPath $cursor)) { throw "Protected Codex path disappeared: $cursor" }
+        $ownerSid = Get-SashimiFileSystemOwnerSid -Path $cursor
+        if ($trustedWriterSids -cnotcontains $ownerSid) {
+            throw "Protected Codex path is owned by untrusted SID '$ownerSid': $cursor"
+        }
+        foreach ($rule in @(Get-SashimiFileSystemAccessRules -Path $cursor)) {
+            if ($rule.AccessControlType -ne [Security.AccessControl.AccessControlType]::Allow -or
+                (($rule.FileSystemRights -band $writeMask) -eq 0)) {
+                continue
+            }
+            $sid = [string]$rule.IdentityReference.Value
+            if ($trustedWriterSids -cnotcontains $sid) {
+                throw "Protected Codex path grants write-like access to untrusted SID '$sid': $cursor"
+            }
+        }
+        if (Test-SashimiPathEqual -Left $cursor -Right $protectedInstallRoot) { break }
+        $parent = Split-Path -Parent $cursor
+        if ([string]::IsNullOrWhiteSpace($parent) -or
+            -not ((Test-SashimiPathEqual -Left $parent -Right $protectedInstallRoot) -or
+                (Test-SashimiPathWithin -Path $parent -Root $protectedInstallRoot))) {
+            throw 'Protected Codex ancestor walk escaped its protected install root.'
+        }
+        $cursor = $parent
+    }
+    return $candidate
+}
+
+function Open-SashimiExecutableLaunchLease {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)][string]$FilePath,
+        [Parameter(Mandatory = $true)][ValidateSet('Generic','Git','GitHub','Codex','Unity')][string]$Kind
+    )
+
+    $candidate = ConvertTo-SashimiExecutablePath -Name 'Process FilePath' -Path $FilePath -RequireFile
+    if ($Kind -ceq 'Codex') { [void](Assert-SashimiProtectedCodexExecutable -FilePath $candidate) }
+    Assert-SashimiBoundExecutableIdentity -FilePath $candidate
+
+    $stream = $null
+    try {
+        # FileShare.Read lets the image loader read this exact file while
+        # preventing ordinary write/delete replacement until Process.Start has
+        # consumed the path. The subsequent hash is computed from this lease.
+        $stream = [IO.File]::Open($candidate, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)
+        $matches = @($script:SashimiBoundExecutableIdentities | Where-Object {
+                [string]::Equals([string]$_.Path, $candidate, [StringComparison]::OrdinalIgnoreCase)
+            })
+        if ($script:SashimiExecutableIdentityActive -and $matches.Count -lt 1) {
+            throw 'Process FilePath is not one of the executables bound by the protected identity file.'
+        }
+        foreach ($entry in $matches) {
+            $hasher = [Security.Cryptography.SHA256]::Create()
+            try {
+                $stream.Position = 0
+                $currentHash = ([Convert]::ToHexString($hasher.ComputeHash($stream))).ToLowerInvariant()
+            }
+            finally { $hasher.Dispose() }
+            if ([int64]$stream.Length -ne [int64]$entry.Length -or $currentHash -cne [string]$entry.Sha256) {
+                throw "$($entry.Name) changed immediately before process creation; launch refused."
+            }
+        }
+        Assert-SashimiNoReparsePoint -Path $candidate
+        if ($Kind -ceq 'Codex') { [void](Assert-SashimiProtectedCodexExecutable -FilePath $candidate) }
+        return [pscustomobject][ordered]@{ Path = $candidate; Stream = $stream }
+    }
+    catch {
+        if ($null -ne $stream) { $stream.Dispose() }
+        throw
+    }
+}
+
+function Get-SashimiJsonObjectMap {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)][Text.Json.JsonElement]$Element,
+        [Parameter(Mandatory = $true)][string]$Context
+    )
+
+    if ($Element.ValueKind -ne [Text.Json.JsonValueKind]::Object) {
+        throw "$Context must be a JSON object."
+    }
+    $map = [Collections.Generic.Dictionary[string,Text.Json.JsonElement]]::new([StringComparer]::Ordinal)
+    $caseInsensitiveNames = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    foreach ($property in $Element.EnumerateObject()) {
+        $name = [string]$property.Name
+        if (-not $caseInsensitiveNames.Add($name)) {
+            throw "$Context contains a duplicate or case-variant property '$name'."
+        }
+        if (-not $map.TryAdd($name, $property.Value.Clone())) {
+            throw "$Context contains duplicate property '$name'."
+        }
+    }
+    return ,$map
+}
+
+function Assert-SashimiExactJsonObject {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)][Text.Json.JsonElement]$Element,
+        [Parameter(Mandatory = $true)][string]$Context,
+        [Parameter(Mandatory = $true)][string[]]$PropertyNames
+    )
+
+    $map = Get-SashimiJsonObjectMap -Element $Element -Context $Context
+    if ($map.Count -ne $PropertyNames.Count) {
+        throw "$Context must contain exactly: $([string]::Join(', ', $PropertyNames))."
+    }
+    foreach ($propertyName in $PropertyNames) {
+        if (-not $map.ContainsKey($propertyName)) { throw "$Context is missing property '$propertyName'." }
+    }
+    foreach ($actualName in @($map.Keys)) {
+        if ($PropertyNames -cnotcontains $actualName) { throw "$Context contains unknown property '$actualName'." }
+    }
+    return ,$map
+}
+
+function Assert-SashimiJsonKind {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)][Text.Json.JsonElement]$Element,
+        [Parameter(Mandatory = $true)][Text.Json.JsonValueKind]$Kind,
+        [Parameter(Mandatory = $true)][string]$Context
+    )
+
+    if ($Element.ValueKind -ne $Kind) {
+        throw "$Context must be JSON $($Kind.ToString().ToLowerInvariant())."
+    }
+}
+
+function Assert-SashimiJsonInteger {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)][Text.Json.JsonElement]$Element,
+        [Parameter(Mandatory = $true)][string]$Context
+    )
+
+    Assert-SashimiJsonKind -Element $Element -Kind Number -Context $Context
+    $integer = 0
+    if (-not $Element.TryGetInt32([ref]$integer)) { throw "$Context must be a 32-bit JSON integer." }
+}
+
+function Assert-SashimiJsonStringArray {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)][Text.Json.JsonElement]$Element,
+        [Parameter(Mandatory = $true)][string]$Context
+    )
+
+    Assert-SashimiJsonKind -Element $Element -Kind Array -Context $Context
+    $index = 0
+    foreach ($value in $Element.EnumerateArray()) {
+        Assert-SashimiJsonKind -Element $value -Kind String -Context "$Context[$index]"
+        $index++
+    }
+}
+
+function Assert-SashimiHostConfigJsonSchema {
+    [CmdletBinding()]
+    param([Parameter(Mandatory = $true)][string]$JsonText)
+
+    # Configuration is non-secret data. Endpoint, proxy, CA, credential, and
+    # authentication-location controls have no supported schema field, and
+    # recognizable credentials are rejected before object materialization.
+    if ($JsonText -match '(?i)\bBearer\s+[A-Za-z0-9._~+/=-]+' -or
+        $JsonText -match '(?i)\b(?:github_pat_|gh[pousr]_)[A-Za-z0-9_]{8,}' -or
+        $JsonText -match '(?i)\bsk-[A-Za-z0-9_-]{8,}' -or
+        $JsonText -match '(?i)-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----' -or
+        $JsonText -match '(?i)://[^\s/@:"]+:[^\s/@"]+@') {
+        throw 'Configuration contains recognizable credential material.'
+    }
+
+    $document = $null
+    try {
+        $options = [Text.Json.JsonDocumentOptions]::new()
+        $options.AllowTrailingCommas = $false
+        $options.CommentHandling = [Text.Json.JsonCommentHandling]::Disallow
+        $options.MaxDepth = 64
+        $document = [Text.Json.JsonDocument]::Parse($JsonText, $options)
+        $rootNames = @(
+            'SchemaVersion','Repository','ProjectOwner','ProjectNumber','DefaultBranch','RemoteUrl','RunRoot','ArtifactRetentionDays',
+            'GitExecutable','GitLfsExecutable','GitAuthorName','GitAuthorEmail','GitHubCli','CodexExecutable','PowerShellExecutable','UnityExecutable',
+            'ExpectedUnityVersion','MutexName','Task','Timeouts','Retry','Security','IssueValidations'
+        )
+        $root = Assert-SashimiExactJsonObject -Element $document.RootElement -Context 'Config' -PropertyNames $rootNames
+        foreach ($name in @('SchemaVersion','ProjectNumber','ArtifactRetentionDays')) {
+            Assert-SashimiJsonInteger -Element $root[$name] -Context "Config.$name"
+        }
+        foreach ($name in @('Repository','ProjectOwner','DefaultBranch','RemoteUrl','RunRoot','GitExecutable','GitLfsExecutable','GitAuthorName','GitAuthorEmail','GitHubCli','CodexExecutable','PowerShellExecutable','UnityExecutable','ExpectedUnityVersion','MutexName')) {
+            Assert-SashimiJsonKind -Element $root[$name] -Kind String -Context "Config.$name"
+        }
+
+        $task = Assert-SashimiExactJsonObject -Element $root['Task'] -Context 'Config.Task' -PropertyNames @('Name','User','IntervalMinutes','StartWhenAvailable','WakeToRun','MultipleInstances')
+        foreach ($name in @('Name','User','MultipleInstances')) {
+            Assert-SashimiJsonKind -Element $task[$name] -Kind String -Context "Config.Task.$name"
+        }
+        Assert-SashimiJsonInteger -Element $task['IntervalMinutes'] -Context 'Config.Task.IntervalMinutes'
+        foreach ($name in @('StartWhenAvailable','WakeToRun')) {
+            if ($task[$name].ValueKind -notin @([Text.Json.JsonValueKind]::True,[Text.Json.JsonValueKind]::False)) {
+                throw "Config.Task.$name must be JSON boolean."
+            }
+        }
+
+        $timeouts = Assert-SashimiExactJsonObject -Element $root['Timeouts'] -Context 'Config.Timeouts' -PropertyNames @('CodexSeconds','GitSeconds','GitHubSeconds','UnityStageSeconds','GeneratorSeconds')
+        foreach ($name in @($timeouts.Keys)) { Assert-SashimiJsonInteger -Element $timeouts[$name] -Context "Config.Timeouts.$name" }
+        $retry = Assert-SashimiExactJsonObject -Element $root['Retry'] -Context 'Config.Retry' -PropertyNames @('MaximumAttempts','CooldownSeconds')
+        foreach ($name in @($retry.Keys)) { Assert-SashimiJsonInteger -Element $retry[$name] -Context "Config.Retry.$name" }
+
+        $security = Assert-SashimiExactJsonObject -Element $root['Security'] -Context 'Config.Security' -PropertyNames @('AuthorizedPrAuthors','CodexWorkspaceWriteNetworkAccess','ProtectedPathPatterns','ArtifactExclusionPatterns')
+        foreach ($name in @('AuthorizedPrAuthors','ProtectedPathPatterns','ArtifactExclusionPatterns')) {
+            Assert-SashimiJsonStringArray -Element $security[$name] -Context "Config.Security.$name"
+        }
+        if ($security['CodexWorkspaceWriteNetworkAccess'].ValueKind -notin @([Text.Json.JsonValueKind]::True,[Text.Json.JsonValueKind]::False)) {
+            throw 'Config.Security.CodexWorkspaceWriteNetworkAccess must be JSON boolean.'
+        }
+
+        $validationMap = Get-SashimiJsonObjectMap -Element $root['IssueValidations'] -Context 'Config.IssueValidations'
+        foreach ($validationName in @($validationMap.Keys)) {
+            if ($validationName -cnotmatch '^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$' -or
+                $validationName -match '(?i)(?:token|secret|password|credential|proxy|endpoint|certificate|auth|codex.?home|base.?url)') {
+                throw "Config.IssueValidations property '$validationName' has an invalid identifier."
+            }
+            $context = "Config.IssueValidations.$validationName"
+            $definition = Assert-SashimiExactJsonObject -Element $validationMap[$validationName] -Context $context -PropertyNames @('IssueNumber','UnityExecuteMethod','Arguments','DeterminismPaths','ScreenshotPaths','PreviewPaths','AllowedProtectedPathPatterns')
+            Assert-SashimiJsonInteger -Element $definition['IssueNumber'] -Context "$context.IssueNumber"
+            Assert-SashimiJsonKind -Element $definition['UnityExecuteMethod'] -Kind String -Context "$context.UnityExecuteMethod"
+            foreach ($name in @('Arguments','DeterminismPaths','ScreenshotPaths','PreviewPaths','AllowedProtectedPathPatterns')) {
+                Assert-SashimiJsonStringArray -Element $definition[$name] -Context "$context.$name"
+            }
+        }
+    }
+    finally {
+        if ($null -ne $document) { $document.Dispose() }
+    }
+}
+
 function Import-SashimiHostConfig {
     [CmdletBinding()]
     param([Parameter(Mandatory = $true)][string]$ConfigPath)
 
     $normalizedConfigPath = ConvertTo-SashimiPath -Path $ConfigPath
-    $config = Read-SashimiJsonFile -Path $normalizedConfigPath
+    Assert-SashimiNoReparsePoint -Path $normalizedConfigPath
+    try {
+        $configBytes = [IO.File]::ReadAllBytes($normalizedConfigPath)
+        $configText = [Text.UTF8Encoding]::new($false, $true).GetString($configBytes)
+        Assert-SashimiHostConfigJsonSchema -JsonText $configText
+        $config = $configText | ConvertFrom-Json -Depth 64 -DateKind String -ErrorAction Stop
+    }
+    catch {
+        throw "Invalid strict-schema UTF-8 configuration '$normalizedConfigPath': $($_.Exception.Message)"
+    }
     if ([int](Get-SashimiPropertyValue $config 'SchemaVersion' 0) -ne $script:SashimiHostSchemaVersion) {
         throw "Config SchemaVersion must be $script:SashimiHostSchemaVersion."
     }
@@ -442,12 +781,23 @@ function Import-SashimiHostConfig {
     if ([string]$config.PowerShellExecutable -cne $script:SashimiStablePowerShell) {
         throw "PowerShellExecutable must be '$script:SashimiStablePowerShell'."
     }
-    if ([string]::IsNullOrWhiteSpace([string]$config.GitAuthorName) -or [string]$config.GitAuthorName -notmatch '^[^\x00-\x1f\x7f]{1,128}$' -or
-        [string]$config.GitAuthorEmail -notmatch '^[A-Za-z0-9.!#$%&''*+/=?^_`{|}~-]+@[A-Za-z0-9](?:[A-Za-z0-9.-]{0,251}[A-Za-z0-9])?$') {
-        throw 'GitAuthorName and GitAuthorEmail must be explicit, bounded, single-line Git identities.'
+    if ([string]$config.GitAuthorName -cne $script:SashimiExpectedGitAuthorName -or
+        [string]$config.GitAuthorEmail -cne $script:SashimiExpectedGitAuthorEmail) {
+        throw 'GitAuthorName and GitAuthorEmail must equal the immutable repository-owner identity.'
     }
-    if ([int]$config.Task.IntervalMinutes -ne 15 -or [string]$config.Task.Name -cne $script:SashimiTaskName) {
-        throw 'Task configuration must retain the exact name and 15-minute interval contract.'
+    if ([int]$config.Task.IntervalMinutes -ne 15 -or [string]$config.Task.Name -cne $script:SashimiTaskName -or
+        [string]$config.Task.User -cne '02031' -or -not [bool]$config.Task.StartWhenAvailable -or
+        -not [bool]$config.Task.WakeToRun -or [string]$config.Task.MultipleInstances -cne 'IgnoreNew') {
+        throw 'Task configuration must retain the exact identity, name, interval, availability, wake, and IgnoreNew contract.'
+    }
+    if ([string]$config.ExpectedUnityVersion -cne '6000.4.0f1') {
+        throw "ExpectedUnityVersion must be exactly '6000.4.0f1'."
+    }
+    foreach ($timeoutName in @('CodexSeconds','GitSeconds','GitHubSeconds','UnityStageSeconds','GeneratorSeconds')) {
+        $timeoutValue = [int]$config.Timeouts.$timeoutName
+        if ($timeoutValue -lt 1 -or $timeoutValue -gt 86400) {
+            throw "Timeouts.$timeoutName must be between 1 and 86400 seconds."
+        }
     }
     if ([int]$config.Retry.MaximumAttempts -lt 1 -or [int]$config.Retry.MaximumAttempts -gt 10 -or [int]$config.Retry.CooldownSeconds -lt 0 -or [int]$config.Retry.CooldownSeconds -gt 3600) {
         throw 'Retry settings are outside the supported bounds.'
@@ -466,6 +816,23 @@ function Import-SashimiHostConfig {
     $artifactExclusions = @($config.Security.ArtifactExclusionPatterns | ForEach-Object { [string]$_ })
     foreach ($requiredExclusion in @('**/.git/**','**/.codex/**','**/*Save*/**')) {
         if ($artifactExclusions -cnotcontains $requiredExclusion) { throw "Security.ArtifactExclusionPatterns must include '$requiredExclusion'." }
+    }
+    if ([bool]$config.Security.CodexWorkspaceWriteNetworkAccess) {
+        throw 'Security.CodexWorkspaceWriteNetworkAccess must remain false.'
+    }
+    foreach ($validationProperty in @($config.IssueValidations.PSObject.Properties)) {
+        $definition = $validationProperty.Value
+        if ([int]$definition.IssueNumber -lt 1 -or
+            [string]$definition.UnityExecuteMethod -cnotmatch '^[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)+$') {
+            throw "IssueValidations.$($validationProperty.Name) has an invalid issue number or Unity execute method."
+        }
+        foreach ($argument in @($definition.Arguments)) {
+            $argumentText = [string]$argument
+            if ($argumentText -match '[\x00\r\n]' -or $argumentText.Length -gt 1024 -or
+                $argumentText -match '(?i)(?:^|[^A-Za-z0-9])(?:access[_-]?token|refresh[_-]?token|api[_-]?key|token|password|secret|credential|authorization|proxy|endpoint|base[_-]?url|ssl[_-]?cert|ca[_-]?bundle|codex[_-]?home|auth[_-]?(?:file|path|dir))(?:$|[^A-Za-z0-9])') {
+                throw "IssueValidations.$($validationProperty.Name).Arguments contains an unsafe or secret-bearing value."
+            }
+        }
     }
     $config.RunRoot = $expandedRunRoot
     return $config
@@ -581,46 +948,94 @@ function Get-SashimiCodexEnvironmentPolicy {
     [CmdletBinding()]
     param()
 
-    # Codex authentication is intentionally credential-store-only. Environment
-    # API keys and Git/GitHub credentials are removed before the CLI starts.
-    # Profile locator variables remain so the installed CLI can find its own
-    # protected login store; command-event auditing forbids reading that content.
-    $allowedNames = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
-    foreach ($name in @(
-            'SystemRoot','WINDIR','COMSPEC','PATH','PATHEXT','TEMP','TMP',
-            'USERPROFILE','HOME','HOMEDRIVE','HOMEPATH','APPDATA','LOCALAPPDATA','PROGRAMDATA',
-            'ProgramFiles','ProgramFiles(x86)','ProgramW6432','CommonProgramFiles','CommonProgramFiles(x86)','CommonProgramW6432',
-            'PROCESSOR_ARCHITECTURE','PROCESSOR_IDENTIFIER','NUMBER_OF_PROCESSORS','PSModulePath',
-            'LANG','LC_ALL','SSL_CERT_FILE','SSL_CERT_DIR','CODEX_HOME','OPENAI_BASE_URL',
-            'HTTP_PROXY','HTTPS_PROXY','ALL_PROXY','NO_PROXY'
-        )) {
-        [void]$allowedNames.Add($name)
-    }
-
-    $pathBearingNames = @(
-        'USERPROFILE','HOME','HOMEDRIVE','HOMEPATH','APPDATA','LOCALAPPDATA','PROGRAMDATA',
-        'TEMP','TMP','PATH','PSModulePath','CODEX_HOME','SSL_CERT_FILE','SSL_CERT_DIR'
-    )
-    $removeNames = New-Object 'System.Collections.Generic.List[string]'
-    foreach ($entry in [Environment]::GetEnvironmentVariables('Process').GetEnumerator()) {
-        $name = [string]$entry.Key
-        $value = [string]$entry.Value
-        $remove = -not $allowedNames.Contains($name) -or (Test-SashimiSensitiveEnvironmentName -Name $name)
-        if (-not $remove -and $pathBearingNames -notcontains $name -and
-            (Test-SashimiRecognizableSensitiveText -Text $value)) {
-            $remove = $true
+    # Never project task-environment values into Codex. The OS locations below
+    # are re-derived through Windows known-folder APIs so poisoned HOME,
+    # USERPROFILE, APPDATA, TEMP, PATH, proxy, endpoint, CA, or CODEX_HOME values
+    # cannot redirect transport, trust, command lookup, or authentication.
+    $windowsPath = [Environment]::GetFolderPath([Environment+SpecialFolder]::Windows)
+    $profilePath = [Environment]::GetFolderPath([Environment+SpecialFolder]::UserProfile)
+    $appDataPath = [Environment]::GetFolderPath([Environment+SpecialFolder]::ApplicationData)
+    $localAppDataPath = [Environment]::GetFolderPath([Environment+SpecialFolder]::LocalApplicationData)
+    foreach ($requiredPath in @($windowsPath,$profilePath,$appDataPath,$localAppDataPath)) {
+        if ([string]::IsNullOrWhiteSpace($requiredPath) -or -not [IO.Path]::IsPathFullyQualified($requiredPath)) {
+            throw 'Windows did not provide a required canonical known-folder path for the Codex environment.'
         }
-        if ($remove) { $removeNames.Add($name) }
+    }
+    $tempPath = [IO.Path]::Combine($localAppDataPath, 'Temp')
+    $overrides = [ordered]@{
+        SystemRoot = [IO.Path]::GetFullPath($windowsPath)
+        WINDIR = [IO.Path]::GetFullPath($windowsPath)
+        USERPROFILE = [IO.Path]::GetFullPath($profilePath)
+        APPDATA = [IO.Path]::GetFullPath($appDataPath)
+        LOCALAPPDATA = [IO.Path]::GetFullPath($localAppDataPath)
+        TEMP = [IO.Path]::GetFullPath($tempPath)
+        TMP = [IO.Path]::GetFullPath($tempPath)
+        DOTNET_CLI_UI_LANGUAGE = 'en-US'
+        NO_COLOR = '1'
+        GIT_TERMINAL_PROMPT = '0'
+        GCM_INTERACTIVE = 'Never'
     }
 
     return [pscustomobject][ordered]@{
-        Mode = 'AllowList'
+        SchemaVersion = 2
+        Mode = 'HermeticAllowList'
         Authentication = 'CredentialStoreOnly'
-        RemoveNames = @($removeNames.ToArray() | Sort-Object -Unique)
-        Overrides = @{
-            GIT_TERMINAL_PROMPT = '0'
-            GCM_INTERACTIVE = 'Never'
+        ClearInherited = $true
+        AllowedNames = @($overrides.Keys)
+        # Retained for older process-runner contracts, but clearing the entire
+        # environment is the actual case-insensitive security boundary.
+        RemoveNames = @([Environment]::GetEnvironmentVariables('Process').Keys | ForEach-Object { [string]$_ } | Sort-Object -Unique)
+        Overrides = $overrides
+    }
+}
+
+function Assert-SashimiCodexWorkspaceConfigurationAbsent {
+    [CmdletBinding()]
+    param([Parameter(Mandatory = $true)][string]$RepositoryPath)
+
+    # `--ignore-user-config` excludes only the user's CODEX_HOME config and
+    # `--ignore-rules` excludes exec-policy rule files. Codex also discovers
+    # repository-scoped .codex configuration, hooks, plugins, and MCP launchers.
+    # Those bytes are branch-controlled, so no such tree may be present when a
+    # Host-owned Codex process is created.
+    $root = ConvertTo-SashimiPath -Path $RepositoryPath
+    if (-not (Test-Path -LiteralPath $root -PathType Container)) {
+        throw 'Codex workspace validation requires an existing repository directory.'
+    }
+    Assert-SashimiNoReparsePoint -Path $root
+
+    $pending = [Collections.Generic.Queue[IO.DirectoryInfo]]::new()
+    $pending.Enqueue([IO.DirectoryInfo]::new($root))
+    $entryCount = 0
+    try {
+        while ($pending.Count -gt 0) {
+            $directory = $pending.Dequeue()
+            foreach ($entry in $directory.EnumerateFileSystemInfos('*',[IO.SearchOption]::TopDirectoryOnly)) {
+                $entryCount++
+                if ($entryCount -gt 250000) {
+                    throw 'Codex workspace validation exceeded its fixed entry bound.'
+                }
+                if ([string]::Equals($entry.Name,'.codex',[StringComparison]::OrdinalIgnoreCase)) {
+                    throw 'Codex workspace contains forbidden repository-scoped .codex state.'
+                }
+                if (($entry.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+                    throw 'Codex workspace contains a reparse point; repository-scoped configuration absence cannot be established.'
+                }
+                if ($entry -is [IO.DirectoryInfo] -and
+                    -not [string]::Equals($entry.Name,'.git',[StringComparison]::OrdinalIgnoreCase)) {
+                    $pending.Enqueue([IO.DirectoryInfo]$entry)
+                }
+            }
         }
+    }
+    catch {
+        if ($_.Exception.Message -in @(
+                'Codex workspace validation exceeded its fixed entry bound.',
+                'Codex workspace contains forbidden repository-scoped .codex state.',
+                'Codex workspace contains a reparse point; repository-scoped configuration absence cannot be established.')) {
+            throw
+        }
+        throw 'Codex workspace could not be enumerated safely for repository-scoped configuration.'
     }
 }
 
@@ -807,6 +1222,513 @@ function Stop-SashimiOwnedProcessTree {
     }
 }
 
+function Initialize-SashimiKillOnCloseProcessNative {
+    [CmdletBinding()]
+    param()
+
+    if ('SashimiBoyAutomation.KillOnCloseProcess' -as [type]) { return }
+    Microsoft.PowerShell.Utility\Add-Type -TypeDefinition @'
+using System;
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.Diagnostics;
+using System.IO;
+using System.Runtime.InteropServices;
+using System.Text;
+using System.Threading.Tasks;
+using Microsoft.Win32.SafeHandles;
+
+namespace SashimiBoyAutomation
+{
+    public sealed class KillOnCloseProcessResult
+    {
+        public int ExitCode { get; set; } = 127;
+        public string StandardOutput { get; set; } = "";
+        public string StandardError { get; set; } = "";
+        public bool TimedOut { get; set; }
+        public bool Cancelled { get; set; }
+        public bool TerminationConfirmed { get; set; }
+        public bool KillOnCloseJobAssigned { get; set; }
+        public int[] RemainingDescendantProcessIds { get; set; } = Array.Empty<int>();
+        public int ProcessId { get; set; }
+        public long DurationMilliseconds { get; set; }
+        public string FailureCode { get; set; } = "";
+    }
+
+    public static class KillOnCloseProcess
+    {
+        private const UInt32 STARTF_USESTDHANDLES = 0x00000100;
+        private const UInt32 HANDLE_FLAG_INHERIT = 0x00000001;
+        private const UInt32 CREATE_SUSPENDED = 0x00000004;
+        private const UInt32 CREATE_UNICODE_ENVIRONMENT = 0x00000400;
+        private const UInt32 CREATE_NO_WINDOW = 0x08000000;
+        private const UInt32 WAIT_OBJECT_0 = 0x00000000;
+        private const UInt32 WAIT_TIMEOUT = 0x00000102;
+        private const UInt32 WAIT_FAILED = 0xffffffff;
+        private const UInt32 RESUME_FAILED = 0xffffffff;
+        private const UInt32 STILL_ACTIVE = 259;
+        private const UInt32 SYNCHRONIZE = 0x00100000;
+        private const int ERROR_MORE_DATA = 234;
+        private const int JobObjectExtendedLimitInformation = 9;
+        private const int JobObjectBasicProcessIdList = 3;
+        private const UInt32 JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x00002000;
+        private const UInt32 FORCED_TERMINATION_EXIT_CODE = 0x53415348;
+        private const int TERMINATION_CONFIRM_MILLISECONDS = 10000;
+        private const int PIPE_DRAIN_MILLISECONDS = 10000;
+        private const int STDOUT_LIMIT_BYTES = 16 * 1024 * 1024;
+        private const int STDERR_LIMIT_BYTES = 1 * 1024 * 1024;
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct SECURITY_ATTRIBUTES
+        {
+            public int nLength;
+            public IntPtr lpSecurityDescriptor;
+            [MarshalAs(UnmanagedType.Bool)] public bool bInheritHandle;
+        }
+
+        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+        private struct STARTUPINFO
+        {
+            public int cb;
+            public string lpReserved;
+            public string lpDesktop;
+            public string lpTitle;
+            public UInt32 dwX;
+            public UInt32 dwY;
+            public UInt32 dwXSize;
+            public UInt32 dwYSize;
+            public UInt32 dwXCountChars;
+            public UInt32 dwYCountChars;
+            public UInt32 dwFillAttribute;
+            public UInt32 dwFlags;
+            public UInt16 wShowWindow;
+            public UInt16 cbReserved2;
+            public IntPtr lpReserved2;
+            public IntPtr hStdInput;
+            public IntPtr hStdOutput;
+            public IntPtr hStdError;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct PROCESS_INFORMATION
+        {
+            public IntPtr hProcess;
+            public IntPtr hThread;
+            public UInt32 dwProcessId;
+            public UInt32 dwThreadId;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct JOBOBJECT_BASIC_LIMIT_INFORMATION
+        {
+            public long PerProcessUserTimeLimit;
+            public long PerJobUserTimeLimit;
+            public UInt32 LimitFlags;
+            public UIntPtr MinimumWorkingSetSize;
+            public UIntPtr MaximumWorkingSetSize;
+            public UInt32 ActiveProcessLimit;
+            public UIntPtr Affinity;
+            public UInt32 PriorityClass;
+            public UInt32 SchedulingClass;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct IO_COUNTERS
+        {
+            public UInt64 ReadOperationCount;
+            public UInt64 WriteOperationCount;
+            public UInt64 OtherOperationCount;
+            public UInt64 ReadTransferCount;
+            public UInt64 WriteTransferCount;
+            public UInt64 OtherTransferCount;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct JOBOBJECT_EXTENDED_LIMIT_INFORMATION
+        {
+            public JOBOBJECT_BASIC_LIMIT_INFORMATION BasicLimitInformation;
+            public IO_COUNTERS IoInfo;
+            public UIntPtr ProcessMemoryLimit;
+            public UIntPtr JobMemoryLimit;
+            public UIntPtr PeakProcessMemoryUsed;
+            public UIntPtr PeakJobMemoryUsed;
+        }
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool CloseHandle(IntPtr handle);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool CreatePipe(out IntPtr readPipe, out IntPtr writePipe, ref SECURITY_ATTRIBUTES attributes, UInt32 size);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool SetHandleInformation(IntPtr handle, UInt32 mask, UInt32 flags);
+
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool CreateProcessW(string applicationName, StringBuilder commandLine, IntPtr processAttributes,
+            IntPtr threadAttributes, [MarshalAs(UnmanagedType.Bool)] bool inheritHandles, UInt32 creationFlags,
+            IntPtr environment, string currentDirectory, ref STARTUPINFO startupInfo, out PROCESS_INFORMATION processInformation);
+
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+        private static extern IntPtr CreateJobObject(IntPtr jobAttributes, string name);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool SetInformationJobObject(IntPtr job, int informationClass, IntPtr information, UInt32 informationLength);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool AssignProcessToJobObject(IntPtr job, IntPtr process);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool QueryInformationJobObject(IntPtr job, int informationClass, IntPtr information,
+            UInt32 informationLength, out UInt32 returnLength);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern UInt32 ResumeThread(IntPtr thread);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern UInt32 WaitForSingleObject(IntPtr handle, UInt32 milliseconds);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool GetExitCodeProcess(IntPtr process, out UInt32 exitCode);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool TerminateJobObject(IntPtr job, UInt32 exitCode);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern IntPtr OpenProcess(UInt32 desiredAccess, [MarshalAs(UnmanagedType.Bool)] bool inheritHandle, UInt32 processId);
+
+        private static Win32Exception Error(string operation)
+        {
+            return new Win32Exception(Marshal.GetLastWin32Error(), operation + " failed");
+        }
+
+        private static void CloseNativeHandle(ref IntPtr handle)
+        {
+            if (handle == IntPtr.Zero) return;
+            CloseHandle(handle);
+            handle = IntPtr.Zero;
+        }
+
+        private static string QuoteArgument(string value)
+        {
+            if (value == null || value.IndexOf('\0') >= 0) throw new ArgumentException("A native argument contains NUL.");
+            StringBuilder quoted = new StringBuilder();
+            quoted.Append('"');
+            int slashes = 0;
+            foreach (char c in value)
+            {
+                if (c == '\\') { slashes++; continue; }
+                if (c == '"')
+                {
+                    quoted.Append('\\', slashes * 2 + 1);
+                    quoted.Append('"');
+                    slashes = 0;
+                    continue;
+                }
+                quoted.Append('\\', slashes);
+                slashes = 0;
+                quoted.Append(c);
+            }
+            quoted.Append('\\', slashes * 2);
+            quoted.Append('"');
+            return quoted.ToString();
+        }
+
+        private static StringBuilder BuildCommandLine(string executable, string[] arguments)
+        {
+            StringBuilder command = new StringBuilder(QuoteArgument(executable));
+            foreach (string argument in arguments ?? Array.Empty<string>())
+            {
+                command.Append(' ');
+                command.Append(QuoteArgument(argument ?? ""));
+            }
+            return command;
+        }
+
+        private static IntPtr BuildEnvironmentBlock(IDictionary<string,string> environment)
+        {
+            List<string> keys = new List<string>(environment.Keys);
+            keys.Sort(StringComparer.OrdinalIgnoreCase);
+            StringBuilder block = new StringBuilder();
+            foreach (string key in keys)
+            {
+                if (String.IsNullOrEmpty(key) || key.IndexOf('=') >= 0 || key.IndexOf('\0') >= 0)
+                    throw new ArgumentException("An environment name is invalid.");
+                string value = environment[key] ?? "";
+                if (value.IndexOf('\0') >= 0) throw new ArgumentException("An environment value contains NUL.");
+                block.Append(key).Append('=').Append(value).Append('\0');
+            }
+            block.Append('\0');
+            return Marshal.StringToHGlobalUni(block.ToString());
+        }
+
+        private static IntPtr CreateKillOnCloseJob()
+        {
+            IntPtr job = CreateJobObject(IntPtr.Zero, null);
+            if (job == IntPtr.Zero) throw Error("CreateJobObject");
+            IntPtr buffer = IntPtr.Zero;
+            try
+            {
+                JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits = new JOBOBJECT_EXTENDED_LIMIT_INFORMATION();
+                limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+                UInt32 size = (UInt32)Marshal.SizeOf<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>();
+                buffer = Marshal.AllocHGlobal((int)size);
+                Marshal.StructureToPtr(limits, buffer, false);
+                if (!SetInformationJobObject(job, JobObjectExtendedLimitInformation, buffer, size))
+                    throw Error("SetInformationJobObject");
+                return job;
+            }
+            catch { CloseHandle(job); throw; }
+            finally { if (buffer != IntPtr.Zero) Marshal.FreeHGlobal(buffer); }
+        }
+
+        private static int[] QueryJobProcessIds(IntPtr job)
+        {
+            int capacity = 32;
+            while (capacity <= 4096)
+            {
+                int size = 8 + capacity * IntPtr.Size;
+                IntPtr buffer = Marshal.AllocHGlobal(size);
+                try
+                {
+                    UInt32 returned;
+                    if (QueryInformationJobObject(job, JobObjectBasicProcessIdList, buffer, (UInt32)size, out returned))
+                    {
+                        UInt32 count = unchecked((UInt32)Marshal.ReadInt32(buffer, 4));
+                        if (count > capacity) { capacity *= 2; continue; }
+                        int[] result = new int[count];
+                        for (int index = 0; index < count; index++)
+                            result[index] = unchecked((int)Marshal.ReadIntPtr(buffer, 8 + index * IntPtr.Size).ToInt64());
+                        return result;
+                    }
+                    int error = Marshal.GetLastWin32Error();
+                    if (error != ERROR_MORE_DATA) throw new Win32Exception(error, "QueryInformationJobObject failed");
+                }
+                finally { Marshal.FreeHGlobal(buffer); }
+                capacity *= 2;
+            }
+            throw new InvalidOperationException("Job process count exceeded its fixed bound.");
+        }
+
+        public static async Task<byte[]> ReadBoundedAsync(Stream stream, int maximumBytes)
+        {
+            using (MemoryStream capture = new MemoryStream())
+            {
+                byte[] buffer = new byte[8192];
+                while (true)
+                {
+                    int read = await stream.ReadAsync(buffer, 0, buffer.Length).ConfigureAwait(false);
+                    if (read == 0) return capture.ToArray();
+                    if (capture.Length + read > maximumBytes) throw new InvalidDataException("OUTPUT_LIMIT_EXCEEDED");
+                    capture.Write(buffer, 0, read);
+                }
+            }
+        }
+
+        private static async Task WriteInputAsync(Stream stream, byte[] content)
+        {
+            try
+            {
+                if (content.Length != 0) await stream.WriteAsync(content, 0, content.Length).ConfigureAwait(false);
+                await stream.FlushAsync().ConfigureAwait(false);
+            }
+            finally { stream.Dispose(); }
+        }
+
+        private static int[] TerminateJobAndConfirmEmpty(ref IntPtr job)
+        {
+            // A one-time PID snapshot is insufficient: an already captured
+            // child can create another job member after enumeration and before
+            // the job handle closes. Terminate while retaining the job handle,
+            // then query the kernel-owned membership repeatedly until it is
+            // actually empty. Only then may the Host trust post-Unity Git
+            // state. KILL_ON_JOB_CLOSE remains the independent exception path.
+            if (!TerminateJobObject(job, FORCED_TERMINATION_EXIT_CODE))
+                throw Error("TerminateJobObject");
+
+            Stopwatch confirmation = Stopwatch.StartNew();
+            int[] active = QueryJobProcessIds(job);
+            while (active.Length != 0 && confirmation.ElapsedMilliseconds < TERMINATION_CONFIRM_MILLISECONDS)
+            {
+                System.Threading.Thread.Sleep(10);
+                active = QueryJobProcessIds(job);
+            }
+            if (active.Length != 0)
+                throw new InvalidOperationException("The Unity job process tree did not become empty within the termination-confirmation bound.");
+
+            CloseNativeHandle(ref job);
+            return Array.Empty<int>();
+        }
+
+        public static KillOnCloseProcessResult Run(string executable, string[] arguments, string workingDirectory,
+            string standardInput, IDictionary<string,string> environment, int timeoutSeconds, string cancellationMarkerPath)
+        {
+            KillOnCloseProcessResult result = new KillOnCloseProcessResult();
+            Stopwatch stopwatch = Stopwatch.StartNew();
+            IntPtr job = IntPtr.Zero;
+            IntPtr environmentBlock = IntPtr.Zero;
+            IntPtr stdoutRead = IntPtr.Zero, stdoutWrite = IntPtr.Zero;
+            IntPtr stderrRead = IntPtr.Zero, stderrWrite = IntPtr.Zero;
+            IntPtr stdinRead = IntPtr.Zero, stdinWrite = IntPtr.Zero;
+            PROCESS_INFORMATION process = new PROCESS_INFORMATION();
+            bool processCreated = false, jobClosed = false;
+            SafeFileHandle stdoutSafe = null, stderrSafe = null, stdinSafe = null;
+            FileStream stdoutStream = null, stderrStream = null, stdinStream = null;
+            Task<byte[]> stdoutTask = null, stderrTask = null;
+            Task stdinTask = null;
+            try
+            {
+                SECURITY_ATTRIBUTES attributes = new SECURITY_ATTRIBUTES();
+                attributes.nLength = Marshal.SizeOf<SECURITY_ATTRIBUTES>();
+                attributes.bInheritHandle = true;
+                if (!CreatePipe(out stdoutRead, out stdoutWrite, ref attributes, 0)) throw Error("CreatePipe(stdout)");
+                if (!CreatePipe(out stderrRead, out stderrWrite, ref attributes, 0)) throw Error("CreatePipe(stderr)");
+                if (!CreatePipe(out stdinRead, out stdinWrite, ref attributes, 0)) throw Error("CreatePipe(stdin)");
+                if (!SetHandleInformation(stdoutRead, HANDLE_FLAG_INHERIT, 0) ||
+                    !SetHandleInformation(stderrRead, HANDLE_FLAG_INHERIT, 0) ||
+                    !SetHandleInformation(stdinWrite, HANDLE_FLAG_INHERIT, 0)) throw Error("SetHandleInformation");
+
+                STARTUPINFO startup = new STARTUPINFO();
+                startup.cb = Marshal.SizeOf<STARTUPINFO>();
+                startup.dwFlags = STARTF_USESTDHANDLES;
+                startup.hStdInput = stdinRead;
+                startup.hStdOutput = stdoutWrite;
+                startup.hStdError = stderrWrite;
+                environmentBlock = BuildEnvironmentBlock(environment);
+                job = CreateKillOnCloseJob();
+                UInt32 flags = CREATE_NO_WINDOW | CREATE_SUSPENDED | CREATE_UNICODE_ENVIRONMENT;
+                if (!CreateProcessW(executable, BuildCommandLine(executable, arguments), IntPtr.Zero, IntPtr.Zero,
+                    true, flags, environmentBlock, workingDirectory, ref startup, out process)) throw Error("CreateProcessW");
+                processCreated = true;
+                result.ProcessId = unchecked((int)process.dwProcessId);
+                // The primary thread is still suspended here. No editor/code
+                // instruction can execute until kernel job assignment succeeds.
+                if (!AssignProcessToJobObject(job, process.hProcess)) throw Error("AssignProcessToJobObject");
+                result.KillOnCloseJobAssigned = true;
+
+                CloseNativeHandle(ref stdoutWrite);
+                CloseNativeHandle(ref stderrWrite);
+                CloseNativeHandle(ref stdinRead);
+                stdoutSafe = new SafeFileHandle(stdoutRead, true); stdoutRead = IntPtr.Zero;
+                stderrSafe = new SafeFileHandle(stderrRead, true); stderrRead = IntPtr.Zero;
+                stdinSafe = new SafeFileHandle(stdinWrite, true); stdinWrite = IntPtr.Zero;
+                // CreatePipe returns synchronous handles. FileStream's async
+                // methods safely dispatch synchronous pipe I/O to worker tasks
+                // when isAsync is false; claiming OVERLAPPED here is invalid.
+                stdoutStream = new FileStream(stdoutSafe, FileAccess.Read, 8192, false);
+                stderrStream = new FileStream(stderrSafe, FileAccess.Read, 8192, false);
+                stdinStream = new FileStream(stdinSafe, FileAccess.Write, 8192, false);
+                stdoutTask = ReadBoundedAsync(stdoutStream, STDOUT_LIMIT_BYTES);
+                stderrTask = ReadBoundedAsync(stderrStream, STDERR_LIMIT_BYTES);
+                byte[] inputBytes = new UTF8Encoding(false, true).GetBytes(standardInput ?? "");
+                stdinTask = WriteInputAsync(stdinStream, inputBytes);
+                stdinStream = null; stdinSafe = null;
+
+                if (ResumeThread(process.hThread) == RESUME_FAILED) throw Error("ResumeThread");
+                CloseNativeHandle(ref process.hThread);
+                bool mainExited = false;
+                while (!mainExited)
+                {
+                    UInt32 wait = WaitForSingleObject(process.hProcess, 50);
+                    if (wait == WAIT_OBJECT_0) { mainExited = true; break; }
+                    if (wait == WAIT_FAILED) throw Error("WaitForSingleObject");
+                    if (wait != WAIT_TIMEOUT) throw new InvalidOperationException("Unexpected process wait result.");
+                    if ((stdoutTask.IsFaulted || stderrTask.IsFaulted))
+                    {
+                        result.FailureCode = "OUTPUT_CAPTURE_FAILED";
+                        break;
+                    }
+                    if (!String.IsNullOrWhiteSpace(cancellationMarkerPath) && File.Exists(cancellationMarkerPath))
+                    {
+                        result.Cancelled = true;
+                        break;
+                    }
+                    if (stopwatch.Elapsed.TotalSeconds >= timeoutSeconds)
+                    {
+                        result.TimedOut = true;
+                        break;
+                    }
+                }
+
+                result.RemainingDescendantProcessIds = TerminateJobAndConfirmEmpty(ref job);
+                jobClosed = true;
+                UInt32 mainConfirmation = WaitForSingleObject(process.hProcess, TERMINATION_CONFIRM_MILLISECONDS);
+                result.TerminationConfirmed = mainConfirmation == WAIT_OBJECT_0 && result.RemainingDescendantProcessIds.Length == 0;
+                bool outputTasksCompleted = false;
+                try { outputTasksCompleted = Task.WaitAll(new Task[] { stdoutTask, stderrTask }, PIPE_DRAIN_MILLISECONDS); }
+                catch (AggregateException) { outputTasksCompleted = stdoutTask.IsCompleted && stderrTask.IsCompleted; }
+                if (!outputTasksCompleted)
+                {
+                    result.FailureCode = "OUTPUT_DRAIN_TIMEOUT";
+                    result.TerminationConfirmed = false;
+                }
+                else if (stdoutTask.IsFaulted || stderrTask.IsFaulted)
+                {
+                    result.FailureCode = "OUTPUT_LIMIT_EXCEEDED_OR_READ_FAILED";
+                }
+                else
+                {
+                    try
+                    {
+                        UTF8Encoding strictUtf8 = new UTF8Encoding(false, true);
+                        result.StandardOutput = strictUtf8.GetString(stdoutTask.GetAwaiter().GetResult());
+                        result.StandardError = strictUtf8.GetString(stderrTask.GetAwaiter().GetResult());
+                    }
+                    catch (InvalidDataException) { result.FailureCode = "OUTPUT_LIMIT_EXCEEDED"; }
+                    catch (DecoderFallbackException) { result.FailureCode = "OUTPUT_INVALID_UTF8"; }
+                }
+                if (stdinTask != null && String.IsNullOrEmpty(result.FailureCode))
+                {
+                    bool inputCompleted = Task.WaitAny(new Task[] { stdinTask }, 1000) == 0;
+                    if (!inputCompleted || stdinTask.IsFaulted || stdinTask.IsCanceled)
+                        result.FailureCode = "INPUT_WRITE_UNCONFIRMED";
+                }
+
+                UInt32 nativeExit;
+                if (mainConfirmation == WAIT_OBJECT_0 && GetExitCodeProcess(process.hProcess, out nativeExit) && nativeExit != STILL_ACTIVE)
+                    result.ExitCode = unchecked((int)nativeExit);
+                if (result.TimedOut) result.ExitCode = 124;
+                else if (result.Cancelled) result.ExitCode = 125;
+                else if (!String.IsNullOrEmpty(result.FailureCode) || !result.TerminationConfirmed) result.ExitCode = 127;
+                return result;
+            }
+            finally
+            {
+                if (!jobClosed && job != IntPtr.Zero)
+                {
+                    if (processCreated) TerminateJobObject(job, FORCED_TERMINATION_EXIT_CODE);
+                    CloseNativeHandle(ref job);
+                    if (processCreated) WaitForSingleObject(process.hProcess, TERMINATION_CONFIRM_MILLISECONDS);
+                }
+                if (environmentBlock != IntPtr.Zero) Marshal.FreeHGlobal(environmentBlock);
+                if (stdoutStream != null) stdoutStream.Dispose();
+                if (stderrStream != null) stderrStream.Dispose();
+                if (stdinStream != null) stdinStream.Dispose();
+                if (stdoutSafe != null) stdoutSafe.Dispose();
+                if (stderrSafe != null) stderrSafe.Dispose();
+                if (stdinSafe != null) stdinSafe.Dispose();
+                CloseNativeHandle(ref process.hThread);
+                CloseNativeHandle(ref process.hProcess);
+                CloseNativeHandle(ref stdinRead); CloseNativeHandle(ref stdinWrite);
+                CloseNativeHandle(ref stdoutRead); CloseNativeHandle(ref stdoutWrite);
+                CloseNativeHandle(ref stderrRead); CloseNativeHandle(ref stderrWrite);
+                stopwatch.Stop();
+                result.DurationMilliseconds = stopwatch.ElapsedMilliseconds;
+            }
+        }
+    }
+}
+'@ -ErrorAction Stop
+}
+
 function Remove-SashimiSensitiveToolEnvironment {
     [CmdletBinding()]
     param([Parameter(Mandatory = $true)][object]$Environment)
@@ -916,6 +1838,8 @@ function Set-SashimiFixedGitProcessEnvironment {
         [pscustomobject]@{ Key='core.editor'; Value='false' },
         [pscustomobject]@{ Key='core.sshCommand'; Value='' },
         [pscustomobject]@{ Key='core.pager'; Value='cat' },
+        [pscustomobject]@{ Key='gc.auto'; Value='0' },
+        [pscustomobject]@{ Key='maintenance.auto'; Value='false' },
         [pscustomobject]@{ Key='sequence.editor'; Value='false' },
         [pscustomobject]@{ Key='diff.external'; Value='' },
         [pscustomobject]@{ Key='commit.gpgSign'; Value='false' },
@@ -924,6 +1848,19 @@ function Set-SashimiFixedGitProcessEnvironment {
         [pscustomobject]@{ Key='credential.helper'; Value='' },
         [pscustomobject]@{ Key='credential.https://github.com.helper'; Value=('!' + $quotedGh + ' auth git-credential') },
         [pscustomobject]@{ Key='credential.https://github.com.useHttpPath'; Value='false' },
+        [pscustomobject]@{ Key='remote.sashimi-canonical.url'; Value=$script:SashimiExpectedRemoteUrl },
+        [pscustomobject]@{ Key='remote.sashimi-canonical.pushurl'; Value=$script:SashimiExpectedRemoteUrl },
+        # Git LFS otherwise gives repository-local lfs.url/lfs.pushurl,
+        # remote.*.lfsurl/lfspushurl, and .lfsconfig authority over its HTTP
+        # destination. Command-scope values have higher precedence and bind
+        # both download and upload traffic to the immutable reviewed endpoint.
+        [pscustomobject]@{ Key='lfs.url'; Value=$script:SashimiExpectedGitLfsUrl },
+        [pscustomobject]@{ Key='lfs.pushurl'; Value=$script:SashimiExpectedGitLfsUrl },
+        [pscustomobject]@{ Key='remote.origin.lfsurl'; Value=$script:SashimiExpectedGitLfsUrl },
+        [pscustomobject]@{ Key='remote.origin.lfspushurl'; Value=$script:SashimiExpectedGitLfsUrl },
+        [pscustomobject]@{ Key='remote.sashimi-canonical.lfsurl'; Value=$script:SashimiExpectedGitLfsUrl },
+        [pscustomobject]@{ Key='remote.sashimi-canonical.lfspushurl'; Value=$script:SashimiExpectedGitLfsUrl },
+        [pscustomobject]@{ Key='lfs.basictransfersonly'; Value='true' },
         [pscustomobject]@{ Key='http.extraHeader'; Value='' },
         [pscustomobject]@{ Key='http.proxy'; Value='' },
         [pscustomobject]@{ Key='https.proxy'; Value='' },
@@ -949,6 +1886,10 @@ function Set-SashimiFixedGitProcessEnvironment {
     $StartInfo.Environment['GIT_ATTR_NOSYSTEM'] = '1'
     $StartInfo.Environment['GIT_PROTOCOL_FROM_USER'] = '0'
     $StartInfo.Environment['GIT_ALLOW_PROTOCOL'] = 'https'
+    # Read-only status/snapshot commands must not opportunistically refresh the
+    # exact index bytes that the Git-control guard is comparing. Mandatory
+    # write-command locks remain enabled by Git itself.
+    $StartInfo.Environment['GIT_OPTIONAL_LOCKS'] = '0'
     $StartInfo.Environment['GIT_CONFIG_COUNT'] = [string]$fixedConfig.Count
     for ($index = 0; $index -lt $fixedConfig.Count; $index++) {
         $StartInfo.Environment["GIT_CONFIG_KEY_$index"] = [string]$fixedConfig[$index].Key
@@ -970,16 +1911,49 @@ function Invoke-SashimiHostProcess {
         [string]$InvocationRecordPath,
         [string]$OwnedProcessRecordPath,
         [string]$CancellationMarkerPath,
+        [string]$CodexWorkspacePath,
+        [switch]$ClearEnvironment,
+        [switch]$PreserveRawOutputInMemory,
+        [switch]$RequireKillOnCloseJob,
         [switch]$DryRun
     )
 
     [void](Assert-SashimiSafeCommand -FilePath $FilePath -ArgumentList $ArgumentList -Kind $Kind)
+    if ($PreserveRawOutputInMemory -and ($Kind -cne 'Codex' -or -not [string]::IsNullOrWhiteSpace($InvocationRecordPath))) {
+        throw 'Unredacted in-memory output is allowed only for Codex without an invocation-record path.'
+    }
+    if ($RequireKillOnCloseJob -and $Kind -cne 'Unity') {
+        throw 'The kill-on-close suspended process boundary is supported only for Unity.'
+    }
+    if ($Kind -ceq 'Codex') {
+        if (-not $ClearEnvironment) { throw 'Codex process launch requires a cleared inherited environment.' }
+        if ([string]::IsNullOrWhiteSpace($WorkingDirectory) -or [string]::IsNullOrWhiteSpace($CodexWorkspacePath)) {
+            throw 'Codex process launch requires an explicit repository workspace path.'
+        }
+        $canonicalWorkingDirectory = ConvertTo-SashimiPath -Path $WorkingDirectory
+        $canonicalCodexWorkspace = ConvertTo-SashimiPath -Path $CodexWorkspacePath
+        if (-not (Test-SashimiPathEqual -Left $canonicalWorkingDirectory -Right $canonicalCodexWorkspace)) {
+            throw 'Codex process working directory must equal its validated repository workspace.'
+        }
+        $expectedPolicy = Get-SashimiCodexEnvironmentPolicy
+        $expectedOverrides = $expectedPolicy.Overrides
+        if ($Environment.Count -ne $expectedOverrides.Count) {
+            throw 'Codex process environment does not match the exact hermetic allowlist.'
+        }
+        foreach ($name in @($expectedOverrides.Keys)) {
+            if (-not $Environment.ContainsKey([string]$name) -or
+                -not [string]::Equals([string]$Environment[[string]$name], [string]$expectedOverrides[[string]$name], [StringComparison]::Ordinal)) {
+                throw "Codex process environment differs from the fixed value for '$name'."
+            }
+        }
+    }
     $commandText = Format-SashimiCommand -FilePath $FilePath -ArgumentList $ArgumentList
     if ($DryRun) {
         return [pscustomobject][ordered]@{
             FilePath = Protect-SashimiText $FilePath; Arguments = @($ArgumentList | ForEach-Object { Protect-SashimiText $_ }); Command = $commandText
             ExitCode = 0; StdOut = ''; StdErr = ''; Succeeded = $true
             TimedOut = $false; Cancelled = $false; TerminationConfirmed = $true
+            KillOnCloseJobAssigned = $false; RemainingDescendantProcessIds = @()
             ProcessId = $null; DurationMilliseconds = 0; DryRun = $true
         }
     }
@@ -994,6 +1968,7 @@ function Invoke-SashimiHostProcess {
     $startInfo.StandardOutputEncoding = [Text.UTF8Encoding]::new($false)
     $startInfo.StandardErrorEncoding = [Text.UTF8Encoding]::new($false)
     $startInfo.StandardInputEncoding = [Text.UTF8Encoding]::new($false)
+    if ($ClearEnvironment) { $startInfo.Environment.Clear() }
     if (-not [string]::IsNullOrWhiteSpace($WorkingDirectory)) {
         $startInfo.WorkingDirectory = ConvertTo-SashimiPath -Path $WorkingDirectory
     }
@@ -1018,9 +1993,11 @@ function Invoke-SashimiHostProcess {
             }
         }
     }
-    $startInfo.Environment['DOTNET_CLI_UI_LANGUAGE'] = 'en-US'
-    $startInfo.Environment['NO_COLOR'] = '1'
-    $startInfo.Environment['GH_FORCE_TTY'] = 'never'
+    if ($Kind -cne 'Codex') {
+        $startInfo.Environment['DOTNET_CLI_UI_LANGUAGE'] = 'en-US'
+        $startInfo.Environment['NO_COLOR'] = '1'
+    }
+    if ($Kind -ceq 'GitHub') { $startInfo.Environment['GH_FORCE_TTY'] = 'never' }
     foreach ($entry in $Environment.GetEnumerator()) {
         if ($Kind -in @('Git','GitHub')) {
             Assert-SashimiToolEnvironmentOverride -Name ([string]$entry.Key) -Value ([string]$entry.Value) -Kind $Kind
@@ -1037,9 +2014,74 @@ function Invoke-SashimiHostProcess {
         $startInfo.Environment['GIT_TERMINAL_PROMPT'] = '0'
     }
 
-    # The identity is deliberately re-read after all process preparation and
-    # immediately before Process.Start, closing PATH lookup and stale-hash use.
-    Assert-SashimiBoundExecutableIdentity -FilePath $FilePath
+    if ($RequireKillOnCloseJob) {
+        Initialize-SashimiKillOnCloseProcessNative
+        $native = $null
+        $nativeException = $null
+        $launchLease = $null
+        try {
+            # CreateProcessW returns with the primary thread suspended. The
+            # native boundary assigns the process to its kill-on-close job
+            # before ResumeThread, then closes the job and confirms that every
+            # captured descendant has exited before returning control here.
+            $launchLease = Open-SashimiExecutableLaunchLease -FilePath $FilePath -Kind $Kind
+            $native = [SashimiBoyAutomation.KillOnCloseProcess]::Run(
+                [string]$FilePath,
+                [string[]]@($ArgumentList),
+                [string]$startInfo.WorkingDirectory,
+                [string]$StandardInput,
+                [Collections.Generic.IDictionary[string,string]]$startInfo.Environment,
+                [int]$TimeoutSeconds,
+                [string]$CancellationMarkerPath)
+        }
+        catch { $nativeException = $_.Exception }
+        finally {
+            if ($null -ne $launchLease) { try { $launchLease.Stream.Dispose() } catch { } }
+        }
+        if ($null -ne $nativeException) {
+            $native = [pscustomobject][ordered]@{
+                ExitCode = 127; StandardOutput = ''; StandardError = $nativeException.Message
+                TimedOut = $false; Cancelled = $false; TerminationConfirmed = $false
+                KillOnCloseJobAssigned = $false; RemainingDescendantProcessIds = @()
+                ProcessId = 0; DurationMilliseconds = 0; FailureCode = 'JOB_BOUNDARY_FAILED'
+            }
+        }
+        $nativeFailure = [string]$native.FailureCode
+        $stdout = [string]$native.StandardOutput
+        $stderr = if ([string]::IsNullOrWhiteSpace($nativeFailure)) {
+            [string]$native.StandardError
+        }
+        else {
+            "The bounded suspended process boundary failed closed: $nativeFailure"
+        }
+        $terminationConfirmed = [bool]$native.TerminationConfirmed
+        $remainingDescendants = @($native.RemainingDescendantProcessIds | ForEach-Object { [int]$_ })
+        $result = [pscustomobject][ordered]@{
+            FilePath = Protect-SashimiText $FilePath
+            Arguments = @($ArgumentList | ForEach-Object { Protect-SashimiText $_ })
+            Command = $commandText
+            ExitCode = [int]$native.ExitCode
+            StdOut = Protect-SashimiText $stdout.TrimEnd()
+            StdErr = Protect-SashimiText $stderr.TrimEnd()
+            Succeeded = ([int]$native.ExitCode -eq 0 -and -not [bool]$native.TimedOut -and
+                -not [bool]$native.Cancelled -and [string]::IsNullOrWhiteSpace($nativeFailure) -and
+                $terminationConfirmed -and [bool]$native.KillOnCloseJobAssigned -and $remainingDescendants.Count -eq 0)
+            TimedOut = [bool]$native.TimedOut
+            Cancelled = [bool]$native.Cancelled
+            TerminationConfirmed = $terminationConfirmed
+            KillOnCloseJobAssigned = [bool]$native.KillOnCloseJobAssigned
+            RemainingDescendantProcessIds = $remainingDescendants
+            ProcessId = if ([int]$native.ProcessId -gt 0) { [int]$native.ProcessId } else { $null }
+            DurationMilliseconds = [int64]$native.DurationMilliseconds
+            DryRun = $false
+        }
+        if (-not [string]::IsNullOrWhiteSpace($InvocationRecordPath)) {
+            Write-SashimiUtf8File -Path $InvocationRecordPath -Content (ConvertTo-SashimiJson $result)
+        }
+        return $result
+    }
+
+    Initialize-SashimiKillOnCloseProcessNative
     $process = [Diagnostics.Process]::new()
     $process.StartInfo = $startInfo
     $stopwatch = [Diagnostics.Stopwatch]::StartNew()
@@ -1056,16 +2098,37 @@ function Invoke-SashimiHostProcess {
     $stdinTask = $null
     $stdinClosed = $false
     $processStartTimeUtc = ''
+    $launchLease = $null
+    $preLaunchException = $null
     try {
-        if (-not $process.Start()) { throw "Unable to start process: $commandText" }
-        $started = $true
+        if ($Kind -ceq 'Codex') {
+            # Keep this immediately adjacent to the protected executable lease:
+            # no Host parsing, logging, or artifact operation occurs between the
+            # repository policy check, final executable hash, and Process.Start.
+            Assert-SashimiCodexWorkspaceConfigurationAbsent -RepositoryPath $CodexWorkspacePath
+        }
+        # Re-open and hash the executable under a no-write/no-delete lease only
+        # after all process preparation, then retain that lease through
+        # Process.Start. A same-administrator attacker can still subvert Windows
+        # process creation or replace an ancestor with privileged operations;
+        # that same-admin boundary is explicitly outside this task-user threat
+        # model and is never treated as protection from a hostile administrator.
+        $launchLease = Open-SashimiExecutableLaunchLease -FilePath $FilePath -Kind $Kind
+        $started = [bool]$process.Start()
+        if (-not $started) { throw "Unable to start process: $commandText" }
+        $launchLease.Stream.Dispose()
+        $launchLease = $null
         $pidValue = $process.Id
         if (-not [string]::IsNullOrWhiteSpace($OwnedProcessRecordPath)) {
             $processStartTimeUtc = $process.StartTime.ToUniversalTime().ToString('o')
             Update-SashimiOwnedProcessLedger -Path $OwnedProcessRecordPath -Action Add -ProcessId $pidValue -StartTimeUtc $processStartTimeUtc
         }
-        $stdoutTask = $process.StandardOutput.ReadToEndAsync()
-        $stderrTask = $process.StandardError.ReadToEndAsync()
+        # Capture original bytes under fixed bounds and decode with throwing
+        # UTF-8 only after process-tree termination. StreamReader's replacement
+        # fallback and ReadToEndAsync would make malformed or unbounded output
+        # indistinguishable from validated child text.
+        $stdoutTask = [SashimiBoyAutomation.KillOnCloseProcess]::ReadBoundedAsync($process.StandardOutput.BaseStream, 16777216)
+        $stderrTask = [SashimiBoyAutomation.KillOnCloseProcess]::ReadBoundedAsync($process.StandardError.BaseStream, 1048576)
         if ($StandardInput.Length -gt 0) {
             # Never synchronously write a potentially large Codex prompt to a
             # pipe. A child that stops reading must remain subject to the same
@@ -1083,6 +2146,10 @@ function Invoke-SashimiHostProcess {
                 $stdinClosed = $true
             }
             if ($process.WaitForExit(100)) { break }
+            if ($stdoutTask.IsFaulted -or $stderrTask.IsFaulted) {
+                $terminationConfirmed = Stop-SashimiOwnedProcessTree -Process $process
+                throw 'Child output exceeded its fixed capture bound or could not be read.'
+            }
             if (-not [string]::IsNullOrWhiteSpace($CancellationMarkerPath) -and (Test-Path -LiteralPath $CancellationMarkerPath -PathType Leaf)) {
                 $cancelled = $true
                 $terminationConfirmed = Stop-SashimiOwnedProcessTree -Process $process
@@ -1106,8 +2173,9 @@ function Invoke-SashimiHostProcess {
             }
         }
         if ($terminationConfirmed) {
-            $stdout = $stdoutTask.GetAwaiter().GetResult()
-            $stderr = $stderrTask.GetAwaiter().GetResult()
+            $strictUtf8 = [Text.UTF8Encoding]::new($false, $true)
+            $stdout = $strictUtf8.GetString([byte[]]$stdoutTask.GetAwaiter().GetResult())
+            $stderr = $strictUtf8.GetString([byte[]]$stderrTask.GetAwaiter().GetResult())
         }
         else {
             $stderr = 'The owned process could not be confirmed terminated; its PID record was preserved.'
@@ -1117,6 +2185,7 @@ function Invoke-SashimiHostProcess {
         elseif ($cancelled) { $exitCode = 125 }
     }
     catch {
+        if (-not $started) { $preLaunchException = $_ }
         $stderr = $_.Exception.Message
         $exitCode = 127
         if ($started) {
@@ -1131,6 +2200,9 @@ function Invoke-SashimiHostProcess {
     }
     finally {
         $stopwatch.Stop()
+        if ($null -ne $launchLease) {
+            try { $launchLease.Stream.Dispose() } catch { }
+        }
         if ($terminationConfirmed -and -not [string]::IsNullOrWhiteSpace($OwnedProcessRecordPath) -and
             $null -ne $pidValue -and -not [string]::IsNullOrWhiteSpace($processStartTimeUtc)) {
             try {
@@ -1141,20 +2213,37 @@ function Invoke-SashimiHostProcess {
         $process.Dispose()
     }
 
+    # Identity, ACL, reparse, and launch-lease failures occur before a child is
+    # created. Preserve them as terminal Host exceptions so callers cannot
+    # mistake a synthetic process result for an executed command, and so no
+    # post-launch invocation record is written for a process that never began.
+    if ($null -ne $preLaunchException) { throw $preLaunchException }
+
+    $presentedStdOut = if ($PreserveRawOutputInMemory) { '' } else { Protect-SashimiTextWithExactValues -Text $stdout.TrimEnd() -ExactValues $sensitiveOutputValues }
+    $presentedStdErr = if ($PreserveRawOutputInMemory) { '' } else { Protect-SashimiTextWithExactValues -Text $stderr.TrimEnd() -ExactValues $sensitiveOutputValues }
     $result = [pscustomobject][ordered]@{
         FilePath = Protect-SashimiText $FilePath
         Arguments = @($ArgumentList | ForEach-Object { Protect-SashimiText $_ })
         Command = $commandText
         ExitCode = [int]$exitCode
-        StdOut = Protect-SashimiTextWithExactValues -Text $stdout.TrimEnd() -ExactValues $sensitiveOutputValues
-        StdErr = Protect-SashimiTextWithExactValues -Text $stderr.TrimEnd() -ExactValues $sensitiveOutputValues
+        StdOut = $presentedStdOut
+        StdErr = $presentedStdErr
         Succeeded = ($exitCode -eq 0 -and -not $timedOut -and -not $cancelled -and $terminationConfirmed)
         TimedOut = $timedOut
         Cancelled = $cancelled
         TerminationConfirmed = $terminationConfirmed
+        KillOnCloseJobAssigned = $false
+        RemainingDescendantProcessIds = @()
         ProcessId = $pidValue
         DurationMilliseconds = [int64]$stopwatch.ElapsedMilliseconds
         DryRun = $false
+    }
+    if ($PreserveRawOutputInMemory) {
+        # These properties are an adapter-only in-memory handoff. The parameter
+        # contract above forbids serializing this result through the common
+        # invocation-record path; the adapter audits and then drops them.
+        $result | Add-Member -NotePropertyName UnredactedStdOut -NotePropertyValue $stdout
+        $result | Add-Member -NotePropertyName UnredactedStdErr -NotePropertyValue $stderr
     }
     if (-not [string]::IsNullOrWhiteSpace($InvocationRecordPath)) {
         Write-SashimiUtf8File -Path $InvocationRecordPath -Content (ConvertTo-SashimiJson $result)

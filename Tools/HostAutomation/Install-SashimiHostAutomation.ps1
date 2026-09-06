@@ -5,7 +5,11 @@ param(
     [Parameter(Mandatory = $true)][ValidateNotNullOrEmpty()][string]$ConfigPath,
     [ValidateNotNullOrEmpty()][string]$OrchestratorPath = ([IO.Path]::Combine($PSScriptRoot, 'Invoke-SashimiHostOrchestrator.ps1')),
     [DateTime]$StartBoundary = [DateTime]::MinValue,
-    [switch]$DryRun
+    [ValidatePattern('^[0-9a-f]{64}$')][string]$ExpectedBundleId,
+    [ValidatePattern('^[0-9a-f]{64}$')][string]$ExpectedInstallerSha256,
+    [switch]$DryRun,
+    [Parameter(DontShow = $true)][string]$InstallRootFixturePath,
+    [Parameter(DontShow = $true)][string]$SchedulerFixturePath
 )
 
 Set-StrictMode -Version Latest
@@ -35,10 +39,16 @@ $script:TrustedModuleFiles = @(
 $script:TrustedPowerShellFileHashes = [Collections.Generic.Dictionary[string,string]]::new([StringComparer]::OrdinalIgnoreCase)
 $script:InstallRoot = [IO.Path]::Combine([Environment]::GetFolderPath([Environment+SpecialFolder]::ProgramFiles), 'SashimiBoyAutomation')
 $script:BundlesRoot = [IO.Path]::Combine($script:InstallRoot, 'Bundles')
+$script:CodexDistributionsRoot = [IO.Path]::Combine($script:InstallRoot, 'CodexDistributions')
+$script:InstallerSchedulerFixturePath = ''
 $script:ManifestName = 'HostIntegrity.json'
 $script:ExecutableIdentityName = 'ExecutableIdentity.json'
+$script:StagingMarkerName = '.sashimi-installer-staging.json'
+$script:InstallerBootstrapName = 'Install-SashimiHostAutomation.ps1'
 $script:ExpectedRepository = 'DongGyunLeeeee/sashimi-boy-unity'
 $script:ExpectedRemoteUrl = 'https://github.com/DongGyunLeeeee/sashimi-boy-unity.git'
+$script:ExpectedGitAuthorName = 'DongGyunLeeeee'
+$script:ExpectedGitAuthorEmail = '83210475+DongGyunLeeeee@users.noreply.github.com'
 $script:ExpectedProjectOwner = 'DongGyunLeeeee'
 $script:ExpectedProjectNumber = 1
 $script:ExpectedMutexName = 'Global\SashimiBoyHostOrchestrator'
@@ -183,6 +193,218 @@ function ConvertTo-InstallerJson {
     return ($InputObject | ConvertTo-Json -Depth 32 -Compress)
 }
 
+function Get-InstallerJsonObjectMap {
+    param(
+        [Parameter(Mandatory = $true)][Text.Json.JsonElement]$Element,
+        [Parameter(Mandatory = $true)][string]$Context
+    )
+
+    if ($Element.ValueKind -ne [Text.Json.JsonValueKind]::Object) {
+        throw "$Context must be a JSON object."
+    }
+    $map = [Collections.Generic.Dictionary[string,Text.Json.JsonElement]]::new([StringComparer]::Ordinal)
+    $caseInsensitiveNames = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    foreach ($property in $Element.EnumerateObject()) {
+        $name = [string]$property.Name
+        if (-not $caseInsensitiveNames.Add($name)) {
+            throw "$Context contains duplicate or case-variant property '$name'."
+        }
+        if (-not $map.TryAdd($name, $property.Value.Clone())) {
+            throw "$Context contains duplicate property '$name'."
+        }
+    }
+    return ,$map
+}
+
+function Assert-InstallerExactJsonObject {
+    param(
+        [Parameter(Mandatory = $true)][Text.Json.JsonElement]$Element,
+        [Parameter(Mandatory = $true)][string]$Context,
+        [Parameter(Mandatory = $true)][string[]]$PropertyNames
+    )
+
+    $map = Get-InstallerJsonObjectMap -Element $Element -Context $Context
+    if ($map.Count -ne $PropertyNames.Count) {
+        throw "$Context must contain exactly: $([string]::Join(', ', $PropertyNames))."
+    }
+    foreach ($propertyName in $PropertyNames) {
+        if (-not $map.ContainsKey($propertyName)) { throw "$Context is missing property '$propertyName'." }
+    }
+    foreach ($actualName in @($map.Keys)) {
+        if ($PropertyNames -cnotcontains $actualName) { throw "$Context contains unknown property '$actualName'." }
+    }
+    return ,$map
+}
+
+function Assert-InstallerJsonKind {
+    param(
+        [Parameter(Mandatory = $true)][Text.Json.JsonElement]$Element,
+        [Parameter(Mandatory = $true)][Text.Json.JsonValueKind]$Kind,
+        [Parameter(Mandatory = $true)][string]$Context
+    )
+
+    if ($Element.ValueKind -ne $Kind) { throw "$Context must be JSON $($Kind.ToString().ToLowerInvariant())." }
+}
+
+function Assert-InstallerJsonInteger {
+    param(
+        [Parameter(Mandatory = $true)][Text.Json.JsonElement]$Element,
+        [Parameter(Mandatory = $true)][string]$Context
+    )
+
+    Assert-InstallerJsonKind -Element $Element -Kind Number -Context $Context
+    $integer = 0
+    if (-not $Element.TryGetInt32([ref]$integer)) { throw "$Context must be a 32-bit JSON integer." }
+}
+
+function Assert-InstallerJsonStringArray {
+    param(
+        [Parameter(Mandatory = $true)][Text.Json.JsonElement]$Element,
+        [Parameter(Mandatory = $true)][string]$Context
+    )
+
+    Assert-InstallerJsonKind -Element $Element -Kind Array -Context $Context
+    $index = 0
+    foreach ($value in $Element.EnumerateArray()) {
+        Assert-InstallerJsonKind -Element $value -Kind String -Context "$Context[$index]"
+        $index++
+    }
+}
+
+function Assert-InstallerConfigJsonSchema {
+    param([Parameter(Mandatory = $true)][string]$JsonText)
+
+    if ($JsonText -match '(?i)\bBearer\s+[A-Za-z0-9._~+/=-]+' -or
+        $JsonText -match '(?i)\b(?:github_pat_|gh[pousr]_)[A-Za-z0-9_]{8,}' -or
+        $JsonText -match '(?i)\bsk-[A-Za-z0-9_-]{8,}' -or
+        $JsonText -match '(?i)-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----' -or
+        $JsonText -match '(?i)://[^\s/@:"]+:[^\s/@"]+@') {
+        throw 'Configuration contains recognizable credential material.'
+    }
+
+    $document = $null
+    try {
+        $options = [Text.Json.JsonDocumentOptions]::new()
+        $options.AllowTrailingCommas = $false
+        $options.CommentHandling = [Text.Json.JsonCommentHandling]::Disallow
+        $options.MaxDepth = 64
+        $document = [Text.Json.JsonDocument]::Parse($JsonText, $options)
+        $rootNames = @(
+            'SchemaVersion','Repository','ProjectOwner','ProjectNumber','DefaultBranch','RemoteUrl','RunRoot','ArtifactRetentionDays',
+            'GitExecutable','GitLfsExecutable','GitAuthorName','GitAuthorEmail','GitHubCli','CodexExecutable','PowerShellExecutable','UnityExecutable',
+            'ExpectedUnityVersion','MutexName','Task','Timeouts','Retry','Security','IssueValidations'
+        )
+        $root = Assert-InstallerExactJsonObject -Element $document.RootElement -Context 'Config' -PropertyNames $rootNames
+        foreach ($name in @('SchemaVersion','ProjectNumber','ArtifactRetentionDays')) { Assert-InstallerJsonInteger -Element $root[$name] -Context "Config.$name" }
+        foreach ($name in @('Repository','ProjectOwner','DefaultBranch','RemoteUrl','RunRoot','GitExecutable','GitLfsExecutable','GitAuthorName','GitAuthorEmail','GitHubCli','CodexExecutable','PowerShellExecutable','UnityExecutable','ExpectedUnityVersion','MutexName')) {
+            Assert-InstallerJsonKind -Element $root[$name] -Kind String -Context "Config.$name"
+        }
+
+        $task = Assert-InstallerExactJsonObject -Element $root['Task'] -Context 'Config.Task' -PropertyNames @('Name','User','IntervalMinutes','StartWhenAvailable','WakeToRun','MultipleInstances')
+        foreach ($name in @('Name','User','MultipleInstances')) { Assert-InstallerJsonKind -Element $task[$name] -Kind String -Context "Config.Task.$name" }
+        Assert-InstallerJsonInteger -Element $task['IntervalMinutes'] -Context 'Config.Task.IntervalMinutes'
+        foreach ($name in @('StartWhenAvailable','WakeToRun')) {
+            if ($task[$name].ValueKind -notin @([Text.Json.JsonValueKind]::True,[Text.Json.JsonValueKind]::False)) { throw "Config.Task.$name must be JSON boolean." }
+        }
+
+        $timeouts = Assert-InstallerExactJsonObject -Element $root['Timeouts'] -Context 'Config.Timeouts' -PropertyNames @('CodexSeconds','GitSeconds','GitHubSeconds','UnityStageSeconds','GeneratorSeconds')
+        foreach ($name in @($timeouts.Keys)) { Assert-InstallerJsonInteger -Element $timeouts[$name] -Context "Config.Timeouts.$name" }
+        $retry = Assert-InstallerExactJsonObject -Element $root['Retry'] -Context 'Config.Retry' -PropertyNames @('MaximumAttempts','CooldownSeconds')
+        foreach ($name in @($retry.Keys)) { Assert-InstallerJsonInteger -Element $retry[$name] -Context "Config.Retry.$name" }
+
+        $security = Assert-InstallerExactJsonObject -Element $root['Security'] -Context 'Config.Security' -PropertyNames @('AuthorizedPrAuthors','CodexWorkspaceWriteNetworkAccess','ProtectedPathPatterns','ArtifactExclusionPatterns')
+        foreach ($name in @('AuthorizedPrAuthors','ProtectedPathPatterns','ArtifactExclusionPatterns')) { Assert-InstallerJsonStringArray -Element $security[$name] -Context "Config.Security.$name" }
+        if ($security['CodexWorkspaceWriteNetworkAccess'].ValueKind -notin @([Text.Json.JsonValueKind]::True,[Text.Json.JsonValueKind]::False)) { throw 'Config.Security.CodexWorkspaceWriteNetworkAccess must be JSON boolean.' }
+
+        $validationMap = Get-InstallerJsonObjectMap -Element $root['IssueValidations'] -Context 'Config.IssueValidations'
+        foreach ($validationName in @($validationMap.Keys)) {
+            if ($validationName -cnotmatch '^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$' -or
+                $validationName -match '(?i)(?:token|secret|password|credential|proxy|endpoint|certificate|auth|codex.?home|base.?url)') {
+                throw "Config.IssueValidations property '$validationName' has an invalid or secret-bearing identifier."
+            }
+            $definition = Assert-InstallerExactJsonObject -Element $validationMap[$validationName] -Context "Config.IssueValidations.$validationName" -PropertyNames @('IssueNumber','UnityExecuteMethod','Arguments','DeterminismPaths','ScreenshotPaths','PreviewPaths','AllowedProtectedPathPatterns')
+            Assert-InstallerJsonInteger -Element $definition['IssueNumber'] -Context "Config.IssueValidations.$validationName.IssueNumber"
+            Assert-InstallerJsonKind -Element $definition['UnityExecuteMethod'] -Kind String -Context "Config.IssueValidations.$validationName.UnityExecuteMethod"
+            foreach ($name in @('Arguments','DeterminismPaths','ScreenshotPaths','PreviewPaths','AllowedProtectedPathPatterns')) {
+                Assert-InstallerJsonStringArray -Element $definition[$name] -Context "Config.IssueValidations.$validationName.$name"
+            }
+        }
+    }
+    finally {
+        if ($null -ne $document) { $document.Dispose() }
+    }
+}
+
+function New-InstallerCanonicalConfigProjection {
+    param([Parameter(Mandatory = $true)][object]$Config)
+
+    $validations = [ordered]@{}
+    $validationEntries = if ($Config.IssueValidations -is [Collections.IDictionary]) {
+        @($Config.IssueValidations.Keys | Sort-Object | ForEach-Object {
+                [pscustomobject]@{ Name=[string]$_; Value=$Config.IssueValidations[$_] }
+            })
+    }
+    else { @($Config.IssueValidations.PSObject.Properties | Sort-Object Name) }
+    foreach ($property in $validationEntries) {
+        $definition = $property.Value
+        $validations[[string]$property.Name] = [ordered]@{
+            IssueNumber = [int]$definition.IssueNumber
+            UnityExecuteMethod = [string]$definition.UnityExecuteMethod
+            Arguments = @($definition.Arguments | ForEach-Object { [string]$_ })
+            DeterminismPaths = @($definition.DeterminismPaths | ForEach-Object { [string]$_ })
+            ScreenshotPaths = @($definition.ScreenshotPaths | ForEach-Object { [string]$_ })
+            PreviewPaths = @($definition.PreviewPaths | ForEach-Object { [string]$_ })
+            AllowedProtectedPathPatterns = @($definition.AllowedProtectedPathPatterns | ForEach-Object { [string]$_ })
+        }
+    }
+    return [pscustomobject][ordered]@{
+        SchemaVersion = [int]$Config.SchemaVersion
+        Repository = [string]$Config.Repository
+        ProjectOwner = [string]$Config.ProjectOwner
+        ProjectNumber = [int]$Config.ProjectNumber
+        DefaultBranch = [string]$Config.DefaultBranch
+        RemoteUrl = [string]$Config.RemoteUrl
+        RunRoot = [string]$Config.RunRoot
+        ArtifactRetentionDays = [int]$Config.ArtifactRetentionDays
+        GitExecutable = [string]$Config.GitExecutable
+        GitLfsExecutable = [string]$Config.GitLfsExecutable
+        GitAuthorName = [string]$Config.GitAuthorName
+        GitAuthorEmail = [string]$Config.GitAuthorEmail
+        GitHubCli = [string]$Config.GitHubCli
+        CodexExecutable = [string]$Config.CodexExecutable
+        PowerShellExecutable = [string]$Config.PowerShellExecutable
+        UnityExecutable = [string]$Config.UnityExecutable
+        ExpectedUnityVersion = [string]$Config.ExpectedUnityVersion
+        MutexName = [string]$Config.MutexName
+        Task = [ordered]@{
+            Name = [string]$Config.Task.Name
+            User = [string]$Config.Task.User
+            IntervalMinutes = [int]$Config.Task.IntervalMinutes
+            StartWhenAvailable = [bool]$Config.Task.StartWhenAvailable
+            WakeToRun = [bool]$Config.Task.WakeToRun
+            MultipleInstances = [string]$Config.Task.MultipleInstances
+        }
+        Timeouts = [ordered]@{
+            CodexSeconds = [int]$Config.Timeouts.CodexSeconds
+            GitSeconds = [int]$Config.Timeouts.GitSeconds
+            GitHubSeconds = [int]$Config.Timeouts.GitHubSeconds
+            UnityStageSeconds = [int]$Config.Timeouts.UnityStageSeconds
+            GeneratorSeconds = [int]$Config.Timeouts.GeneratorSeconds
+        }
+        Retry = [ordered]@{
+            MaximumAttempts = [int]$Config.Retry.MaximumAttempts
+            CooldownSeconds = [int]$Config.Retry.CooldownSeconds
+        }
+        Security = [ordered]@{
+            AuthorizedPrAuthors = @($Config.Security.AuthorizedPrAuthors | ForEach-Object { [string]$_ })
+            CodexWorkspaceWriteNetworkAccess = [bool]$Config.Security.CodexWorkspaceWriteNetworkAccess
+            ProtectedPathPatterns = @($Config.Security.ProtectedPathPatterns | ForEach-Object { [string]$_ })
+            ArtifactExclusionPatterns = @($Config.Security.ArtifactExclusionPatterns | ForEach-Object { [string]$_ })
+        }
+        IssueValidations = $validations
+    }
+}
+
 function Import-InstallerConfig {
     param([Parameter(Mandatory = $true)][string]$Path)
 
@@ -191,7 +413,13 @@ function Import-InstallerConfig {
     # dot-sourced into the elevated process.
     $normalizedPath = ConvertTo-InstallerPath -Path $Path
     Assert-InstallerNoReparsePoint $normalizedPath
-    $config = Read-InstallerJsonFile -Path $normalizedPath
+    try {
+        $configBytes = [IO.File]::ReadAllBytes($normalizedPath)
+        $configText = [Text.UTF8Encoding]::new($false,$true).GetString($configBytes)
+        Assert-InstallerConfigJsonSchema -JsonText $configText
+        $config = $configText | ConvertFrom-Json -Depth 64 -DateKind String -ErrorAction Stop
+    }
+    catch { throw "Invalid strict-schema UTF-8 configuration '$normalizedPath': $($_.Exception.Message)" }
     if ([int](Get-InstallerPropertyValue $config 'SchemaVersion' 0) -ne 1) { throw 'Config SchemaVersion must be 1.' }
     if ([string](Get-InstallerPropertyValue $config 'Repository' '') -cne $script:ExpectedRepository) { throw "Config Repository must be exactly '$($script:ExpectedRepository)'." }
     if ([string](Get-InstallerPropertyValue $config 'ProjectOwner' '') -cne $script:ExpectedProjectOwner -or
@@ -212,11 +440,20 @@ function Import-InstallerConfig {
     if (-not (Test-InstallerPathEqual -Left $expandedRunRoot -Right $expectedRunRoot) -and -not (Test-InstallerHarnessMode)) { throw "RunRoot must be exactly '$expectedRunRoot' outside the test harness." }
     foreach ($name in $script:ExecutableProperties) { $config.$name = ConvertTo-InstallerExecutablePath -Name $name -Path ([string]$config.$name) }
     if ([string]$config.PowerShellExecutable -cne $script:PowerShellPath) { throw "PowerShellExecutable must be '$($script:PowerShellPath)'." }
-    if ([string]::IsNullOrWhiteSpace([string]$config.GitAuthorName) -or [string]$config.GitAuthorName -notmatch '^[^\x00-\x1f\x7f]{1,128}$' -or
-        [string]$config.GitAuthorEmail -notmatch '^[A-Za-z0-9.!#$%&''*+/=?^_`{|}~-]+@[A-Za-z0-9](?:[A-Za-z0-9.-]{0,251}[A-Za-z0-9])?$') {
-        throw 'GitAuthorName and GitAuthorEmail must be explicit, bounded, single-line Git identities.'
+    if ([string]$config.ExpectedUnityVersion -cne '6000.4.0f1') { throw "ExpectedUnityVersion must be exactly '6000.4.0f1'." }
+    if ([string]$config.GitAuthorName -cne $script:ExpectedGitAuthorName -or
+        [string]$config.GitAuthorEmail -cne $script:ExpectedGitAuthorEmail) {
+        throw 'GitAuthorName and GitAuthorEmail must equal the immutable repository-owner identity.'
     }
-    if ([int]$config.Task.IntervalMinutes -ne 15 -or [string]$config.Task.Name -cne $script:TaskName) { throw 'Task configuration must retain the exact name and 15-minute interval contract.' }
+    if ([int]$config.Task.IntervalMinutes -ne 15 -or [string]$config.Task.Name -cne $script:TaskName -or
+        [string]$config.Task.User -cne $script:RequiredUserName -or -not [bool]$config.Task.StartWhenAvailable -or
+        -not [bool]$config.Task.WakeToRun -or [string]$config.Task.MultipleInstances -cne 'IgnoreNew') {
+        throw 'Task configuration must retain the exact identity, name, interval, availability, wake, and IgnoreNew contract.'
+    }
+    foreach ($timeoutName in @('CodexSeconds','GitSeconds','GitHubSeconds','UnityStageSeconds','GeneratorSeconds')) {
+        $timeoutValue = [int]$config.Timeouts.$timeoutName
+        if ($timeoutValue -lt 1 -or $timeoutValue -gt 86400) { throw "Timeouts.$timeoutName must be between 1 and 86400 seconds." }
+    }
     if ([int]$config.Retry.MaximumAttempts -lt 1 -or [int]$config.Retry.MaximumAttempts -gt 10 -or [int]$config.Retry.CooldownSeconds -lt 0 -or [int]$config.Retry.CooldownSeconds -gt 3600) { throw 'Retry settings are outside the supported bounds.' }
     $authorizedAuthors = @($config.Security.AuthorizedPrAuthors | ForEach-Object { [string]$_ })
     if ($authorizedAuthors.Count -lt 1 -or @($authorizedAuthors | Where-Object { $_ -notmatch '^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$' }).Count -gt 0) { throw 'Security.AuthorizedPrAuthors must contain at least one valid GitHub login.' }
@@ -227,8 +464,22 @@ function Import-InstallerConfig {
     foreach ($requiredExclusion in @('**/.git/**','**/.codex/**','**/*Save*/**')) {
         if ($artifactExclusions -cnotcontains $requiredExclusion) { throw "Security.ArtifactExclusionPatterns must include '$requiredExclusion'." }
     }
+    if ([bool]$config.Security.CodexWorkspaceWriteNetworkAccess) { throw 'Security.CodexWorkspaceWriteNetworkAccess must remain false.' }
+    foreach ($validationProperty in @($config.IssueValidations.PSObject.Properties)) {
+        $definition = $validationProperty.Value
+        if ([int]$definition.IssueNumber -lt 1 -or [string]$definition.UnityExecuteMethod -cnotmatch '^[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)+$') {
+            throw "IssueValidations.$($validationProperty.Name) has an invalid issue number or Unity execute method."
+        }
+        foreach ($argument in @($definition.Arguments)) {
+            $argumentText = [string]$argument
+            if ($argumentText -match '[\x00\r\n]' -or $argumentText.Length -gt 1024 -or
+                $argumentText -match '(?i)(?:^|[^A-Za-z0-9])(?:access[_-]?token|refresh[_-]?token|api[_-]?key|token|password|secret|credential|authorization|proxy|endpoint|base[_-]?url|ssl[_-]?cert|ca[_-]?bundle|codex[_-]?home|auth[_-]?(?:file|path|dir))(?:$|[^A-Za-z0-9])') {
+                throw "IssueValidations.$($validationProperty.Name).Arguments contains an unsafe or secret-bearing value."
+            }
+        }
+    }
     $config.RunRoot = $expandedRunRoot
-    return $config
+    return New-InstallerCanonicalConfigProjection -Config $config
 }
 
 function Get-InstallerPropertyValue {
@@ -325,6 +576,80 @@ function Assert-InstallerNoReparsePoint {
     }
 }
 
+function Get-InstallerHarnessFixtureLocation {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][string]$Purpose
+    )
+
+    if (-not (Test-InstallerHarnessMode)) { throw "$Purpose is available only to the owned installer test harness." }
+    $fullPath = ConvertTo-InstallerPath -Path $Path -AllowMissing
+    $temporaryRoot = [IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd([IO.Path]::DirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
+    if (-not $fullPath.StartsWith($temporaryRoot, [StringComparison]::OrdinalIgnoreCase)) { throw "$Purpose must remain below the Windows temporary root." }
+    $relative = $fullPath.Substring($temporaryRoot.Length)
+    $separatorIndex = $relative.IndexOf([IO.Path]::DirectorySeparatorChar)
+    if ($separatorIndex -lt 1) { throw "$Purpose must be inside an owned host-test directory." }
+    $testRootLeaf = $relative.Substring(0, $separatorIndex)
+    if ($testRootLeaf -cnotmatch '^SashimiBoyHostTests-[0-9a-f]{32}$') { throw "$Purpose is outside an owned host-test directory." }
+    $testRoot = Join-Path ($temporaryRoot.TrimEnd([IO.Path]::DirectorySeparatorChar)) $testRootLeaf
+    $markerPath = Join-Path $testRoot '.host-tests-owner.json'
+    if (-not (Test-Path -LiteralPath $testRoot -PathType Container) -or -not (Test-Path -LiteralPath $markerPath -PathType Leaf)) {
+        throw "$Purpose lacks the owned host-test root and marker."
+    }
+    Assert-InstallerNoReparsePoint $testRoot
+    Assert-InstallerNoReparsePoint $markerPath
+    $parent = Split-Path -Parent $fullPath
+    if (-not (Test-Path -LiteralPath $parent -PathType Container)) { throw "$Purpose parent must already exist inside the owned host-test root." }
+    Assert-InstallerNoReparsePoint $parent
+    return [pscustomobject][ordered]@{ Path=$fullPath; TestRoot=$testRoot }
+}
+
+function Initialize-InstallerHarnessBoundaries {
+    if ([string]::IsNullOrWhiteSpace($InstallRootFixturePath) -and [string]::IsNullOrWhiteSpace($SchedulerFixturePath)) { return }
+    if (-not (Test-InstallerHarnessMode)) { throw 'Installer boundary injection is forbidden outside the owned test harness.' }
+    if ([string]::IsNullOrWhiteSpace($InstallRootFixturePath) -or [string]::IsNullOrWhiteSpace($SchedulerFixturePath)) {
+        throw 'Installer harness injection requires both InstallRootFixturePath and SchedulerFixturePath.'
+    }
+    $installLocation = Get-InstallerHarnessFixtureLocation -Path $InstallRootFixturePath -Purpose 'InstallRootFixturePath'
+    $schedulerLocation = Get-InstallerHarnessFixtureLocation -Path $SchedulerFixturePath -Purpose 'SchedulerFixturePath'
+    if (-not [string]::Equals([string]$installLocation.TestRoot, [string]$schedulerLocation.TestRoot, [StringComparison]::OrdinalIgnoreCase)) {
+        throw 'Installer harness boundaries must share one owned host-test root.'
+    }
+    if (Test-Path -LiteralPath $installLocation.Path) {
+        $installItem = Get-Item -LiteralPath $installLocation.Path -Force -ErrorAction Stop
+        if (-not $installItem.PSIsContainer -or ($installItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+            throw 'InstallRootFixturePath must be absent or an existing plain directory.'
+        }
+        Assert-InstallerNoReparsePoint $installItem.FullName
+    }
+    $script:InstallRoot = [string]$installLocation.Path
+    $script:BundlesRoot = Join-Path $script:InstallRoot 'Bundles'
+    $script:CodexDistributionsRoot = Join-Path $script:InstallRoot 'CodexDistributions'
+    $script:InstallerSchedulerFixturePath = [string]$schedulerLocation.Path
+}
+
+function Invoke-InstallerSchedulerBoundary {
+    param(
+        [Parameter(Mandatory = $true)][string]$TaskName,
+        [Parameter(Mandatory = $true)][string]$Xml,
+        [switch]$DryRun
+    )
+
+    if (-not [string]::IsNullOrWhiteSpace([string]$script:InstallerSchedulerFixturePath)) {
+        $fixtureLocation = Get-InstallerHarnessFixtureLocation -Path ([string]$script:InstallerSchedulerFixturePath) -Purpose 'SchedulerFixturePath'
+        $record = [ordered]@{
+            SchemaVersion=1; Operation='Register-ScheduledTask'; DryRun=[bool]$DryRun; TaskName=$TaskName
+            XmlSha256=Get-InstallerTextSha256 -Text $Xml
+        }
+        [IO.File]::AppendAllText($fixtureLocation.Path, ((ConvertTo-InstallerJson $record) + "`n"), [Text.UTF8Encoding]::new($false))
+        return [pscustomobject][ordered]@{ Invoked=$true; Registered=(-not [bool]$DryRun); Fixture=$true }
+    }
+    if ($DryRun) { return [pscustomobject][ordered]@{ Invoked=$true; Registered=$false; Fixture=$false } }
+    Assert-InstallerTrustedPowerShellState -ScheduledTasks
+    ScheduledTasks\Register-ScheduledTask -TaskName $TaskName -Xml $Xml -Force -ErrorAction Stop | Out-Null
+    return [pscustomobject][ordered]@{ Invoked=$true; Registered=$true; Fixture=$false }
+}
+
 function Get-InstallerExecutableIdentityEntry {
     param(
         [Parameter(Mandatory = $true)][string]$Name,
@@ -345,21 +670,62 @@ function Get-InstallerExecutableIdentityEntry {
     if (-not [string]::Equals($item.FullName,$fullPath,[StringComparison]::OrdinalIgnoreCase) -or [int64]$item.Length -lt 1) {
         throw "$Name did not resolve to its exact canonical non-empty file."
     }
+    Assert-InstallerNoReparsePoint $item.FullName
     return [ordered]@{ Name=$Name; Path=$item.FullName; Length=[int64]$item.Length; Sha256=Get-InstallerFileSha256 $item.FullName }
 }
 
+function Get-InstallerSourceExecutableSnapshot {
+    param(
+        [Parameter(Mandatory = $true)][string]$Name,
+        [Parameter(Mandatory = $true)][string]$Path
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Path) -or -not [IO.Path]::IsPathFullyQualified($Path) -or $Path -cnotmatch '^[A-Za-z]:\\') {
+        throw "$Name source must be an absolute local Windows executable path."
+    }
+    $fullPath = [IO.Path]::GetFullPath($Path)
+    if (-not [string]::Equals($Path, $fullPath, [StringComparison]::OrdinalIgnoreCase) -or [IO.Path]::GetExtension($fullPath) -cne '.exe') {
+        throw "$Name source must be a canonical .exe path."
+    }
+    $item = Get-Item -LiteralPath $fullPath -Force -ErrorAction Stop
+    if ($item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+        throw "$Name source must resolve to a plain executable file."
+    }
+    $stream = [IO.File]::Open($fullPath, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)
+    try {
+        if ($stream.Length -lt 1 -or $stream.Length -gt [int]::MaxValue) { throw "$Name source length is outside the supported immutable snapshot bounds." }
+        $bytes = [byte[]]::new([int]$stream.Length)
+        $stream.ReadExactly($bytes)
+        if ($stream.Position -ne $stream.Length) { throw "$Name source could not be captured as one complete immutable snapshot." }
+    }
+    finally { $stream.Dispose() }
+    $sha256 = ([Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($bytes))).ToLowerInvariant()
+    return [pscustomobject][ordered]@{ Name=$Name; Path=$fullPath; Length=[int64]$bytes.LongLength; Sha256=$sha256; Bytes=$bytes }
+}
+
 function New-InstallerExecutableIdentity {
-    param([Parameter(Mandatory = $true)][object]$Config)
+    param(
+        [Parameter(Mandatory = $true)][object]$Config,
+        [hashtable]$SourceEntries = @{}
+    )
     $entries = foreach ($name in $script:ExecutableProperties) {
         $property = $Config.PSObject.Properties[$name]
         if ($null -eq $property) { throw "Configuration is missing executable property '$name'." }
-        Get-InstallerExecutableIdentityEntry -Name $name -Path ([string]$property.Value)
+        $identityPath = ConvertTo-InstallerExecutablePath -Name $name -Path ([string]$property.Value)
+        $sourceEntry = if ($SourceEntries.ContainsKey($name)) { $SourceEntries[$name] } else { Get-InstallerExecutableIdentityEntry -Name $name -Path $identityPath }
+        if ([string]$sourceEntry.Name -cne $name -or [int64]$sourceEntry.Length -lt 1 -or [string]$sourceEntry.Sha256 -cnotmatch '^[0-9a-f]{64}$') {
+            throw "$name source snapshot is invalid."
+        }
+        [ordered]@{ Name=$name; Path=$identityPath; Length=[int64]$sourceEntry.Length; Sha256=[string]$sourceEntry.Sha256 }
     }
     return [ordered]@{ SchemaVersion=1; Executables=@($entries) }
 }
 
 function Assert-InstallerExecutableIdentity {
-    param([Parameter(Mandatory = $true)][object]$Identity)
+    param(
+        [Parameter(Mandatory = $true)][object]$Identity,
+        [hashtable]$SourceEntries = @{}
+    )
     if ([int]$Identity.SchemaVersion -ne 1) { throw 'Executable identity SchemaVersion must be 1.' }
     $entries = @($Identity.Executables)
     if ($entries.Count -ne $script:ExecutableProperties.Count) { throw 'Executable identity must contain exactly the configured bound tools.' }
@@ -368,7 +734,8 @@ function Assert-InstallerExecutableIdentity {
         if ([string]$entry.Name -cne $expectedName -or [string]$entry.Sha256 -cnotmatch '^[0-9a-f]{64}$' -or [int64]$entry.Length -lt 1) {
             throw "Executable identity entry is invalid at index $index."
         }
-        $current=Get-InstallerExecutableIdentityEntry -Name $expectedName -Path ([string]$entry.Path)
+        $identityPath=ConvertTo-InstallerExecutablePath -Name $expectedName -Path ([string]$entry.Path)
+        $current=if ($SourceEntries.ContainsKey($expectedName)) { $SourceEntries[$expectedName] } else { Get-InstallerExecutableIdentityEntry -Name $expectedName -Path $identityPath }
         if ([int64]$current.Length -ne [int64]$entry.Length -or [string]$current.Sha256 -cne [string]$entry.Sha256) {
             throw "$expectedName changed after its executable identity was captured."
         }
@@ -455,26 +822,233 @@ function Assert-InstallerProtectedAcl {
     if (-not $acl.AreAccessRulesProtected) { throw "Protected host ACL still inherits permissions: $Path" }
     if ((Get-InstallerSidValue $acl.Owner) -cne $administrators) { throw "Protected host path is not owned by Administrators: $Path" }
     $allowedSids = @($administrators,$system,$UserSid.Value)
-    $fullControlSids = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
-    $userRead = $false
-    $writeMask = [Security.AccessControl.FileSystemRights]::Write -bor [Security.AccessControl.FileSystemRights]::Modify -bor [Security.AccessControl.FileSystemRights]::Delete -bor [Security.AccessControl.FileSystemRights]::ChangePermissions -bor [Security.AccessControl.FileSystemRights]::TakeOwnership
+    $rulesBySid = @{}
+    $expectedInheritance = if ($item.PSIsContainer) {
+        [Security.AccessControl.InheritanceFlags]::ContainerInherit -bor [Security.AccessControl.InheritanceFlags]::ObjectInherit
+    }
+    else { [Security.AccessControl.InheritanceFlags]::None }
+    $expectedUserRights = [Security.AccessControl.FileSystemRights]::ReadAndExecute -bor [Security.AccessControl.FileSystemRights]::Synchronize
+    $expectedFullControl = [Security.AccessControl.FileSystemRights]::FullControl
     foreach ($rule in @($acl.Access)) {
         $sid = Get-InstallerSidValue $rule.IdentityReference
-        if ($rule.AccessControlType -ne [Security.AccessControl.AccessControlType]::Allow -or $allowedSids -cnotcontains $sid) { throw "Protected host ACL contains an unexpected access rule for '$sid': $Path" }
-        if ($sid -ceq $UserSid.Value) {
-            if (($rule.FileSystemRights -band $writeMask) -ne 0) { throw "Task user retains write access to protected host path: $Path" }
-            if (($rule.FileSystemRights -band [Security.AccessControl.FileSystemRights]::ReadAndExecute) -ne 0) { $userRead = $true }
+        if ($rule.AccessControlType -ne [Security.AccessControl.AccessControlType]::Allow -or $allowedSids -cnotcontains $sid -or $rule.IsInherited) {
+            throw "Protected host ACL contains an unexpected, denied, or inherited access rule for '$sid': $Path"
         }
-        elseif (($rule.FileSystemRights -band [Security.AccessControl.FileSystemRights]::FullControl) -eq [Security.AccessControl.FileSystemRights]::FullControl) { [void]$fullControlSids.Add($sid) }
+        if ($rulesBySid.ContainsKey($sid)) { throw "Protected host ACL contains duplicate access rules for '$sid': $Path" }
+        if ($rule.InheritanceFlags -ne $expectedInheritance -or $rule.PropagationFlags -ne [Security.AccessControl.PropagationFlags]::None) {
+            throw "Protected host ACL contains incorrect inheritance flags for '$sid': $Path"
+        }
+        $rulesBySid[$sid] = $rule
     }
-    if (-not $userRead -or -not $fullControlSids.Contains($administrators) -or -not $fullControlSids.Contains($system)) { throw "Protected host ACL is missing a required access rule: $Path" }
+    if ($rulesBySid.Count -ne 3 -or @($allowedSids | Where-Object { -not $rulesBySid.ContainsKey($_) }).Count -ne 0) {
+        throw "Protected host ACL is missing a required exact access rule: $Path"
+    }
+    if ($rulesBySid[$UserSid.Value].FileSystemRights -ne $expectedUserRights) {
+        throw "Task user must have exactly ReadAndExecute (plus the Windows Synchronize bit) on protected host path: $Path"
+    }
+    foreach ($sid in @($administrators,$system)) {
+        if ($rulesBySid[$sid].FileSystemRights -ne $expectedFullControl) { throw "Protected host ACL does not grant exact FullControl to '$sid': $Path" }
+    }
+}
+
+function Assert-InstallerPlainDirectory {
+    param([Parameter(Mandatory = $true)][string]$Path)
+
+    $item = Get-Item -LiteralPath $Path -Force -ErrorAction Stop
+    if (-not $item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+        throw "Installer directory is not a plain directory: $Path"
+    }
+    Assert-InstallerNoReparsePoint $item.FullName
+    return $item.FullName
+}
+
+function Assert-InstallerTreeHasNoReparsePoint {
+    param([Parameter(Mandatory = $true)][string]$Root)
+
+    $rootPath = Assert-InstallerPlainDirectory $Root
+    $pending = [Collections.Generic.Stack[string]]::new()
+    $pending.Push($rootPath)
+    while ($pending.Count -gt 0) {
+        $directory = $pending.Pop()
+        foreach ($item in @(Get-ChildItem -LiteralPath $directory -Force -ErrorAction Stop)) {
+            if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+                throw "Installer-owned staging content contains a reparse point: $($item.FullName)"
+            }
+            if ($item.PSIsContainer) { $pending.Push($item.FullName) }
+        }
+    }
+}
+
+function New-InstallerStagingWorkspace {
+    param(
+        [Parameter(Mandatory = $true)][string]$ParentRoot,
+        [Parameter(Mandatory = $true)][ValidateSet('Bundle','CodexDistribution')][string]$Purpose,
+        [Parameter(Mandatory = $true)][ValidatePattern('^[0-9a-f]{64}$')][string]$Identity,
+        [Parameter(Mandatory = $true)][Security.Principal.SecurityIdentifier]$UserSid
+    )
+
+    $parentPath = Assert-InstallerPlainDirectory $ParentRoot
+    $leaf = '.sashimi-stage-' + [Guid]::NewGuid().ToString('N')
+    $workspace = Join-Path $parentPath $leaf
+    $payload = Join-Path $workspace 'Payload'
+    $markerPath = Join-Path $workspace $script:StagingMarkerName
+    $markerWritten = $false
+    try {
+        [IO.Directory]::CreateDirectory($workspace) | Out-Null
+        Set-InstallerProtectedAcl $workspace $UserSid -Container
+        $marker = [ordered]@{
+            SchemaVersion=1; Owner='SashimiBoyHostInstaller'; Purpose=$Purpose
+            Identity=$Identity; WorkspaceLeaf=$leaf
+        }
+        [IO.File]::WriteAllText($markerPath, ((ConvertTo-InstallerJson $marker) + "`n"), [Text.UTF8Encoding]::new($false))
+        $markerWritten = $true
+        Set-InstallerProtectedAcl $markerPath $UserSid
+        [IO.Directory]::CreateDirectory($payload) | Out-Null
+        Set-InstallerProtectedAcl $payload $UserSid -Container
+        return [pscustomobject][ordered]@{
+            ParentRoot=$parentPath; Workspace=$workspace; Payload=$payload; MarkerPath=$markerPath
+            Purpose=$Purpose; Identity=$Identity; WorkspaceLeaf=$leaf
+        }
+    }
+    catch {
+        $failure = $_
+        if (Test-Path -LiteralPath $workspace -PathType Container) {
+            if ($markerWritten) {
+                try { Remove-InstallerStagingWorkspace -Workspace $workspace -ParentRoot $parentPath -Purpose $Purpose -Identity $Identity } catch { }
+            }
+            else {
+                try {
+                    $createdItem = Get-Item -LiteralPath $workspace -Force -ErrorAction Stop
+                    if ($createdItem.PSIsContainer -and ($createdItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -eq 0 -and
+                        @(Get-ChildItem -LiteralPath $workspace -Force -ErrorAction Stop).Count -eq 0) {
+                        [IO.Directory]::Delete($workspace, $false)
+                    }
+                }
+                catch { }
+            }
+        }
+        throw $failure
+    }
+}
+
+function Remove-InstallerStagingWorkspace {
+    param(
+        [Parameter(Mandatory = $true)][string]$Workspace,
+        [Parameter(Mandatory = $true)][string]$ParentRoot,
+        [Parameter(Mandatory = $true)][ValidateSet('Bundle','CodexDistribution')][string]$Purpose,
+        [Parameter(Mandatory = $true)][ValidatePattern('^[0-9a-f]{64}$')][string]$Identity
+    )
+
+    $workspacePath = [IO.Path]::GetFullPath($Workspace)
+    $parentPath = [IO.Path]::GetFullPath($ParentRoot).TrimEnd([IO.Path]::DirectorySeparatorChar)
+    if (-not [string]::Equals([IO.Path]::GetDirectoryName($workspacePath), $parentPath, [StringComparison]::OrdinalIgnoreCase) -or
+        [IO.Path]::GetFileName($workspacePath) -cnotmatch '^\.sashimi-stage-[0-9a-f]{32}$') {
+        throw 'Refusing to remove a staging workspace outside its exact protected sibling root.'
+    }
+    Assert-InstallerTreeHasNoReparsePoint $workspacePath
+    $markerPath = Join-Path $workspacePath $script:StagingMarkerName
+    if (-not (Test-Path -LiteralPath $markerPath -PathType Leaf)) { throw 'Refusing to remove an unmarked staging workspace.' }
+    $marker = Read-InstallerJsonFile $markerPath
+    $markerProperties = @($marker.PSObject.Properties | ForEach-Object Name)
+    $expectedProperties = @('SchemaVersion','Owner','Purpose','Identity','WorkspaceLeaf')
+    if ($markerProperties.Count -ne $expectedProperties.Count -or @($markerProperties | Where-Object { $expectedProperties -cnotcontains $_ }).Count -ne 0 -or
+        [int]$marker.SchemaVersion -ne 1 -or [string]$marker.Owner -cne 'SashimiBoyHostInstaller' -or
+        [string]$marker.Purpose -cne $Purpose -or [string]$marker.Identity -cne $Identity -or
+        [string]$marker.WorkspaceLeaf -cne [IO.Path]::GetFileName($workspacePath)) {
+        throw 'Refusing to remove a staging workspace whose ownership marker does not match.'
+    }
+    [IO.Directory]::Delete($workspacePath, $true)
+}
+
+function Assert-InstallerCodexDistribution {
+    param(
+        [Parameter(Mandatory = $true)][object]$Distribution,
+        [Parameter(Mandatory = $true)][Security.Principal.SecurityIdentifier]$UserSid,
+        [switch]$SkipAcl
+    )
+
+    $distributionRoot = Assert-InstallerPlainDirectory ([string]$Distribution.Root)
+    $expectedPath = [IO.Path]::GetFullPath([string]$Distribution.Path)
+    if (-not [string]::Equals([IO.Path]::GetDirectoryName($expectedPath), $distributionRoot, [StringComparison]::OrdinalIgnoreCase) -or
+        [IO.Path]::GetFileName($expectedPath) -cne 'codex.exe') {
+        throw 'Protected Codex distribution path is not its exact content-addressed location.'
+    }
+    $items = @(Get-ChildItem -LiteralPath $distributionRoot -Force -ErrorAction Stop)
+    if ($items.Count -ne 1 -or $items[0].PSIsContainer -or $items[0].Name -cne 'codex.exe' -or
+        ($items[0].Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 -or
+        [int64]$items[0].Length -ne [int64]$Distribution.Length -or
+        (Get-InstallerFileSha256 $items[0].FullName) -cne [string]$Distribution.Sha256) {
+        throw 'Protected Codex distribution failed its exact path, entry, hash, or length check.'
+    }
+    Assert-InstallerNoReparsePoint $items[0].FullName
+    if (-not $SkipAcl) {
+        Assert-InstallerProtectedAcl $items[0].FullName $UserSid
+        Assert-InstallerProtectedAcl $distributionRoot $UserSid
+    }
+}
+
+function Install-InstallerCodexDistribution {
+    param(
+        [Parameter(Mandatory = $true)][object]$Distribution,
+        [Parameter(Mandatory = $true)][Security.Principal.SecurityIdentifier]$UserSid
+    )
+
+    if (Test-Path -LiteralPath ([string]$Distribution.Root)) {
+        Assert-InstallerCodexDistribution $Distribution $UserSid -SkipAcl
+        Set-InstallerProtectedAcl ([string]$Distribution.Path) $UserSid
+        Set-InstallerProtectedAcl ([string]$Distribution.Root) $UserSid -Container
+        Assert-InstallerCodexDistribution $Distribution $UserSid
+        return $false
+    }
+
+    $stage = New-InstallerStagingWorkspace -ParentRoot $script:CodexDistributionsRoot -Purpose CodexDistribution -Identity ([string]$Distribution.Sha256) -UserSid $UserSid
+    $promoted = $false
+    try {
+        $stagedExecutable = Join-Path $stage.Payload 'codex.exe'
+        [IO.File]::WriteAllBytes($stagedExecutable, [byte[]]$Distribution.Bytes)
+        if ([int64](Get-Item -LiteralPath $stagedExecutable -Force -ErrorAction Stop).Length -ne [int64]$Distribution.Length -or
+            (Get-InstallerFileSha256 $stagedExecutable) -cne [string]$Distribution.Sha256) {
+            throw 'Staged Codex distribution bytes changed before promotion.'
+        }
+        Set-InstallerProtectedAcl $stagedExecutable $UserSid
+        Set-InstallerProtectedAcl $stage.Payload $UserSid -Container
+        $stagedDistribution = [pscustomobject][ordered]@{
+            Root=$stage.Payload; Path=$stagedExecutable; Sha256=[string]$Distribution.Sha256; Length=[int64]$Distribution.Length
+        }
+        Assert-InstallerCodexDistribution $stagedDistribution $UserSid
+        if (Test-Path -LiteralPath ([string]$Distribution.Root)) { throw 'Protected Codex distribution target appeared before atomic promotion.' }
+        [IO.Directory]::Move($stage.Payload, [string]$Distribution.Root)
+        $promoted = $true
+        Assert-InstallerCodexDistribution $Distribution $UserSid
+        return $true
+    }
+    catch {
+        $failure = $_
+        if ($promoted -and (Test-Path -LiteralPath ([string]$Distribution.Root))) {
+            try {
+                Assert-InstallerCodexDistribution $Distribution $UserSid -SkipAcl
+                if (-not (Test-Path -LiteralPath $stage.Payload)) {
+                    [IO.Directory]::Move([string]$Distribution.Root, $stage.Payload)
+                    $promoted = $false
+                }
+            }
+            catch { }
+        }
+        throw $failure
+    }
+    finally {
+        if (Test-Path -LiteralPath $stage.Workspace -PathType Container) {
+            Remove-InstallerStagingWorkspace -Workspace $stage.Workspace -ParentRoot $stage.ParentRoot -Purpose CodexDistribution -Identity ([string]$Distribution.Sha256)
+        }
+    }
 }
 
 function New-InstallerBundlePlan {
     param(
         [Parameter(Mandatory = $true)][string]$SourceRoot,
         [Parameter(Mandatory = $true)][string]$SourceConfigPath,
-        [Parameter(Mandatory = $true)][object]$Config
+        [Parameter(Mandatory = $true)][object]$Config,
+        [Parameter(Mandatory = $true)][string]$InstallerBootstrapPath
     )
     $entries = New-Object 'System.Collections.Generic.List[object]'
     Assert-InstallerNoReparsePoint $SourceRoot
@@ -494,20 +1068,39 @@ function New-InstallerBundlePlan {
     $configBytes=[IO.File]::ReadAllBytes($configItem.FullName)
     try {
         $configText=[Text.UTF8Encoding]::new($false,$true).GetString($configBytes)
+        Assert-InstallerConfigJsonSchema -JsonText $configText
         $snapshotConfig=$configText | ConvertFrom-Json -Depth 64 -DateKind String -ErrorAction Stop
     }
-    catch { throw 'Configuration snapshot is not valid strict UTF-8 JSON.' }
+    catch { throw "Configuration snapshot is not valid strict-schema UTF-8 JSON: $($_.Exception.Message)" }
     $snapshotConfig.RunRoot=ConvertTo-InstallerPath -Path ([string]$snapshotConfig.RunRoot) -AllowMissing
     foreach ($name in $script:ExecutableProperties) {
         $snapshotConfig.$name=ConvertTo-InstallerExecutablePath -Name $name -Path ([string]$snapshotConfig.$name)
     }
+    $snapshotConfig = New-InstallerCanonicalConfigProjection -Config $snapshotConfig
     if ((ConvertTo-InstallerJson $snapshotConfig) -cne (ConvertTo-InstallerJson $Config)) {
         throw 'Configuration changed while the installer captured its immutable bundle snapshot.'
     }
-    $configHash=([Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($configBytes))).ToLowerInvariant()
-    $entries.Add([pscustomobject][ordered]@{ RelativePath='Config.json'; SourcePath=''; Content=$null; Bytes=$configBytes; Sha256=$configHash; Length=[int64]$configBytes.LongLength })
-    $executableIdentity = New-InstallerExecutableIdentity -Config $Config
-    Assert-InstallerExecutableIdentity -Identity $executableIdentity
+
+    $sourceConfigHash=([Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($configBytes))).ToLowerInvariant()
+    $sourceCodexPath = [string]$Config.CodexExecutable
+    $sourceCodexEntry = Get-InstallerSourceExecutableSnapshot -Name 'CodexExecutable' -Path $sourceCodexPath
+    $sourceCodexBytes = [byte[]]$sourceCodexEntry.Bytes
+    $sourceCodexHash = [string]$sourceCodexEntry.Sha256
+    $codexDistributionRoot = Join-Path $script:CodexDistributionsRoot $sourceCodexHash
+    $codexDistributionPath = Join-Path $codexDistributionRoot 'codex.exe'
+    $projectedConfig = New-InstallerCanonicalConfigProjection -Config $Config
+    $projectedConfig.CodexExecutable = $codexDistributionPath
+    $configContent = (ConvertTo-InstallerJson $projectedConfig) + "`n"
+    $projectedConfigBytes = [Text.UTF8Encoding]::new($false).GetBytes($configContent)
+    $projectedConfigHash = ([Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($projectedConfigBytes))).ToLowerInvariant()
+    $entries.Add([pscustomobject][ordered]@{
+            RelativePath='Config.json'; SourcePath=''; Content=$configContent; Bytes=$null
+            Sha256=$projectedConfigHash; Length=[int64]$projectedConfigBytes.LongLength
+        })
+
+    $identitySourceEntries = @{ CodexExecutable=$sourceCodexEntry }
+    $executableIdentity = New-InstallerExecutableIdentity -Config $projectedConfig -SourceEntries $identitySourceEntries
+    Assert-InstallerExecutableIdentity -Identity $executableIdentity -SourceEntries $identitySourceEntries
     $identityContent = ($executableIdentity | ConvertTo-Json -Depth 8 -Compress) + "`n"
     $identityBytes = [Text.UTF8Encoding]::new($false).GetBytes($identityContent)
     $entries.Add([pscustomobject][ordered]@{
@@ -515,16 +1108,42 @@ function New-InstallerBundlePlan {
             Sha256=([Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($identityBytes))).ToLowerInvariant()
             Length=[int64]$identityBytes.LongLength
         })
+
+    $bootstrapItem = Get-Item -LiteralPath $InstallerBootstrapPath -Force -ErrorAction Stop
+    if ($bootstrapItem.PSIsContainer -or $bootstrapItem.Name -cne $script:InstallerBootstrapName -or
+        ($bootstrapItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+        throw 'Installer bootstrap must be the exact non-reparse Install-SashimiHostAutomation.ps1 file.'
+    }
+    Assert-InstallerNoReparsePoint $bootstrapItem.FullName
+    $bootstrapBytes = [IO.File]::ReadAllBytes($bootstrapItem.FullName)
+    $bootstrapHash = ([Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($bootstrapBytes))).ToLowerInvariant()
     $orderedEntries = @($entries | Sort-Object RelativePath)
-    $identityText = [string]::Join("`n", @($orderedEntries | ForEach-Object { "$($_.RelativePath)`0$($_.Sha256)`0$($_.Length)" }))
+    $identityLines = @(
+        "installer-bootstrap`0$bootstrapHash`0$($bootstrapBytes.LongLength)",
+        "source-config`0$sourceConfigHash`0$($configBytes.LongLength)",
+        "source-codex`0$sourceCodexHash`0$($sourceCodexBytes.LongLength)"
+    ) + @($orderedEntries | ForEach-Object { "$($_.RelativePath)`0$($_.Sha256)`0$($_.Length)" })
+    $identityText = [string]::Join("`n", $identityLines)
     $bundleId = Get-InstallerTextSha256 $identityText
     $manifestFiles = @($orderedEntries | ForEach-Object { [ordered]@{ RelativePath=[string]$_.RelativePath; Sha256=[string]$_.Sha256; Length=[int64]$_.Length } })
+    $manifest = [ordered]@{
+        SchemaVersion=1; BundleId=$bundleId; MinimumPowerShellVersion=$script:MinimumPowerShellVersion.ToString()
+        EntryPoint='Invoke-SashimiHostOrchestrator.ps1'; ConfigFile='Config.json'; ExecutableIdentityFile=$script:ExecutableIdentityName
+        InstallerBootstrap=[ordered]@{ Sha256=$bootstrapHash; Length=[int64]$bootstrapBytes.LongLength }
+        SourceConfig=[ordered]@{ Sha256=$sourceConfigHash; Length=[int64]$configBytes.LongLength }
+        CodexDistribution=[ordered]@{ Sha256=$sourceCodexHash; Length=[int64]$sourceCodexBytes.LongLength; FileName='codex.exe' }
+        Files=$manifestFiles
+    }
+    $manifestContent = (($manifest | ConvertTo-Json -Depth 16 -Compress) + "`n")
+    $manifestSha256 = Get-InstallerTextSha256 -Text $manifestContent
     return [pscustomobject][ordered]@{
-        BundleId=$bundleId; Entries=$orderedEntries; ExecutableIdentity=$executableIdentity
-        Manifest=[ordered]@{
-            SchemaVersion=1; BundleId=$bundleId; MinimumPowerShellVersion=$script:MinimumPowerShellVersion.ToString()
-            EntryPoint='Invoke-SashimiHostOrchestrator.ps1'; ConfigFile='Config.json'; ExecutableIdentityFile=$script:ExecutableIdentityName
-            Files=$manifestFiles
+        BundleId=$bundleId; Entries=$orderedEntries; ExecutableIdentity=$executableIdentity; ExecutableIdentitySourceEntries=$identitySourceEntries
+        Config=$projectedConfig; Manifest=$manifest; ManifestContent=$manifestContent; ManifestSha256=$manifestSha256
+        InstallerBootstrap=[pscustomobject][ordered]@{ Sha256=$bootstrapHash; Length=[int64]$bootstrapBytes.LongLength }
+        SourceConfig=[pscustomobject][ordered]@{ Sha256=$sourceConfigHash; Length=[int64]$configBytes.LongLength }
+        CodexDistribution=[pscustomobject][ordered]@{
+            Root=$codexDistributionRoot; Path=$codexDistributionPath; Bytes=$sourceCodexBytes
+            Sha256=$sourceCodexHash; Length=[int64]$sourceCodexBytes.LongLength
         }
     }
 }
@@ -533,13 +1152,27 @@ function Assert-InstallerBundle {
     param(
         [Parameter(Mandatory = $true)][string]$BundleRoot,
         [Parameter(Mandatory = $true)][object]$ExpectedManifest,
+        [Parameter(Mandatory = $true)][ValidatePattern('^[0-9a-f]{64}$')][string]$ExpectedManifestSha256,
         [Parameter(Mandatory = $true)][Security.Principal.SecurityIdentifier]$UserSid,
         [switch]$SkipAcl
     )
+    [void](Assert-InstallerPlainDirectory $BundleRoot)
     $manifestPath = Join-Path $BundleRoot $script:ManifestName
     if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) { throw "Staged host manifest is missing: $manifestPath" }
+    if ((Get-InstallerFileSha256 $manifestPath) -cne $ExpectedManifestSha256) {
+        throw 'Staged host manifest bytes do not match the exact reviewed manifest digest.'
+    }
     $actual = Read-InstallerJsonFile $manifestPath
     if ([int]$actual.SchemaVersion -ne 1 -or [string]$actual.BundleId -cne [string]$ExpectedManifest.BundleId -or [string]$actual.MinimumPowerShellVersion -cne $script:MinimumPowerShellVersion.ToString() -or [string]$actual.EntryPoint -cne 'Invoke-SashimiHostOrchestrator.ps1' -or [string]$actual.ConfigFile -cne 'Config.json' -or [string]$actual.ExecutableIdentityFile -cne $script:ExecutableIdentityName) { throw 'Staged host manifest identity does not match the planned immutable bundle.' }
+    foreach ($metadataName in @('InstallerBootstrap','SourceConfig','CodexDistribution')) {
+        $expectedMetadata = $ExpectedManifest.$metadataName
+        $actualMetadata = $actual.$metadataName
+        if ($null -eq $actualMetadata -or [string]$actualMetadata.Sha256 -cne [string]$expectedMetadata.Sha256 -or
+            [int64]$actualMetadata.Length -ne [int64]$expectedMetadata.Length) {
+            throw "Staged host manifest provenance changed for '$metadataName'."
+        }
+    }
+    if ([string]$actual.CodexDistribution.FileName -cne 'codex.exe') { throw 'Staged host manifest has an invalid Codex distribution filename.' }
     $expectedFiles = @($ExpectedManifest.Files | Sort-Object RelativePath); $actualFiles = @($actual.Files | Sort-Object RelativePath)
     if ($actualFiles.Count -ne $expectedFiles.Count) { throw 'Staged host manifest file count changed.' }
     $expectedNames = @($expectedFiles | ForEach-Object { [string]$_.RelativePath }) + @($script:ManifestName)
@@ -569,6 +1202,69 @@ function Assert-InstallerBundle {
     if (-not $SkipAcl) {
         Assert-InstallerProtectedAcl $manifestPath $UserSid
         Assert-InstallerProtectedAcl $BundleRoot $UserSid
+    }
+}
+
+function Install-InstallerBundle {
+    param(
+        [Parameter(Mandatory = $true)][object]$Plan,
+        [Parameter(Mandatory = $true)][string]$BundleRoot,
+        [Parameter(Mandatory = $true)][Security.Principal.SecurityIdentifier]$UserSid
+    )
+
+    if (Test-Path -LiteralPath $BundleRoot) {
+        Assert-InstallerBundle $BundleRoot $Plan.Manifest $Plan.ManifestSha256 $UserSid -SkipAcl
+        foreach ($file in @($Plan.Manifest.Files | ForEach-Object { Join-Path $BundleRoot $_.RelativePath }) + @(Join-Path $BundleRoot $script:ManifestName)) {
+            Set-InstallerProtectedAcl $file $UserSid
+        }
+        Set-InstallerProtectedAcl $BundleRoot $UserSid -Container
+        Assert-InstallerBundle $BundleRoot $Plan.Manifest $Plan.ManifestSha256 $UserSid
+        return $false
+    }
+
+    $stage = New-InstallerStagingWorkspace -ParentRoot $script:BundlesRoot -Purpose Bundle -Identity ([string]$Plan.BundleId) -UserSid $UserSid
+    $promoted = $false
+    try {
+        foreach ($entry in $Plan.Entries) {
+            $destination = Join-Path $stage.Payload ([string]$entry.RelativePath)
+            if ($null -ne $entry.Bytes) {
+                [IO.File]::WriteAllBytes($destination, [byte[]]$entry.Bytes)
+            }
+            else {
+                [IO.File]::WriteAllText($destination, [string]$entry.Content, [Text.UTF8Encoding]::new($false))
+            }
+        }
+        $stagedManifestPath = Join-Path $stage.Payload $script:ManifestName
+        [IO.File]::WriteAllText($stagedManifestPath, [string]$Plan.ManifestContent, [Text.UTF8Encoding]::new($false))
+        foreach ($file in @($Plan.Manifest.Files | ForEach-Object { Join-Path $stage.Payload $_.RelativePath }) + @($stagedManifestPath)) {
+            Set-InstallerProtectedAcl $file $UserSid
+        }
+        Set-InstallerProtectedAcl $stage.Payload $UserSid -Container
+        Assert-InstallerBundle $stage.Payload $Plan.Manifest $Plan.ManifestSha256 $UserSid
+        if (Test-Path -LiteralPath $BundleRoot) { throw 'Content-addressed host bundle target appeared before atomic promotion.' }
+        [IO.Directory]::Move($stage.Payload, $BundleRoot)
+        $promoted = $true
+        Assert-InstallerBundle $BundleRoot $Plan.Manifest $Plan.ManifestSha256 $UserSid
+        return $true
+    }
+    catch {
+        $failure = $_
+        if ($promoted -and (Test-Path -LiteralPath $BundleRoot)) {
+            try {
+                Assert-InstallerBundle $BundleRoot $Plan.Manifest $Plan.ManifestSha256 $UserSid -SkipAcl
+                if (-not (Test-Path -LiteralPath $stage.Payload)) {
+                    [IO.Directory]::Move($BundleRoot, $stage.Payload)
+                    $promoted = $false
+                }
+            }
+            catch { }
+        }
+        throw $failure
+    }
+    finally {
+        if (Test-Path -LiteralPath $stage.Workspace -PathType Container) {
+            Remove-InstallerStagingWorkspace -Workspace $stage.Workspace -ParentRoot $stage.ParentRoot -Purpose Bundle -Identity ([string]$Plan.BundleId)
+        }
     }
 }
 
@@ -603,21 +1299,68 @@ $result = [ordered]@{
     Tool='Install-SashimiHostAutomation'; Success=$false; ExitCode=1; DryRun=[bool]$DryRun; Changed=$false; Staged=$false
     TaskName=$script:TaskName; UserId=$null; LogonType='InteractiveToken'; RunLevel='HighestAvailable'; MultipleInstances='IgnoreNew'; RepetitionInterval='PT15M'
     PowerShellPath=$script:PowerShellPath; MinimumPowerShellVersion=$script:MinimumPowerShellVersion.ToString(); DetectedPowerShellVersion=$null
-    InstallRoot=$script:InstallRoot; BundleId=$null; BundleRoot=$null; IntegrityManifestPath=$null; ExecutableIdentityPath=$null
+    InstallRoot=$script:InstallRoot; BundleId=$null; ExpectedBundleId=$ExpectedBundleId; BundleAuthorizationRequired=$null; BundleAuthorizationMatched=$false
+    ManifestSha256=$null; InstallerBootstrapSha256=$null; ExpectedInstallerSha256=$ExpectedInstallerSha256; InstallerAuthorizationMatched=$false
+    SourceConfigSha256=$null; BundleRoot=$null; IntegrityManifestPath=$null; ExecutableIdentityPath=$null
+    CodexDistributionPath=$null; CodexDistributionSha256=$null; CodexDistributionStaged=$false
     SourceOrchestratorPath=$null; SourceConfigPath=$null; OrchestratorPath=$null; ConfigPath=$null
-    BundleFiles=@(); BoundExecutableCount=0; AclPlan=$null; SourceHashesVerified=$false; AclVerified=$false; HashesVerified=$false; TaskXml=$null; Error=$null
+    BundleFiles=@(); BoundExecutableCount=0; AclPlan=$null; SourceHashesVerified=$false; AclVerified=$false; HashesVerified=$false
+    SchedulerBoundaryInvoked=$false; SchedulerFixture=$false; TaskXml=$null; Error=$null
 }
 
 try {
+    $effectiveDryRun=[bool]$DryRun -or [bool]$WhatIfPreference
+    $result.DryRun=$effectiveDryRun
+    $result.BundleAuthorizationRequired=-not $effectiveDryRun
+    if (-not $effectiveDryRun) {
+        if ([string]::IsNullOrWhiteSpace($ExpectedInstallerSha256)) {
+            throw 'Non-DryRun installation requires the independently retained Owner-supplied -ExpectedInstallerSha256 for the reviewed installer bootstrap.'
+        }
+        $bootstrapPath = [IO.Path]::GetFullPath([string]$PSCommandPath)
+        if (-not (Test-Path -LiteralPath $bootstrapPath -PathType Leaf)) {
+            throw 'Installer bootstrap path is not an existing file.'
+        }
+        Assert-InstallerNoReparsePoint $bootstrapPath
+        $bootstrapBytesAtEntry = [IO.File]::ReadAllBytes($bootstrapPath)
+        $bootstrapHashAtEntry = ([Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($bootstrapBytesAtEntry))).ToLowerInvariant()
+        $result.InstallerBootstrapSha256=$bootstrapHashAtEntry
+        if ($ExpectedInstallerSha256 -cne $bootstrapHashAtEntry) {
+            throw 'ExpectedInstallerSha256 does not match the executing reviewed installer bootstrap; installation stopped before any privileged boundary.'
+        }
+        $result.InstallerAuthorizationMatched=$true
+    }
     Initialize-InstallerTrustedPowerShell
+    Initialize-InstallerHarnessBoundaries
+    $result.InstallRoot=$script:InstallRoot
     $config=Import-InstallerConfig $ConfigPath
     $normalizedConfigPath=(Resolve-Path -LiteralPath $ConfigPath -ErrorAction Stop).ProviderPath; $normalizedOrchestratorPath=(Resolve-Path -LiteralPath $OrchestratorPath -ErrorAction Stop).ProviderPath
     if ((Split-Path -Leaf $normalizedOrchestratorPath) -cne 'Invoke-SashimiHostOrchestrator.ps1') { throw 'OrchestratorPath must name Invoke-SashimiHostOrchestrator.ps1 exactly.' }
     $sourceRoot=Split-Path -Parent $normalizedOrchestratorPath; $taskConfig=$config.Task
     if ([string]$taskConfig.Name -cne $script:TaskName -or [string]$taskConfig.User -cne $script:RequiredUserName -or [int]$taskConfig.IntervalMinutes -ne 15 -or -not [bool]$taskConfig.StartWhenAvailable -or -not [bool]$taskConfig.WakeToRun -or [string]$taskConfig.MultipleInstances -cne 'IgnoreNew') { throw 'Task configuration must retain the exact user, interval, availability, wake, and IgnoreNew contract.' }
     if ([string]$config.PowerShellExecutable -cne $script:PowerShellPath -or -not (Test-Path -LiteralPath $script:PowerShellPath -PathType Leaf)) { throw "PowerShellExecutable must exist at the stable path '$script:PowerShellPath'." }
-    $plan=New-InstallerBundlePlan -SourceRoot $sourceRoot -SourceConfigPath $normalizedConfigPath -Config $config
-    Assert-InstallerExecutableIdentity -Identity $plan.ExecutableIdentity
+    $plan=New-InstallerBundlePlan -SourceRoot $sourceRoot -SourceConfigPath $normalizedConfigPath -Config $config -InstallerBootstrapPath $PSCommandPath
+    $result.BundleId=$plan.BundleId; $result.ManifestSha256=$plan.ManifestSha256
+    $result.InstallerBootstrapSha256=$plan.InstallerBootstrap.Sha256; $result.SourceConfigSha256=$plan.SourceConfig.Sha256
+    $result.CodexDistributionPath=$plan.CodexDistribution.Path; $result.CodexDistributionSha256=$plan.CodexDistribution.Sha256
+    if (-not $effectiveDryRun) {
+        if ($ExpectedInstallerSha256 -cne [string]$plan.InstallerBootstrap.Sha256) {
+            throw 'Installer bootstrap changed between entry authorization and immutable bundle capture.'
+        }
+        if ([string]::IsNullOrWhiteSpace($ExpectedBundleId)) {
+            throw 'Non-DryRun installation requires the Owner-supplied -ExpectedBundleId from an immediately preceding reviewed DryRun.'
+        }
+        if ($ExpectedBundleId -cne [string]$plan.BundleId) {
+            throw "ExpectedBundleId does not match the current reviewed source snapshot. Expected '$ExpectedBundleId'; current '$($plan.BundleId)'."
+        }
+        $result.BundleAuthorizationMatched=$true
+    }
+    elseif (-not [string]::IsNullOrWhiteSpace($ExpectedBundleId)) {
+        $result.BundleAuthorizationMatched=($ExpectedBundleId -ceq [string]$plan.BundleId)
+    }
+    if ($effectiveDryRun -and -not [string]::IsNullOrWhiteSpace($ExpectedInstallerSha256)) {
+        $result.InstallerAuthorizationMatched=($ExpectedInstallerSha256 -ceq [string]$plan.InstallerBootstrap.Sha256)
+    }
+    Assert-InstallerExecutableIdentity -Identity $plan.ExecutableIdentity -SourceEntries $plan.ExecutableIdentitySourceEntries
     $powerShellIdentity=@($plan.ExecutableIdentity.Executables | Where-Object { [string]$_.Name -ceq 'PowerShellExecutable' })[0]
     $detectedPowerShell=Get-StablePowerShellVersion -Executable $script:PowerShellPath -ExpectedLength ([int64]$powerShellIdentity.Length) -ExpectedSha256 ([string]$powerShellIdentity.Sha256); if ($detectedPowerShell -lt $script:MinimumPowerShellVersion) { throw "Stable PowerShell is $detectedPowerShell; version $script:MinimumPowerShellVersion or newer is required." }
     $identity=[Security.Principal.WindowsIdentity]::GetCurrent(); $userId=[string]$identity.Name; $accountName=($userId -split '\\')[-1]
@@ -626,13 +1369,13 @@ try {
     if ($StartBoundary -eq [DateTime]::MinValue) { $StartBoundary=[DateTime]::Now.AddMinutes(1) }; if ($StartBoundary.Kind -eq [DateTimeKind]::Utc) { $StartBoundary=$StartBoundary.ToLocalTime() }
     $taskXml=New-SashimiScheduledTaskXml $userId $script:PowerShellPath $stagedOrchestrator $stagedConfig $manifestPath $StartBoundary
     try { [xml]$parsedTask=$taskXml; if ($null -eq $parsedTask.Task) { throw 'Task XML has no Task root.' } } catch { throw "Generated Task Scheduler XML is invalid: $($_.Exception.Message)" }
-    $result.UserId=$userId; $result.DetectedPowerShellVersion=$detectedPowerShell.ToString(); $result.BundleId=$plan.BundleId; $result.BundleRoot=$bundleRoot; $result.IntegrityManifestPath=$manifestPath; $result.ExecutableIdentityPath=$executableIdentityPath; $result.BoundExecutableCount=@($plan.ExecutableIdentity.Executables).Count; $result.SourceHashesVerified=$true
+    $result.UserId=$userId; $result.DetectedPowerShellVersion=$detectedPowerShell.ToString(); $result.BundleRoot=$bundleRoot; $result.IntegrityManifestPath=$manifestPath; $result.ExecutableIdentityPath=$executableIdentityPath; $result.BoundExecutableCount=@($plan.ExecutableIdentity.Executables).Count; $result.SourceHashesVerified=$true
     $result.SourceOrchestratorPath=Protect-InstallerText $normalizedOrchestratorPath; $result.SourceConfigPath=Protect-InstallerText $normalizedConfigPath; $result.OrchestratorPath=$stagedOrchestrator; $result.ConfigPath=$stagedConfig; $result.TaskXml=$taskXml; $result.BundleFiles=@($plan.Manifest.Files)
     $result.AclPlan=[ordered]@{ Inheritance='Disabled'; Owner='BUILTIN\Administrators'; Administrators='FullControl'; System='FullControl'; TaskUser="$userId ReadAndExecute" }
-    $effectiveDryRun=[bool]$DryRun -or [bool]$WhatIfPreference; $result.DryRun=$effectiveDryRun
     $approved=-not $effectiveDryRun -and $PSCmdlet.ShouldProcess($script:TaskName,"Stage immutable host bundle $($plan.BundleId) and register or replace scheduled task")
     if ($approved) {
-        foreach ($directory in @($script:InstallRoot,$script:BundlesRoot)) {
+        foreach ($directory in @($script:InstallRoot,$script:BundlesRoot,$script:CodexDistributionsRoot)) {
+            Assert-InstallerNoReparsePoint $directory
             if (Test-Path -LiteralPath $directory) {
                 $directoryItem=Get-Item -LiteralPath $directory -Force -ErrorAction Stop
                 if (-not $directoryItem.PSIsContainer -or ($directoryItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { throw "Protected install directory is not a plain directory: $directory" }
@@ -640,28 +1383,17 @@ try {
             else { [IO.Directory]::CreateDirectory($directory)|Out-Null }
             Set-InstallerProtectedAcl $directory $userSid -Container; Assert-InstallerProtectedAcl $directory $userSid
         }
-        $bundleAlreadyExists=Test-Path -LiteralPath $bundleRoot
-        if ($bundleAlreadyExists) {
-            $bundleItem=Get-Item -LiteralPath $bundleRoot -Force -ErrorAction Stop
-            if (-not $bundleItem.PSIsContainer -or ($bundleItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { throw 'Existing content-addressed bundle path is not a plain directory.' }
-            Assert-InstallerBundle $bundleRoot $plan.Manifest $userSid -SkipAcl
-        }
-        else {
-            [IO.Directory]::CreateDirectory($bundleRoot)|Out-Null
-            foreach ($entry in $plan.Entries) {
-                $destination=Join-Path $bundleRoot $entry.RelativePath
-                if (-not [string]::IsNullOrWhiteSpace([string]$entry.SourcePath)) { Copy-Item -LiteralPath $entry.SourcePath -Destination $destination -ErrorAction Stop }
-                elseif ($null -ne $entry.Bytes) { [IO.File]::WriteAllBytes($destination,[byte[]]$entry.Bytes) }
-                else { [IO.File]::WriteAllText($destination,[string]$entry.Content,[Text.UTF8Encoding]::new($false)) }
-            }
-            [IO.File]::WriteAllText($manifestPath,(($plan.Manifest|ConvertTo-Json -Depth 16)+"`n"),[Text.UTF8Encoding]::new($false))
-        }
-        foreach ($file in @($plan.Manifest.Files|ForEach-Object{Join-Path $bundleRoot $_.RelativePath})+@($manifestPath)) { Set-InstallerProtectedAcl $file $userSid }
-        Set-InstallerProtectedAcl $bundleRoot $userSid -Container; Assert-InstallerBundle $bundleRoot $plan.Manifest $userSid
+        $result.CodexDistributionStaged=[bool](Install-InstallerCodexDistribution $plan.CodexDistribution $userSid)
+        [void](Install-InstallerBundle $plan $bundleRoot $userSid)
         Assert-InstallerExecutableIdentity -Identity $plan.ExecutableIdentity
         $result.Staged=$true; $result.AclVerified=$true; $result.HashesVerified=$true
-        Assert-InstallerTrustedPowerShellState -ScheduledTasks
-        ScheduledTasks\Register-ScheduledTask -TaskName $script:TaskName -Xml $taskXml -Force -ErrorAction Stop|Out-Null; $result.Changed=$true
+        $schedulerResult=Invoke-InstallerSchedulerBoundary -TaskName $script:TaskName -Xml $taskXml
+        $result.SchedulerBoundaryInvoked=[bool]$schedulerResult.Invoked; $result.SchedulerFixture=[bool]$schedulerResult.Fixture
+        $result.Changed=[bool]$schedulerResult.Registered
+    }
+    elseif ($effectiveDryRun) {
+        $schedulerResult=Invoke-InstallerSchedulerBoundary -TaskName $script:TaskName -Xml $taskXml -DryRun
+        $result.SchedulerBoundaryInvoked=[bool]$schedulerResult.Invoked; $result.SchedulerFixture=[bool]$schedulerResult.Fixture
     }
     $result.Success=$true; $result.ExitCode=0
 }

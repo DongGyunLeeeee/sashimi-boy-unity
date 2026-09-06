@@ -277,10 +277,58 @@ function ConvertTo-CodexEventMetadataJsonLines {
 function Write-AdapterUtf8File {
     param(
         [Parameter(Mandatory = $true)][string]$Path,
-        [Parameter(Mandatory = $true)][AllowEmptyString()][string]$Text
+        [Parameter(Mandatory = $true)][AllowEmptyString()][string]$Text,
+        [ValidateRange(1,16777216)][int]$MaximumUtf8Bytes = 4194304
     )
 
-    [IO.File]::WriteAllText($Path, $Text, [Text.UTF8Encoding]::new($false))
+    $fullPath = [IO.Path]::GetFullPath($Path)
+    $parent = Split-Path -Parent $fullPath
+    if (-not (Test-Path -LiteralPath $parent -PathType Container)) {
+        throw 'Codex artifact parent directory is missing.'
+    }
+    Assert-SashimiNoReparsePoint -Path $parent -Recurse
+    $bytes = [Text.UTF8Encoding]::new($false).GetBytes($Text)
+    if ($bytes.LongLength -gt $MaximumUtf8Bytes) {
+        throw (New-CodexContentFreeDiagnostic -Code 'CODEX_ARTIFACT_SIZE_LIMIT' `
+            -HostMetadata ([ordered]@{ artifactUtf8Bytes=[int64]$bytes.LongLength }))
+    }
+    $stream = $null
+    try {
+        $stream = [IO.File]::Open($fullPath,[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::None)
+        $stream.Write($bytes,0,$bytes.Length)
+        $stream.Flush($true)
+    }
+    finally {
+        if ($null -ne $stream) { $stream.Dispose() }
+        $bytes = [byte[]]::new(0)
+    }
+}
+
+function Assert-AdapterArtifactTree {
+    param(
+        [Parameter(Mandatory = $true)][string]$Root,
+        [Parameter(Mandatory = $true)][AllowEmptyCollection()][string[]]$AllowedFiles,
+        [switch]$RequireAll
+    )
+
+    if (-not (Test-Path -LiteralPath $Root)) { return }
+    if (-not (Test-Path -LiteralPath $Root -PathType Container)) { throw 'Codex ArtifactsPath is not a plain directory.' }
+    Assert-SashimiNoReparsePoint -Path $Root -Recurse
+    $rootFull = [IO.Path]::GetFullPath($Root).TrimEnd('\')
+    $allowed = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    foreach ($path in $AllowedFiles) { [void]$allowed.Add([IO.Path]::GetFullPath($path)) }
+    $entries = @(Get-ChildItem -LiteralPath $rootFull -Force -Recurse -ErrorAction Stop)
+    foreach ($entry in $entries) {
+        if ($entry.PSIsContainer -or -not $allowed.Contains([IO.Path]::GetFullPath($entry.FullName))) {
+            throw 'Codex artifact tree contains an entry outside the exact flat allowlist.'
+        }
+        if ([int64]$entry.Length -gt 4194304) { throw 'Codex artifact tree contains an oversized file.' }
+    }
+    if ($RequireAll) {
+        foreach ($path in $allowed) {
+            if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw 'Codex artifact promotion is incomplete.' }
+        }
+    }
 }
 
 function Read-AdapterUtf8PromptFile {
@@ -299,21 +347,140 @@ function Read-AdapterUtf8PromptFile {
 }
 
 function Resolve-CodexExecutable {
-    param([Parameter(Mandatory = $true)][string]$ConfiguredPath)
+    param(
+        [Parameter(Mandatory = $true)][string]$ConfiguredPath,
+        [switch]$PlanningOnly
+    )
 
-    if ([IO.Path]::IsPathRooted($ConfiguredPath)) {
-        $resolved = [IO.Path]::GetFullPath($ConfiguredPath)
-        if (-not (Test-Path -LiteralPath $resolved -PathType Leaf)) {
-            throw "Codex executable was not found: $resolved"
+    if ([string]::IsNullOrWhiteSpace($ConfiguredPath) -or
+        -not [IO.Path]::IsPathFullyQualified($ConfiguredPath) -or
+        $ConfiguredPath -cnotmatch '^[A-Za-z]:\\') {
+        throw 'CodexExecutable must be an exact canonical absolute path; PATH lookup is forbidden.'
+    }
+    $resolved = [IO.Path]::GetFullPath($ConfiguredPath)
+    if (-not [string]::Equals($ConfiguredPath, $resolved, [StringComparison]::OrdinalIgnoreCase) -or
+        -not [string]::Equals([IO.Path]::GetExtension($resolved), '.exe', [StringComparison]::OrdinalIgnoreCase) -or
+        -not (Test-Path -LiteralPath $resolved -PathType Leaf)) {
+        throw 'CodexExecutable must identify its exact canonical existing .exe file.'
+    }
+    if (-not $PlanningOnly) { Assert-SashimiNoReparsePoint -Path $resolved }
+    return $resolved
+}
+
+function Assert-CodexOriginalProcessOutputSafe {
+    [CmdletBinding()]
+    param(
+        [AllowNull()][string]$StdOut,
+        [AllowNull()][string]$StdErr
+    )
+
+    if ($null -eq $StdOut) { $StdOut = '' }
+    if ($null -eq $StdErr) { $StdErr = '' }
+    $stdoutBytes = [Text.UTF8Encoding]::new($false).GetByteCount($StdOut)
+    $stderrBytes = [Text.UTF8Encoding]::new($false).GetByteCount($StdErr)
+    if ($stdoutBytes -gt 16777216 -or $stderrBytes -gt 1048576) {
+        throw (New-CodexContentFreeDiagnostic -Code 'CODEX_ORIGINAL_OUTPUT_TOO_LARGE' `
+            -HostMetadata ([ordered]@{ stdoutBytes=$stdoutBytes; stderrBytes=$stderrBytes }))
+    }
+
+    $combined = $StdOut + "`n" + $StdErr
+    if ($combined.IndexOf([char]0) -ge 0) {
+        throw (New-CodexContentFreeDiagnostic -Code 'CODEX_ORIGINAL_OUTPUT_NUL')
+    }
+    $profile = [Environment]::GetFolderPath([Environment+SpecialFolder]::UserProfile)
+    if (-not [string]::IsNullOrWhiteSpace($profile)) {
+        # A final-result object is JSON embedded in the JSONL event's `text`
+        # string, so ordinary backslashes are escaped twice (four slashes in
+        # the original stream). Inspect several bounded encoding layers while
+        # those original characters are still available.
+        $profileSpellings = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+        $escapedProfile = $profile
+        for ($encodingLayer = 0; $encodingLayer -le 3; $encodingLayer++) {
+            [void]$profileSpellings.Add($escapedProfile)
+            $escapedProfile = $escapedProfile.Replace('\','\\')
         }
-        return $resolved
+        [void]$profileSpellings.Add($profile.Replace('\','/'))
+        foreach ($spelling in $profileSpellings) {
+            if ($combined.IndexOf($spelling, [StringComparison]::OrdinalIgnoreCase) -ge 0) {
+                throw (New-CodexContentFreeDiagnostic -Code 'CODEX_ORIGINAL_OUTPUT_PROFILE_PATH' `
+                    -UntrustedText ([ordered]@{ output=$combined }))
+            }
+        }
+    }
+    if ($combined -match '(?i)(?:[A-Z]:[\\/]|\\\\)[^\r\n"'']*(?:[\\/])(?:\.ssh|\.aws|\.azure|\.kube|\.codex|AppData|LocalLow|Save|Saves|SaveData)(?:[\\/]|$)' -or
+        $combined -match '(?i)(?:^|[\\/])(?:auth\.json|credentials(?:\.json)?|\.netrc|_netrc|id_rsa|id_ed25519)(?:$|[\\/])' -or
+        (Test-SashimiRecognizableSensitiveText -Text $combined -SensitiveValues @($script:sensitiveEnvironmentValues))) {
+        throw (New-CodexContentFreeDiagnostic -Code 'CODEX_ORIGINAL_OUTPUT_FORBIDDEN_CONTENT' `
+            -UntrustedText ([ordered]@{ output=$combined }))
+    }
+}
+
+function Add-CodexDecodedJsonAuditText {
+    [CmdletBinding()]
+    param(
+        [AllowNull()][object]$Value,
+        [Parameter(Mandatory = $true)][AllowEmptyCollection()][Collections.Generic.List[string]]$TextValues,
+        [Parameter(Mandatory = $true)][object]$TraversalState,
+        [ValidateRange(0, 101)][int]$Depth = 0
+    )
+
+    $TraversalState.NodeCount = [int]$TraversalState.NodeCount + 1
+    if ([int]$TraversalState.NodeCount -gt 250000 -or $Depth -gt 100) {
+        throw (New-CodexContentFreeDiagnostic -Code 'CODEX_JSONL_DECODED_AUDIT_LIMIT')
+    }
+    if ($null -eq $Value) { return }
+    if ($Value -is [string]) {
+        $TextValues.Add([string]$Value)
+        return
     }
 
-    $command = Get-Command $ConfiguredPath -CommandType Application -ErrorAction Stop | Select-Object -First 1
-    if ($null -eq $command -or [string]::IsNullOrWhiteSpace([string]$command.Source)) {
-        throw "Codex executable could not be resolved: $ConfiguredPath"
+    if ($Value -is [Collections.IDictionary]) {
+        foreach ($entry in $Value.GetEnumerator()) {
+            $name = [string]$entry.Key
+            $TextValues.Add($name)
+            if ($name -ieq 'command' -or
+                ($name -ieq 'type' -and $entry.Value -is [string] -and [string]$entry.Value -ieq 'command_execution')) {
+                $TraversalState.CommandSignal = $true
+            }
+            Add-CodexDecodedJsonAuditText -Value $entry.Value -TextValues $TextValues -TraversalState $TraversalState -Depth ($Depth + 1)
+        }
+        return
     }
-    return [string]$command.Source
+
+    if ($Value -is [Management.Automation.PSCustomObject]) {
+        foreach ($property in @($Value.PSObject.Properties)) {
+            $name = [string]$property.Name
+            $TextValues.Add($name)
+            if ($name -ieq 'command' -or
+                ($name -ieq 'type' -and $property.Value -is [string] -and [string]$property.Value -ieq 'command_execution')) {
+                $TraversalState.CommandSignal = $true
+            }
+            Add-CodexDecodedJsonAuditText -Value $property.Value -TextValues $TextValues -TraversalState $TraversalState -Depth ($Depth + 1)
+        }
+        return
+    }
+
+    if ($Value -is [Collections.IEnumerable]) {
+        foreach ($element in $Value) {
+            Add-CodexDecodedJsonAuditText -Value $element -TextValues $TextValues -TraversalState $TraversalState -Depth ($Depth + 1)
+        }
+    }
+}
+
+function Assert-CodexDecodedJsonObjectSafe {
+    [CmdletBinding()]
+    param([Parameter(Mandatory = $true)][AllowNull()][object]$Value)
+
+    # Raw-string inspection happens before parsing, but JSON Unicode escapes can
+    # conceal a rooted profile/save/credential path from that byte spelling.
+    # Traverse every decoded property name and string while the original event
+    # remains in memory, and apply the identical content policy before the event
+    # can enter the metadata projection or validated-result path.
+    $textValues = [Collections.Generic.List[string]]::new()
+    $state = [pscustomobject]@{ NodeCount = 0; CommandSignal = $false }
+    Add-CodexDecodedJsonAuditText -Value $Value -TextValues $textValues -TraversalState $state
+    Assert-CodexOriginalProcessOutputSafe -StdOut ([string]::Join("`n", $textValues.ToArray())) -StdErr ''
+    return [pscustomobject][ordered]@{ CommandSignal = [bool]$state.CommandSignal }
 }
 
 function Assert-AdapterCommand {
@@ -416,16 +583,24 @@ function Invoke-AdapterProcess {
     }
 
     if (-not $runner.Parameters.ContainsKey('Environment') -or
-        -not $runner.Parameters.ContainsKey('RemoveEnvironmentVariables')) {
-        throw 'Invoke-SashimiHostProcess cannot enforce the Codex inherited-environment allowlist.'
+        -not $runner.Parameters.ContainsKey('RemoveEnvironmentVariables') -or
+        -not $runner.Parameters.ContainsKey('ClearEnvironment') -or
+        -not $runner.Parameters.ContainsKey('PreserveRawOutputInMemory') -or
+        -not $runner.Parameters.ContainsKey('CodexWorkspacePath')) {
+        throw 'Invoke-SashimiHostProcess cannot enforce the hermetic Codex environment, repository policy, and original-output audit boundary.'
     }
     $environmentPolicy = Get-SashimiCodexEnvironmentPolicy
-    if ([string]$environmentPolicy.Mode -cne 'AllowList' -or
-        [string]$environmentPolicy.Authentication -cne 'CredentialStoreOnly') {
+    if ([int]$environmentPolicy.SchemaVersion -ne 2 -or
+        [string]$environmentPolicy.Mode -cne 'HermeticAllowList' -or
+        [string]$environmentPolicy.Authentication -cne 'CredentialStoreOnly' -or
+        -not [bool]$environmentPolicy.ClearInherited) {
         throw 'Codex inherited-environment policy is invalid.'
     }
     $parameters.Environment = [hashtable]$environmentPolicy.Overrides
     $parameters.RemoveEnvironmentVariables = @($environmentPolicy.RemoveNames)
+    $parameters.ClearEnvironment = $true
+    $parameters.PreserveRawOutputInMemory = $true
+    $parameters.CodexWorkspacePath = $WorkingDirectory
     if (-not [string]::IsNullOrWhiteSpace($CancellationMarkerPath) -and
         $runner.Parameters.ContainsKey('CancellationMarkerPath')) {
         $parameters.CancellationMarkerPath = $CancellationMarkerPath
@@ -434,7 +609,21 @@ function Invoke-AdapterProcess {
         $parameters.Kind = 'Codex'
     }
 
-    return Invoke-SashimiHostProcess @parameters
+    $processResult = Invoke-SashimiHostProcess @parameters
+    $rawStdOut = [string](Get-AdapterProperty -Object $processResult -Names @('UnredactedStdOut') -DefaultValue '')
+    $rawStdErr = [string](Get-AdapterProperty -Object $processResult -Names @('UnredactedStdErr') -DefaultValue '')
+    if ($null -eq $processResult.PSObject.Properties['UnredactedStdOut'] -or
+        $null -eq $processResult.PSObject.Properties['UnredactedStdErr']) {
+        throw 'Host process omitted the required original in-memory Codex output.'
+    }
+    Assert-CodexOriginalProcessOutputSafe -StdOut $rawStdOut -StdErr $rawStdErr
+    return [pscustomobject][ordered]@{
+        ExitCode = [int](Get-AdapterProperty -Object $processResult -Names @('ExitCode','NativeExitCode') -DefaultValue 127)
+        StdOut = $rawStdOut
+        StdErr = $rawStdErr
+        TimedOut = [bool](Get-AdapterProperty -Object $processResult -Names @('TimedOut','Timeout') -DefaultValue $false)
+        Cancelled = [bool](Get-AdapterProperty -Object $processResult -Names @('Cancelled','Canceled') -DefaultValue $false)
+    }
 }
 
 function Get-NormalizedProcessResult {
@@ -463,15 +652,12 @@ function Get-NormalizedProcessResult {
 
 function Assert-CodexCapabilityText {
     param(
-        [Parameter(Mandatory = $true)][AllowEmptyString()][string]$RootHelp,
         [Parameter(Mandatory = $true)][AllowEmptyString()][string]$ExecHelp
     )
 
-    foreach ($required in @('--ask-for-approval', 'never')) {
-        if ($RootHelp.IndexOf($required, [StringComparison]::Ordinal) -lt 0) {
-            throw (New-CodexContentFreeDiagnostic -Code 'CODEX_CAPABILITY_GLOBAL_REQUIRED_MISSING' `
-                -UntrustedText ([ordered]@{ help = $RootHelp }))
-        }
+    if ($ExecHelp.IndexOf('--ignore-rules', [StringComparison]::Ordinal) -lt 0) {
+        throw (New-CodexContentFreeDiagnostic -Code 'CODEX_CAPABILITY_IGNORE_RULES_MISSING' `
+            -UntrustedText ([ordered]@{ help = $ExecHelp }))
     }
     foreach ($required in @(
             '--ephemeral',
@@ -509,7 +695,7 @@ function Assert-CodexCapabilityProbeResult {
     param(
         [Parameter(Mandatory = $true)][object]$Probe,
         [Parameter(Mandatory = $true)]
-        [ValidateSet('Version', 'GlobalHelp', 'ExecHelp', 'ApprovalPosition')]
+        [ValidateSet('Version', 'GlobalHelp', 'ExecHelp', 'ApprovalPosition', 'ShellDisable', 'SecureExecHelp')]
         [string]$ProbeKind
     )
 
@@ -518,7 +704,9 @@ function Assert-CodexCapabilityProbeResult {
         'Version' { 'CODEX_CAPABILITY_PROBE_VERSION_FAILED' }
         'GlobalHelp' { 'CODEX_CAPABILITY_PROBE_GLOBAL_HELP_FAILED' }
         'ExecHelp' { 'CODEX_CAPABILITY_PROBE_EXEC_HELP_FAILED' }
-        default { 'CODEX_CAPABILITY_PROBE_APPROVAL_POSITION_FAILED' }
+        'ApprovalPosition' { 'CODEX_CAPABILITY_PROBE_APPROVAL_POSITION_FAILED' }
+        'SecureExecHelp' { 'CODEX_CAPABILITY_PROBE_SECURE_EXEC_HELP_FAILED' }
+        default { 'CODEX_CAPABILITY_PROBE_SHELL_DISABLE_FAILED' }
     }
     throw (New-CodexContentFreeDiagnostic -Code $code -HostMetadata ([ordered]@{
                 exitCode = [int]$Probe.ExitCode
@@ -536,49 +724,55 @@ function Invoke-CodexCapabilityProbe {
         [AllowNull()][string]$CancellationMarkerPath
     )
 
-    $version = Get-NormalizedProcessResult -Result (Invoke-AdapterProcess `
-        -FilePath $CodexPath `
-        -ArgumentList @('--version') `
-        -WorkingDirectory $WorkingDirectory `
-        -TimeoutSeconds 30 `
-        -CancellationMarkerPath $CancellationMarkerPath)
-    $globalHelp = Get-NormalizedProcessResult -Result (Invoke-AdapterProcess `
-        -FilePath $CodexPath `
-        -ArgumentList @('--help') `
-        -WorkingDirectory $WorkingDirectory `
-        -TimeoutSeconds 30 `
-        -CancellationMarkerPath $CancellationMarkerPath)
+    # A capability query is itself a Codex launch. Use one no-op exec-help
+    # invocation with the complete security-critical prefix so the probe cannot
+    # consult an ambient user config or enable either command transport. A zero
+    # exit also proves the global options are accepted in their production
+    # positions; the returned exec help proves the required exec options.
     $execHelp = Get-NormalizedProcessResult -Result (Invoke-AdapterProcess `
         -FilePath $CodexPath `
-        -ArgumentList @('exec', '--help') `
+        -ArgumentList @(
+            '--disable', 'shell_tool',
+            '--disable', 'unified_exec',
+            '--ask-for-approval', 'never',
+            'exec',
+            '--ignore-rules',
+            '--ignore-user-config',
+            '--strict-config',
+            '--help'
+        ) `
         -WorkingDirectory $WorkingDirectory `
         -TimeoutSeconds 30 `
         -CancellationMarkerPath $CancellationMarkerPath)
-    $positionProbe = Get-NormalizedProcessResult -Result (Invoke-AdapterProcess `
-        -FilePath $CodexPath `
-        -ArgumentList @('--ask-for-approval', 'never', 'exec', '--help') `
-        -WorkingDirectory $WorkingDirectory `
-        -TimeoutSeconds 30 `
-        -CancellationMarkerPath $CancellationMarkerPath)
 
-    Assert-CodexCapabilityProbeResult -Probe $version -ProbeKind Version
-    Assert-CodexCapabilityProbeResult -Probe $globalHelp -ProbeKind GlobalHelp
-    Assert-CodexCapabilityProbeResult -Probe $execHelp -ProbeKind ExecHelp
-    Assert-CodexCapabilityProbeResult -Probe $positionProbe -ProbeKind ApprovalPosition
+    Assert-CodexCapabilityProbeResult -Probe $execHelp -ProbeKind SecureExecHelp
+    Assert-CodexCapabilityText -ExecHelp $execHelp.StdOut
 
-    Assert-CodexCapabilityText -RootHelp $globalHelp.StdOut -ExecHelp $execHelp.StdOut
-
-    $versionText = ($version.StdOut -split "`r?`n" | Where-Object { $_ -match '\S' } | Select-Object -First 1)
-    if ([string]::IsNullOrWhiteSpace($versionText)) {
-        throw (New-CodexContentFreeDiagnostic -Code 'CODEX_CAPABILITY_VERSION_MISSING')
+    # Do not run an unsafe root-level --version command. The protected binary's
+    # identity is a stronger and deterministic runtime label.
+    $lease = $null
+    try {
+        $lease = Open-SashimiExecutableLaunchLease -FilePath $CodexPath -Kind Codex
+        $hasher = [Security.Cryptography.SHA256]::Create()
+        try {
+            $lease.Stream.Position = 0
+            $identityHash = ([Convert]::ToHexString($hasher.ComputeHash($lease.Stream))).ToLowerInvariant()
+        }
+        finally { $hasher.Dispose() }
+    }
+    finally {
+        if ($null -ne $lease) { $lease.Stream.Dispose() }
     }
     return [pscustomobject][ordered]@{
-        Version = ConvertTo-SafeCodexVersion -VersionText $versionText
+        Version = "sha256:$identityHash"
         ApprovalOptionPosition = 'before exec'
         SupportsDeveloperSandbox = $true
         SupportsReviewerSandbox  = $true
         SupportsJsonLines        = $true
         SupportsOutputSchema     = $true
+        SupportsShellDisabled    = $true
+        SupportsUnifiedExecDisabled = $true
+        SupportsIgnoreRules      = $true
     }
 }
 
@@ -673,70 +867,53 @@ function ConvertTo-CodexCommandText {
 }
 
 function Get-CodexCommandTokens {
-    param([Parameter(Mandatory = $true)][string]$CommandText)
-
-    $pattern = '"(?:\\.|[^"\\])*"|''(?:''''|[^''])*''|&&|\|\||[;&|()]|[^\s;&|()]+'
-    $tokens = New-Object 'System.Collections.Generic.List[string]'
-    foreach ($match in [regex]::Matches($CommandText, $pattern)) {
-        $token = [string]$match.Value
-        if ($token.Length -ge 2 -and
-            (($token[0] -eq '"' -and $token[$token.Length - 1] -eq '"') -or
-             ($token[0] -eq "'" -and $token[$token.Length - 1] -eq "'"))) {
-            $token = $token.Substring(1, $token.Length - 2)
-        }
-        $tokens.Add($token)
-    }
-    return $tokens.ToArray()
-}
-
-function Get-CodexCommandLeafName {
-    param([Parameter(Mandatory = $true)][string]$Token)
-
-    $candidate = $Token.Trim().TrimStart('&')
-    if ([string]::IsNullOrWhiteSpace($candidate)) {
-        return ''
-    }
-    try {
-        return [IO.Path]::GetFileName($candidate).ToLowerInvariant()
-    }
-    catch {
-        return $candidate.ToLowerInvariant()
-    }
-}
-
-function Get-CodexGitSubcommand {
     param(
-        [Parameter(Mandatory = $true)][string[]]$Tokens,
-        [Parameter(Mandatory = $true)][int]$StartIndex
+        [Parameter(Mandatory = $true)][string]$CommandText,
+        [string]$ItemId = ''
     )
 
-    $optionsWithSeparateValue = @(
-        '-c', '-C',
-        '--exec-path', '--git-dir', '--work-tree', '--namespace',
-        '--super-prefix', '--config-env'
-    )
-    for ($index = $StartIndex; $index -lt $Tokens.Count; $index++) {
-        $token = [string]$Tokens[$index]
-        if (@(';', '&&', '||', '|', '(', ')') -ccontains $token) {
-            return $null
-        }
-        if ([string]::IsNullOrWhiteSpace($token)) {
-            continue
-        }
-        if ($token.StartsWith('-')) {
-            $optionName = ($token -split '=', 2)[0]
-            if ($optionsWithSeparateValue -ccontains $optionName -and
-                $token.IndexOf('=') -lt 0) {
-                $index++
-            }
-            continue
-        }
-        return [pscustomobject]@{
-            Name = $token.ToLowerInvariant()
-            Index = $index
-        }
+    # Free-form substring tokenization cannot establish executable identity or
+    # shell semantics. Parse one deliberately tiny PowerShell AST grammar:
+    # exactly one foreground command, no pipeline/chain/call operator,
+    # redirection, scriptblock, expansion, expression, or nested shell text.
+    $parseTokens = $null
+    $parseErrors = $null
+    $ast = [Management.Automation.Language.Parser]::ParseInput($CommandText, [ref]$parseTokens, [ref]$parseErrors)
+    if (@($parseErrors).Count -ne 0 -or $null -eq $ast.EndBlock -or @($ast.EndBlock.Statements).Count -ne 1) {
+        throw (New-CodexCommandDiagnostic -Code 'CODEX_COMMAND_AST_INVALID' -ItemId $ItemId -CommandContent $CommandText)
     }
-    return $null
+    $statement = @($ast.EndBlock.Statements)[0]
+    if ($statement -isnot [Management.Automation.Language.PipelineAst] -or
+        ($null -ne $statement.PSObject.Properties['Background'] -and [bool]$statement.Background) -or
+        @($statement.PipelineElements).Count -ne 1) {
+        throw (New-CodexCommandDiagnostic -Code 'CODEX_COMMAND_AST_OPERATOR_FORBIDDEN' -ItemId $ItemId -CommandContent $CommandText)
+    }
+    $commandAst = @($statement.PipelineElements)[0]
+    if ($commandAst -isnot [Management.Automation.Language.CommandAst] -or
+        $commandAst.InvocationOperator -ne [Management.Automation.Language.TokenKind]::Unknown -or
+        @($commandAst.Redirections).Count -ne 0 -or @($commandAst.CommandElements).Count -lt 1) {
+        throw (New-CodexCommandDiagnostic -Code 'CODEX_COMMAND_AST_COMMAND_FORBIDDEN' -ItemId $ItemId -CommandContent $CommandText)
+    }
+    $commandNameAst = @($commandAst.CommandElements)[0]
+    if ($commandNameAst -isnot [Management.Automation.Language.StringConstantExpressionAst]) {
+        throw (New-CodexCommandDiagnostic -Code 'CODEX_COMMAND_AST_EXECUTABLE_NOT_LITERAL' -ItemId $ItemId -CommandContent $CommandText)
+    }
+    $arguments = [Collections.Generic.List[string]]::new()
+    foreach ($element in @($commandAst.CommandElements | Select-Object -Skip 1)) {
+        if ($element -is [Management.Automation.Language.StringConstantExpressionAst]) {
+            $arguments.Add([string]$element.Value)
+            continue
+        }
+        if ($element -is [Management.Automation.Language.CommandParameterAst] -and $null -eq $element.Argument) {
+            $arguments.Add('-' + [string]$element.ParameterName)
+            continue
+        }
+        throw (New-CodexCommandDiagnostic -Code 'CODEX_COMMAND_AST_ARGUMENT_NOT_LITERAL' -ItemId $ItemId -CommandContent $CommandText)
+    }
+    return [pscustomobject][ordered]@{
+        Executable = [string]$commandNameAst.Value
+        Arguments = $arguments.ToArray()
+    }
 }
 
 function New-CodexCommandDiagnostic {
@@ -753,29 +930,52 @@ function New-CodexCommandDiagnostic {
     })
 }
 
-function Assert-CodexPathTokenAllowed {
+function Assert-CodexJsonElementHasUniquePropertyNames {
     param(
-        [Parameter(Mandatory = $true)][string]$Token,
-        [Parameter(Mandatory = $true)][string]$ItemId
+        [Parameter(Mandatory = $true)][Text.Json.JsonElement]$Element,
+        [Parameter(Mandatory = $true)][string]$FailureCode
     )
 
-    $candidate = $Token.Trim().Trim('"', "'").TrimEnd(',', ';')
-    if ([string]::IsNullOrWhiteSpace($candidate)) { return }
-    if ($candidate -match '(?i)(?:^|=)(?:[a-z][a-z0-9._-]*::|(?:env|variable|function|alias|cert|registry|wsman|hklm|hkcu):)' -or
-        $candidate -match '(?:^|=)[A-Za-z]:' -or
-        $candidate -match '(?:^|=)~' -or
-        ($candidate -match '(?:^|=)/' -and @('/c','/k') -cnotcontains $candidate.ToLowerInvariant()) -or
-        $candidate.StartsWith('\\')) {
-        throw (New-CodexCommandDiagnostic -Code 'CODEX_COMMAND_PATH_OUTSIDE_WORKSPACE' -ItemId $ItemId -CommandContent $Token)
+    if ($Element.ValueKind -eq [Text.Json.JsonValueKind]::Object) {
+        $names = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+        foreach ($property in $Element.EnumerateObject()) {
+            if (-not $names.Add([string]$property.Name)) {
+                throw (New-CodexContentFreeDiagnostic -Code $FailureCode)
+            }
+            Assert-CodexJsonElementHasUniquePropertyNames -Element $property.Value -FailureCode $FailureCode
+        }
     }
+    elseif ($Element.ValueKind -eq [Text.Json.JsonValueKind]::Array) {
+        foreach ($value in $Element.EnumerateArray()) {
+            Assert-CodexJsonElementHasUniquePropertyNames -Element $value -FailureCode $FailureCode
+        }
+    }
+}
 
-    $normalized = $candidate.Replace('\','/')
-    if ($normalized -match '(?i)(?:^|[=/])\.\.(?:/|$)' -or
-        $normalized -match '(?i)(?:^|[=/])\.(?:git|codex)(?:/|$)' -or
-        $normalized -match '(?i)(?:^|[=/])(?:\.ssh|\.aws|\.azure|\.kube|AppData)(?:/|$)' -or
-        $normalized -match '(?i)(?:^|[=/])(?:auth\.json|credentials(?:\.json)?|\.netrc|_netrc|id_rsa|id_ed25519)(?:$|/)') {
-        throw (New-CodexCommandDiagnostic -Code 'CODEX_COMMAND_PATH_SENSITIVE' -ItemId $ItemId -CommandContent $Token)
+function Assert-CodexJsonHasUniquePropertyNames {
+    param(
+        [Parameter(Mandatory = $true)][AllowEmptyString()][string]$JsonText,
+        [Parameter(Mandatory = $true)][string]$FailureCode
+    )
+
+    $document = $null
+    try {
+        $options = [Text.Json.JsonDocumentOptions]::new()
+        $options.AllowTrailingCommas = $false
+        $options.CommentHandling = [Text.Json.JsonCommentHandling]::Disallow
+        $options.MaxDepth = 100
+        $document = [Text.Json.JsonDocument]::Parse($JsonText,$options)
     }
+    catch {
+        # The caller's ordinary JSON parse owns malformed-JSON diagnostics. This
+        # preflight exists only because ConvertFrom-Json otherwise accepts exact
+        # duplicate keys with last-value-wins semantics.
+        return
+    }
+    try {
+        Assert-CodexJsonElementHasUniquePropertyNames -Element $document.RootElement -FailureCode $FailureCode
+    }
+    finally { $document.Dispose() }
 }
 
 function Assert-CodexCommandExecutionAllowed {
@@ -784,189 +984,31 @@ function Assert-CodexCommandExecutionAllowed {
         [Parameter(Mandatory = $true)][string]$ItemId
     )
 
-    if ($CommandText.IndexOf([char]0) -ge 0) {
-        throw (New-CodexCommandDiagnostic -Code 'CODEX_COMMAND_NUL' -ItemId $ItemId -CommandContent $CommandText)
+    $plan = Get-CodexCommandTokens -CommandText $CommandText -ItemId $ItemId
+    $executable = [string]$plan.Executable
+    if ([string]::IsNullOrWhiteSpace($executable) -or
+        -not [IO.Path]::IsPathFullyQualified($executable) -or
+        $executable -cnotmatch '^[A-Za-z]:\\') {
+        throw (New-CodexCommandDiagnostic -Code 'CODEX_COMMAND_EXECUTABLE_NOT_ABSOLUTE' -ItemId $ItemId -CommandContent $CommandText)
     }
-    if ($CommandText -match '(?i)(?:--dangerously-bypass-approvals-and-sandbox|danger-full-access|--approve-for-me)') {
-        throw (New-CodexCommandDiagnostic -Code 'CODEX_COMMAND_PRIVILEGE_FLAG' -ItemId $ItemId -CommandContent $CommandText)
+    $canonicalExecutable = [IO.Path]::GetFullPath($executable)
+    if (-not [string]::Equals($canonicalExecutable, $executable, [StringComparison]::OrdinalIgnoreCase) -or
+        -not [string]::Equals([IO.Path]::GetExtension($canonicalExecutable), '.exe', [StringComparison]::OrdinalIgnoreCase)) {
+        throw (New-CodexCommandDiagnostic -Code 'CODEX_COMMAND_EXECUTABLE_NOT_CANONICAL' -ItemId $ItemId -CommandContent $CommandText)
     }
-    if ($CommandText -match '(?i)(?:api\.github\.com|github\.com/(?:api/|graphql))') {
-        throw (New-CodexCommandDiagnostic -Code 'CODEX_COMMAND_GITHUB_API' -ItemId $ItemId -CommandContent $CommandText)
-    }
-    if ($CommandText -match '(?i)\b(?:register|unregister|set|new|remove|enable|disable|start|stop)-scheduledtask\b' -or
-        $CommandText -match '(?i)(?:^|[\s;&|()\\/])schtasks(?:\.exe)?(?=$|[\s;&|()])' -or
-        $CommandText -match '(?i)Schedule\.Service') {
-        throw (New-CodexCommandDiagnostic -Code 'CODEX_COMMAND_TASK_SCHEDULER' -ItemId $ItemId -CommandContent $CommandText)
-    }
-    if ($CommandText -match '(?i)(?:\$\(|\$[A-Z_{]|`|\$env:|%[A-Z_][A-Z0-9_]*%|Invoke-(?:Expression)|\biex\b|Invoke-Command|Start-Process|Start-Job|Register-ObjectEvent|Add-Type|\[Diagnostics\.Process\]|\[System\.Diagnostics\.Process\]|::Start\s*\(|System\.Net\.|Net\.WebClient|DownloadString|DownloadFile)' -or
-        $CommandText -match '[<>]' -or
-        $CommandText -match '(?i)(?:^|[\s"''])\\\\' -or
-        $CommandText -match '(?i)(?:^|[\s"''])[A-Z]:[\\/]' -or
-        $CommandText -match '(?i)(?:^|[\s"''\\/])\.\.(?:[\\/]|$)') {
-        throw (New-CodexCommandDiagnostic -Code 'CODEX_COMMAND_OPAQUE_OR_REDIRECTED' -ItemId $ItemId -CommandContent $CommandText)
-    }
-
-    $tokens = @(Get-CodexCommandTokens -CommandText $CommandText)
-    if ($tokens.Count -eq 0) {
-        throw (New-CodexCommandDiagnostic -Code 'CODEX_COMMAND_UNINSPECTABLE' -ItemId $ItemId -CommandContent $CommandText)
-    }
-    foreach ($token in $tokens) {
-        Assert-CodexPathTokenAllowed -Token ([string]$token) -ItemId $ItemId
-    }
-    $forbiddenExecutables = @(
-        'bash','bash.exe','sh','sh.exe','python','python.exe','python3','python3.exe',
-        'node','node.exe','deno','deno.exe','bun','bun.exe','ruby','ruby.exe','perl','perl.exe',
-        'wscript','wscript.exe','cscript','cscript.exe','mshta','mshta.exe','rundll32','rundll32.exe',
-        'curl','curl.exe','wget','wget.exe','ssh','ssh.exe','scp','scp.exe','ftp','ftp.exe',
-        'reg','reg.exe','sc','sc.exe','wmic','wmic.exe','schtasks','schtasks.exe'
+    $approvedPaths = @(
+        Get-SashimiConfiguredExecutablePath -Name GitExecutable
+        Get-SashimiConfiguredExecutablePath -Name GitLfsExecutable
     )
-    foreach ($token in $tokens) {
-        $leaf = Get-CodexCommandLeafName -Token ([string]$token)
-        if ($forbiddenExecutables -ccontains $leaf -or
-            $leaf -match '(?i)\.(?:ps1|psm1|psd1|bat|cmd|vbs|js|py)$') {
-            throw (New-CodexCommandDiagnostic -Code 'CODEX_COMMAND_EXECUTABLE_FORBIDDEN' -ItemId $ItemId -CommandContent $CommandText)
-        }
+    if (@($approvedPaths | Where-Object { [string]::Equals([string]$_, $canonicalExecutable, [StringComparison]::OrdinalIgnoreCase) }).Count -ne 1) {
+        throw (New-CodexCommandDiagnostic -Code 'CODEX_COMMAND_EXECUTABLE_NOT_BOUND' -ItemId $ItemId -CommandContent $CommandText)
     }
-    for ($hostIndex = 0; $hostIndex -lt $tokens.Count; $hostIndex++) {
-        $hostLeaf = Get-CodexCommandLeafName -Token ([string]$tokens[$hostIndex])
-        $commandSwitches = @()
-        if (@('cmd', 'cmd.exe') -ccontains $hostLeaf) {
-            $commandSwitches = @('/c', '/k')
-        }
-        elseif (@('pwsh', 'pwsh.exe', 'powershell', 'powershell.exe') -ccontains $hostLeaf) {
-            $commandSwitches = @('-command', '-c', '-commandwithargs')
-        }
-        elseif (@('bash', 'bash.exe', 'sh', 'sh.exe') -ccontains $hostLeaf) {
-            $commandSwitches = @('-c', '-lc')
-        }
-        if ($commandSwitches.Count -eq 0) {
-            continue
-        }
-        if (@('pwsh', 'pwsh.exe', 'powershell', 'powershell.exe') -ccontains $hostLeaf -and
-            @($tokens | Where-Object { [string]$_ -match '^(?i)-(?:file|f|encodedcommand|enc|encodedarguments|configurationname|noexit)$' }).Count -gt 0) {
-            throw (New-CodexCommandDiagnostic -Code 'CODEX_COMMAND_POWERSHELL_OPAQUE' -ItemId $ItemId -CommandContent $CommandText)
-        }
-        $foundCommandSwitch = $false
-        for ($switchIndex = $hostIndex + 1; $switchIndex -lt $tokens.Count; $switchIndex++) {
-            if ($commandSwitches -notcontains ([string]$tokens[$switchIndex]).ToLowerInvariant()) {
-                continue
-            }
-            $foundCommandSwitch = $true
-            if (($switchIndex + 1) -ge $tokens.Count) {
-                throw (New-CodexCommandDiagnostic -Code 'CODEX_COMMAND_SHELL_EMPTY' -ItemId $ItemId -CommandContent $CommandText)
-            }
-            $nestedCommand = [string]::Join(' ', [string[]]@($tokens[($switchIndex + 1)..($tokens.Count - 1)]))
-            if ([string]::IsNullOrWhiteSpace($nestedCommand)) {
-                throw (New-CodexCommandDiagnostic -Code 'CODEX_COMMAND_SHELL_EMPTY' -ItemId $ItemId -CommandContent $CommandText)
-            }
-            Assert-CodexCommandExecutionAllowed -CommandText $nestedCommand -ItemId $ItemId
-            break
-        }
-        if (-not $foundCommandSwitch) {
-            throw (New-CodexCommandDiagnostic -Code 'CODEX_COMMAND_SHELL_UNINSPECTABLE' -ItemId $ItemId -CommandContent $CommandText)
-        }
-    }
-    for ($index = 0; $index -lt $tokens.Count; $index++) {
-        $leaf = Get-CodexCommandLeafName -Token ([string]$tokens[$index])
-        if (@('gh', 'gh.exe', 'hub', 'hub.exe') -ccontains $leaf) {
-            throw (New-CodexCommandDiagnostic -Code 'CODEX_COMMAND_GITHUB_CLI' -ItemId $ItemId -CommandContent $CommandText)
-        }
-        if (@('pwsh', 'pwsh.exe', 'powershell', 'powershell.exe') -ccontains $leaf -and
-            @($tokens | Where-Object { [string]$_ -match '^(?i)-(?:encodedcommand|enc)$' }).Count -gt 0) {
-            throw (New-CodexCommandDiagnostic -Code 'CODEX_COMMAND_POWERSHELL_ENCODED' -ItemId $ItemId -CommandContent $CommandText)
-        }
-        if (@('git', 'git.exe') -cnotcontains $leaf) {
-            continue
-        }
-
-        $gitArguments = if (($index + 1) -lt $tokens.Count) { @($tokens[($index + 1)..($tokens.Count - 1)]) } else { @() }
-        foreach ($gitArgument in $gitArguments) {
-            $gitOption = ([string]$gitArgument).ToLowerInvariant()
-            if ($gitOption -match '^(?:--ext-diff|--textconv|--filters|--config-env|--exec-path|--git-dir|--work-tree|--paginate)(?:=|$)' -or
-                $gitOption -eq '-p' -or $gitOption -match '^-c(?:$|[^a-z])' -or
-                $gitOption -match '^--open-files-in-pager(?:=|$)' -or $gitOption -match '^-o(?:$|.)') {
-                throw (New-CodexCommandDiagnostic -Code 'CODEX_COMMAND_GIT_OPTION_FORBIDDEN' -ItemId $ItemId -CommandContent $CommandText)
-            }
-        }
-
-        $subcommand = Get-CodexGitSubcommand -Tokens $tokens -StartIndex ($index + 1)
-        if ($null -eq $subcommand) {
-            throw (New-CodexCommandDiagnostic -Code 'CODEX_COMMAND_GIT_UNINSPECTABLE' -ItemId $ItemId -CommandContent $CommandText)
-        }
-        if (@(
-                'clone', 'fetch', 'pull', 'switch', 'checkout', 'branch',
-                'commit', 'merge', 'rebase', 'reset', 'clean', 'push'
-            ) -ccontains [string]$subcommand.Name) {
-            throw (New-CodexCommandDiagnostic -Code 'CODEX_COMMAND_GIT_MUTATION' -ItemId $ItemId -CommandContent $CommandText)
-        }
-        if ([string]$subcommand.Name -ceq 'lfs') {
-            $lfsSubcommand = Get-CodexGitSubcommand -Tokens $tokens -StartIndex ([int]$subcommand.Index + 1)
-            $readOnlyLfsCommands = @('env', 'fsck', 'ls-files', 'pointer', 'status', 'version')
-            if ($null -eq $lfsSubcommand -or $readOnlyLfsCommands -cnotcontains [string]$lfsSubcommand.Name) {
-                $name = if ($null -eq $lfsSubcommand) { '<uninspectable>' } else { [string]$lfsSubcommand.Name }
-                throw (New-CodexCommandDiagnostic -Code 'CODEX_COMMAND_GIT_LFS_FORBIDDEN' -ItemId $ItemId -CommandContent $CommandText)
-            }
-            continue
-        }
-
-        # Fail closed around Git metadata. Codex may inspect repository state,
-        # but only the Host may change the index, refs, remotes, configuration,
-        # branches, commits, or transport state.
-        $readOnlyGitCommands = @(
-            'blame', 'cat-file', 'check-attr', 'check-ignore', 'check-ref-format',
-            'describe', 'diff', 'diff-files', 'diff-index', 'diff-tree',
-            'for-each-ref', 'grep', 'log', 'ls-files', 'ls-tree', 'merge-base',
-            'name-rev', 'rev-list', 'rev-parse', 'show', 'show-ref', 'status',
-            'version'
-        )
-        if ($readOnlyGitCommands -cnotcontains [string]$subcommand.Name) {
-            throw (New-CodexCommandDiagnostic -Code 'CODEX_COMMAND_GIT_NOT_READ_ONLY' -ItemId $ItemId -CommandContent $CommandText)
-        }
-    }
-
-    for ($index = 0; $index -lt $tokens.Count; $index++) {
-        $leaf = Get-CodexCommandLeafName -Token ([string]$tokens[$index])
-        if (@('rg','rg.exe') -cnotcontains $leaf) { continue }
-        $rgArguments = if (($index + 1) -lt $tokens.Count) { @($tokens[($index + 1)..($tokens.Count - 1)]) } else { @() }
-        foreach ($rgArgument in $rgArguments) {
-            if ([string]$rgArgument -match '^(?i)--pre(?:-glob)?(?:=|$)') {
-                throw (New-CodexCommandDiagnostic -Code 'CODEX_COMMAND_RIPGREP_PREPROCESSOR' -ItemId $ItemId -CommandContent $CommandText)
-            }
-        }
-    }
-
-    # Every top-level command or pipeline segment must start with an explicit
-    # read-only command. Production edits travel through Codex's file-change
-    # tool, while compilation, tests, Git mutation, GitHub, and Unity remain
-    # Host responsibilities. This audit complements the CLI's unelevated,
-    # network-disabled OS sandbox; it is not the primary isolation boundary.
-    $allowedSegmentCommands = @(
-        'cmd','cmd.exe','pwsh','pwsh.exe','powershell','powershell.exe',
-        'git','git.exe','rg','rg.exe','findstr','findstr.exe','where','where.exe',
-        'get-childitem','get-content','get-item','get-command','get-location','get-filehash',
-        'test-path','resolve-path','select-string','select-object','sort-object',
-        'where-object','foreach-object','measure-object','compare-object',
-        'format-list','format-table','write-output'
-    )
-    $segmentStart = $true
-    foreach ($token in $tokens) {
-        if (@(';','&&','||','|') -ccontains [string]$token) {
-            $segmentStart = $true
-            continue
-        }
-        if (@('(',')') -ccontains [string]$token) {
-            throw (New-CodexCommandDiagnostic -Code 'CODEX_COMMAND_GROUPING_OPAQUE' -ItemId $ItemId -CommandContent $CommandText)
-        }
-        if (-not $segmentStart) { continue }
-        $leaf = Get-CodexCommandLeafName -Token ([string]$token)
-        if ($allowedSegmentCommands -cnotcontains $leaf) {
-            throw (New-CodexCommandDiagnostic -Code 'CODEX_COMMAND_SEGMENT_UNRECOGNIZED' -ItemId $ItemId -CommandContent $CommandText)
-        }
-        $segmentStart = $false
-    }
-    if ($segmentStart) {
-        throw (New-CodexCommandDiagnostic -Code 'CODEX_COMMAND_SEGMENT_INCOMPLETE' -ItemId $ItemId -CommandContent $CommandText)
-    }
+    Assert-SashimiNoReparsePoint -Path $canonicalExecutable
+    Assert-SashimiBoundExecutableIdentity -FilePath $canonicalExecutable
+    # The launch contract disables shell_tool. Any command event therefore
+    # proves capability/configuration drift and is terminal even if its typed
+    # AST happened to name an otherwise bound read-only executable.
+    throw (New-CodexCommandDiagnostic -Code 'CODEX_COMMAND_EXECUTION_DISABLED' -ItemId $ItemId -CommandContent $CommandText)
 }
 
 function ConvertFrom-CodexJsonLines {
@@ -987,6 +1029,7 @@ function ConvertFrom-CodexJsonLines {
         if ([string]::IsNullOrWhiteSpace($line)) {
             continue
         }
+        Assert-CodexJsonHasUniquePropertyNames -JsonText $line -FailureCode 'CODEX_JSONL_DUPLICATE_PROPERTY'
         try {
             $event = $line | ConvertFrom-Json -Depth 100 -DateKind String -ErrorAction Stop
         }
@@ -995,6 +1038,7 @@ function ConvertFrom-CodexJsonLines {
                 -HostMetadata ([ordered]@{ lineNumber = $lineNumber }) `
                 -UntrustedText ([ordered]@{ line = $line }))
         }
+        $decodedAudit = Assert-CodexDecodedJsonObjectSafe -Value $event
         $type = [string](Get-AdapterProperty -Object $event -Names @('type') -DefaultValue '')
         if ([string]::IsNullOrWhiteSpace($type)) {
             throw (New-CodexContentFreeDiagnostic -Code 'CODEX_JSONL_EVENT_TYPE_MISSING' `
@@ -1013,6 +1057,15 @@ function ConvertFrom-CodexJsonLines {
         $item = Get-AdapterProperty -Object $event -Names @('item')
         $itemId = [string](Get-AdapterProperty -Object $item -Names @('id') -DefaultValue '')
         $itemType = [string](Get-AdapterProperty -Object $item -Names @('type') -DefaultValue '')
+        $exactCommandEvent = @('item.started','item.completed') -ccontains $type -and $itemType -ceq 'command_execution'
+        if ([bool]$decodedAudit.CommandSignal -and -not $exactCommandEvent) {
+            # Unknown/case-variant wrappers are not forward-compatible at this
+            # boundary: a command-bearing event that misses the exact grammar
+            # would otherwise bypass the command audit entirely.
+            throw (New-CodexContentFreeDiagnostic -Code 'CODEX_JSONL_COMMAND_WRAPPER_UNRECOGNIZED' `
+                -HostMetadata ([ordered]@{ lineNumber = $lineNumber }) `
+                -UntrustedText ([ordered]@{ line = $line }))
+        }
         if ($type -ceq 'turn.completed') {
             $turnCompleted = $true
         }
@@ -1327,7 +1380,7 @@ try {
         }
         $rootHelp = [string](Get-AdapterProperty -Object $fixture -Names @('RootHelp') -DefaultValue '')
         $execHelp = [string](Get-AdapterProperty -Object $fixture -Names @('ExecHelp') -DefaultValue '')
-        Assert-CodexCapabilityText -RootHelp $rootHelp -ExecHelp $execHelp
+        Assert-CodexCapabilityText -ExecHelp $execHelp
         $codexPath = '[fixture-codex]'
         $result.CodexExecutable = $codexPath
         $result.CodexVersion = ConvertTo-SafeCodexVersion -VersionText ([string](Get-AdapterProperty -Object $fixture -Names @('Version') -DefaultValue ''))
@@ -1337,13 +1390,21 @@ try {
             -Config $config `
             -Names @('CodexExecutable', 'CodexCliPath', 'CodexPath') `
             -DefaultValue 'codex')
-        $codexPath = Resolve-CodexExecutable -ConfiguredPath $configuredCodex
+        $codexPath = Resolve-CodexExecutable -ConfiguredPath $configuredCodex -PlanningOnly:$DryRun
         $result.CodexExecutable = $codexPath
-        $capabilities = Invoke-CodexCapabilityProbe `
-            -CodexPath $codexPath `
-            -WorkingDirectory $normalizedRepository `
-            -CancellationMarkerPath $normalizedCancellationMarker
-        $result.CodexVersion = $capabilities.Version
+        if ($DryRun) {
+            # Source/harness preview may resolve a task-user-local executable
+            # for planning only. No capability or execution process is started
+            # until an installed protected identity is active.
+            $result.CodexVersion = 'not-probed-dryrun'
+        }
+        else {
+            $capabilities = Invoke-CodexCapabilityProbe `
+                -CodexPath $codexPath `
+                -WorkingDirectory $normalizedRepository `
+                -CancellationMarkerPath $normalizedCancellationMarker
+            $result.CodexVersion = $capabilities.Version
+        }
     }
 
     $schemaPath = Join-Path $normalizedArtifacts 'CodexResult.schema.json'
@@ -1358,8 +1419,11 @@ try {
 
     $sandbox = if ($Role -ceq 'Reviewer') { 'read-only' } else { 'workspace-write' }
     $arguments = @(
+        '--disable', 'shell_tool',
+        '--disable', 'unified_exec',
         '--ask-for-approval', 'never',
         'exec',
+        '--ignore-rules',
         '--ephemeral',
         '--json',
         '--color', 'never',
@@ -1383,14 +1447,11 @@ try {
     else {
         $writeArtifacts = -not $DryRun
         if ($writeArtifacts -and (Test-Path -LiteralPath $normalizedArtifacts)) {
-            foreach ($ownedOutput in @($schemaPath, $eventsPath, $processSummaryPath, $resultPath)) {
-                if (Test-Path -LiteralPath $ownedOutput) {
-                    throw "Refusing to overwrite a Codex artifact: $ownedOutput"
-                }
-            }
+            Assert-AdapterArtifactTree -Root $normalizedArtifacts -AllowedFiles @()
         }
         elseif ($writeArtifacts) {
             New-Item -ItemType Directory -Path $normalizedArtifacts -ErrorAction Stop | Out-Null
+            Assert-AdapterArtifactTree -Root $normalizedArtifacts -AllowedFiles @()
         }
 
         $schema = New-CodexResultSchema `
@@ -1402,7 +1463,7 @@ try {
             -ExpectedHead $PinnedHeadSha `
             -AllowedIssueValidationIds $script:allowedIssueValidationIds
         if ($writeArtifacts) {
-            Write-AdapterUtf8File -Path $schemaPath -Text (($schema | ConvertTo-Json -Depth 30) + "`n")
+            Write-AdapterUtf8File -Path $schemaPath -Text (($schema | ConvertTo-Json -Depth 30) + "`n") -MaximumUtf8Bytes 262144
         }
 
         $issueValidationContract = if ($Role -ceq 'Reviewer') {
@@ -1448,6 +1509,11 @@ The Windows host owns all GitHub, Project, Git branch/ref, commit, push, PR, and
             $result.Executed = $true
         }
 
+        # Audit the exact original in-memory bytes represented by these strict
+        # UTF-8 strings before hashes, event metadata, diagnostics, redaction,
+        # or any other artifact is produced. Fixtures traverse this same gate.
+        Assert-CodexOriginalProcessOutputSafe -StdOut ([string]$native.StdOut) -StdErr ([string]$native.StdErr)
+
         # Retain only lengths and hashes until the JSONL stream has been
         # validated. Arbitrary Codex stdout/stderr can contain command output,
         # credentials, save data, or profile content and is never an artifact.
@@ -1461,10 +1527,6 @@ The Windows host owns all GitHub, Project, Git branch/ref, commit, push, PR, and
             StdErrUtf8Bytes = [Text.UTF8Encoding]::new($false).GetByteCount([string]$native.StdErr)
             StdErrSha256 = Get-AdapterTextSha256 -Text ([string]$native.StdErr)
         }
-        if ($writeArtifacts) {
-            Write-AdapterUtf8File -Path $processSummaryPath -Text (($processSummary | ConvertTo-Json -Depth 4) + "`n")
-        }
-
         if ($native.TimedOut) {
             throw (New-CodexContentFreeDiagnostic -Code 'CODEX_EXEC_TIMEOUT' `
                 -HostMetadata ([ordered]@{ timeoutSeconds = $TimeoutSeconds }))
@@ -1481,16 +1543,14 @@ The Windows host owns all GitHub, Project, Git branch/ref, commit, push, PR, and
         # in-memory stream before trusting or publishing any result.
         $parsed = ConvertFrom-CodexJsonLines -Text $native.StdOut -AllowExternalResult:($null -ne $fixture)
         $result.EventCount = $parsed.EventCount
-        if ($writeArtifacts) {
-            $eventMetadata = ConvertTo-CodexEventMetadataJsonLines -Events @($parsed.Events)
-            Write-AdapterUtf8File -Path $eventsPath -Text ($eventMetadata.TrimEnd() + "`n")
-        }
         if ($null -ne $fixture) {
             $codexResult = Get-AdapterProperty -Object $fixture -Names @('Result')
             if ($null -eq $codexResult) {
                 throw (New-CodexContentFreeDiagnostic -Code 'CODEX_RESULT_EXPLICIT_MISSING')
             }
             if (-not [string]::IsNullOrWhiteSpace([string]$parsed.ResultText)) {
+                Assert-CodexJsonHasUniquePropertyNames -JsonText ([string]$parsed.ResultText) `
+                    -FailureCode 'CODEX_RESULT_DUPLICATE_PROPERTY'
                 try {
                     $eventResult = $parsed.ResultText | ConvertFrom-Json -Depth 100 -DateKind String -ErrorAction Stop
                 }
@@ -1502,6 +1562,8 @@ The Windows host owns all GitHub, Project, Git branch/ref, commit, push, PR, and
             }
         }
         else {
+            Assert-CodexJsonHasUniquePropertyNames -JsonText ([string]$parsed.ResultText) `
+                -FailureCode 'CODEX_RESULT_DUPLICATE_PROPERTY'
             try {
                 $codexResult = $parsed.ResultText | ConvertFrom-Json -Depth 100 -DateKind String -ErrorAction Stop
             }
@@ -1533,7 +1595,14 @@ The Windows host owns all GitHub, Project, Git branch/ref, commit, push, PR, and
         $safeResult = $safeResultJson | ConvertFrom-Json -Depth 100 -DateKind String -ErrorAction Stop
         Assert-CodexResultContract -ResultObject $safeResult
         if ($writeArtifacts) {
-            Write-AdapterUtf8File -Path $resultPath -Text ($safeResultJson + "`n")
+            # Promotion occurs only after the original stream, event grammar,
+            # result contract, and sensitive-content checks have all passed.
+            $eventMetadata = ConvertTo-CodexEventMetadataJsonLines -Events @($parsed.Events)
+            Assert-AdapterArtifactTree -Root $normalizedArtifacts -AllowedFiles @($schemaPath)
+            Write-AdapterUtf8File -Path $processSummaryPath -Text (($processSummary | ConvertTo-Json -Depth 4) + "`n") -MaximumUtf8Bytes 65536
+            Write-AdapterUtf8File -Path $eventsPath -Text ($eventMetadata.TrimEnd() + "`n") -MaximumUtf8Bytes 4194304
+            Write-AdapterUtf8File -Path $resultPath -Text ($safeResultJson + "`n") -MaximumUtf8Bytes 1048576
+            Assert-AdapterArtifactTree -Root $normalizedArtifacts -AllowedFiles @($schemaPath,$eventsPath,$processSummaryPath,$resultPath) -RequireAll
         }
 
         $result.Result = $safeResult

@@ -54,6 +54,32 @@ $normalizedArtifactsPath = $null
 $rawValidationPath = $null
 $rawValidationFiles = @()
 $script:rawValidationCleanupSafe = $true
+$script:gitControlSecurityFailure = $false
+$script:gitControlPassed = $false
+$script:gitControlBaseline = $null
+$script:gitControlSnapshotSequence = 0
+$script:gitExecutable = ''
+$script:gitTimeout = 0
+$script:gitControlFixture = $null
+$script:fixtureGitControlOverrides = @{}
+$script:canonicalRepositoryUrl = ''
+$script:unityArtifactRoot = ''
+$script:unityArtifactStateRoot = ''
+$script:unityArtifactBoundaryFailure = $false
+$script:unityArtifactMaximumTotalBytes = [int64](128MB)
+$script:unityLogMaximumBytes = [int64](8MB)
+$script:unityXmlMaximumBytes = [int64](16MB)
+$script:unityMetadataMaximumBytes = [int64](4MB)
+$script:unityPngMaximumBytes = [int64](25MB)
+$script:unityArtifactPolicies = [Collections.Generic.Dictionary[string,object]]::new([StringComparer]::OrdinalIgnoreCase)
+$script:unityArtifactDirectories = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+$script:gitStateEnvironmentOverrides = @(
+    'GIT_DIR','GIT_COMMON_DIR','GIT_WORK_TREE','GIT_INDEX_FILE','GIT_OBJECT_DIRECTORY',
+    'GIT_ALTERNATE_OBJECT_DIRECTORIES','GIT_REPLACE_REF_BASE','GIT_NAMESPACE','GIT_CEILING_DIRECTORIES',
+    'GIT_CONFIG','GIT_CONFIG_COUNT','GIT_CONFIG_PARAMETERS','GIT_CONFIG_SYSTEM','GIT_CONFIG_GLOBAL',
+    'GIT_CONFIG_NOSYSTEM','GIT_ATTR_NOSYSTEM','GIT_SSH','GIT_SSH_COMMAND','GIT_ASKPASS',
+    'GIT_EXEC_PATH','GIT_TEMPLATE_DIR','GIT_OPTIONAL_LOCKS','GIT_TRACE','GIT_TRACE2','GIT_TRACE2_EVENT'
+)
 $script:unitySensitiveEnvironmentValues = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
 
 function Protect-SashimiValidationMetadataText {
@@ -303,7 +329,11 @@ function Invoke-SashimiValidationProcess {
             FilePath = $FilePath; ArgumentList = $Arguments; WorkingDirectory = $WorkingDirectory
             TimeoutSeconds = $TimeoutSeconds; Kind = $Kind; DryRun = $true
         }
-        if ($Kind -ceq 'Unity') { $plannedParameters.RemoveEnvironmentVariables = $removeEnvironmentNames }
+        if ($Kind -ceq 'Unity') {
+            $plannedParameters.RemoveEnvironmentVariables = $removeEnvironmentNames
+            $plannedParameters.RequireKillOnCloseJob = $true
+        }
+        else { $plannedParameters.RemoveEnvironmentVariables = $script:gitStateEnvironmentOverrides }
         $planned = Invoke-SashimiHostProcess @plannedParameters
         $planned | Add-Member -NotePropertyName Crashed -NotePropertyValue $false -Force
         return $planned
@@ -311,6 +341,7 @@ function Invoke-SashimiValidationProcess {
 
     $fixtureEntry = Get-SashimiFixtureEntry -Fixture $Fixture -Group $FixtureGroup -Name $Name
     if ($null -ne $Fixture) {
+        $fixtureOutputWriteLeases = [Collections.Generic.List[IDisposable]]::new()
         $timedOut = [bool](Get-SashimiPropertyValue -Object $fixtureEntry -Name 'TimedOut' -DefaultValue $false)
         $crashed = [bool](Get-SashimiPropertyValue -Object $fixtureEntry -Name 'Crashed' -DefaultValue $false)
         $defaultExit = if ($timedOut) { 124 } elseif ($crashed) { 139 } else { 0 }
@@ -324,26 +355,111 @@ function Invoke-SashimiValidationProcess {
             else { "Fixture stage $Name completed with exit code $exitCode.`n" }
             $logContent = [string](Get-SashimiPropertyValue -Object $fixtureEntry -Name 'LogContent' -DefaultValue $defaultLog)
             Write-SashimiUtf8File -Path $LogPath -Content $logContent
+            if ([bool](Get-SashimiPropertyValue -Object $fixtureEntry -Name 'InvalidLogUtf8' -DefaultValue $false)) {
+                if (-not (Test-SashimiHarnessMode)) { throw 'Raw-output encoding fixtures require the owned Host test harness.' }
+                $invalidStream = [IO.FileStream]::new($LogPath,[IO.FileMode]::Create,[IO.FileAccess]::Write,[IO.FileShare]::Read)
+                try {
+                    $invalidBytes = [byte[]]@(0x66,0x69,0x78,0x74,0x75,0x72,0x65,0xff,0xfe)
+                    $invalidStream.Write($invalidBytes,0,$invalidBytes.Length)
+                    $invalidStream.Flush($true)
+                }
+                finally { $invalidStream.Dispose() }
+            }
+            $fixtureLogLengthBytes = [int64](Get-SashimiPropertyValue -Object $fixtureEntry -Name 'LogLengthBytes' -DefaultValue 0)
+            if ($fixtureLogLengthBytes -gt 0) {
+                if (-not (Test-SashimiHarnessMode)) { throw 'Raw-output size fixtures require the owned Host test harness.' }
+                $sizeStream = [IO.FileStream]::new($LogPath,[IO.FileMode]::Open,[IO.FileAccess]::Write,[IO.FileShare]::Read)
+                try { $sizeStream.SetLength($fixtureLogLengthBytes); $sizeStream.Flush($true) }
+                finally { $sizeStream.Dispose() }
+            }
+            if ([bool](Get-SashimiPropertyValue -Object $fixtureEntry -Name 'KeepLogWriterOpen' -DefaultValue $false)) {
+                if (-not (Test-SashimiHarnessMode)) { throw 'Raw-output growth fixtures require the owned Host test harness.' }
+                $writeLease = [IO.FileStream]::new($LogPath,[IO.FileMode]::Open,[IO.FileAccess]::ReadWrite,[IO.FileShare]::ReadWrite)
+                [void]$writeLease.Seek(0,[IO.SeekOrigin]::End)
+                $growthBytes = [Text.UTF8Encoding]::new($false).GetBytes("fixture output is still growing`n")
+                $writeLease.Write($growthBytes,0,$growthBytes.Length)
+                $writeLease.Flush($true)
+                $fixtureOutputWriteLeases.Add($writeLease)
+            }
         }
         if (-not [string]::IsNullOrWhiteSpace($XmlPath) -and $createXml) {
             $defaultXml = '<test-run id="2" testcasecount="1" result="Passed" total="1" passed="1" failed="0" inconclusive="0" skipped="0" duration="0.1" />'
             $xmlContent = [string](Get-SashimiPropertyValue -Object $fixtureEntry -Name 'XmlContent' -DefaultValue $defaultXml)
             Write-SashimiUtf8File -Path $XmlPath -Content $xmlContent
         }
+        if ($Kind -ceq 'Unity' -and $FixtureGroup -ceq 'Stages') {
+            $gitControlMutation = [string](Get-SashimiPropertyValue -Object $fixtureEntry -Name 'GitControlMutation' -DefaultValue '')
+            if (-not [string]::IsNullOrWhiteSpace($gitControlMutation)) {
+                Invoke-SashimiUnityFixtureGitControlMutation -ProjectRoot $WorkingDirectory -Mutation $gitControlMutation
+            }
+            $publicArtifactMutation = [string](Get-SashimiPropertyValue -Object $fixtureEntry -Name 'PublicArtifactMutation' -DefaultValue '')
+            if (-not [string]::IsNullOrWhiteSpace($publicArtifactMutation)) {
+                if (-not (Test-SashimiHarnessMode)) { throw 'Public-artifact mutation fixtures require the owned Host test harness.' }
+                $fixtureMarker = [string](Get-SashimiPropertyValue -Object $fixtureEntry -Name 'PublicArtifactMarker' -DefaultValue 'fixture-public-artifact-marker')
+                switch ($publicArtifactMutation) {
+                    'UnexpectedFile' {
+                        Write-SashimiUtf8File -Path (Join-Path $script:unityArtifactRoot 'unexpected-public.bin') -Content $fixtureMarker
+                    }
+                    'AllowedPathSpoof' {
+                        Write-SashimiUtf8File -Path (Join-Path $script:unityArtifactRoot 'CompileImport.log') -Content $fixtureMarker
+                    }
+                    'NestedFile' {
+                        Write-SashimiUtf8File -Path (Join-Path $script:unityArtifactRoot 'unexpected-nested\payload.bin') -Content $fixtureMarker
+                    }
+                    'ReparseDirectory' {
+                        $target = [string](Get-SashimiPropertyValue -Object $fixtureEntry -Name 'PublicArtifactReparseTarget' -DefaultValue '')
+                        if ([string]::IsNullOrWhiteSpace($target) -or -not (Test-Path -LiteralPath $target -PathType Container)) {
+                            throw 'The public-artifact reparse fixture target is missing.'
+                        }
+                        [void](New-Item -ItemType Junction -Path (Join-Path $script:unityArtifactRoot 'unexpected-reparse') -Target $target -ErrorAction Stop)
+                    }
+                    default { throw 'Unknown public-artifact mutation fixture.' }
+                }
+            }
+        }
+        $defaultStdOut = ''
+        if ($FixtureGroup -ceq 'GitControl') {
+            $defaultStdOut = switch ($Name) {
+                'GitControlGitDirectory' { '.git' }
+                'GitControlCommonDirectory' { '.git' }
+                'GitControlHead' { 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' }
+                'GitControlSymbolicHead' { 'refs/heads/fixture-validation' }
+                'GitControlBranch' { 'fixture-validation' }
+                'GitControlOriginUrls' { $script:canonicalRepositoryUrl }
+                'GitControlPushUrls' { $script:canonicalRepositoryUrl }
+                'GitControlHooksPath' { 'NUL' }
+                'GitControlLocalConfig' { "core.hookspath`nNUL`0remote.origin.url`n$($script:canonicalRepositoryUrl)`0" }
+                'GitControlRefs' { "refs/heads/fixture-validation`0aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa`0" }
+                'GitControlWorktreeIdentity' { 'fixture-worktree' }
+                default { '' }
+            }
+            if ($script:fixtureGitControlOverrides.ContainsKey($Name)) {
+                $defaultStdOut = [string]$script:fixtureGitControlOverrides[$Name]
+            }
+        }
         $terminationConfirmed = [bool](Get-SashimiPropertyValue -Object $fixtureEntry -Name 'TerminationConfirmed' -DefaultValue $true)
+        $killOnCloseJobAssigned = if ($Kind -ceq 'Unity') { [bool](Get-SashimiPropertyValue -Object $fixtureEntry -Name 'KillOnCloseJobAssigned' -DefaultValue $true) } else { $false }
+        $remainingDescendants = @()
+        if ($Kind -ceq 'Unity') {
+            $remainingDescendants = @((Get-SashimiPropertyValue -Object $fixtureEntry -Name 'RemainingDescendantProcessIds' -DefaultValue @()))
+        }
         return [pscustomobject][ordered]@{
             FilePath = $FilePath
             Arguments = @($Arguments)
             Command = Format-SashimiCommand -FilePath $FilePath -ArgumentList $Arguments
             ExitCode = $exitCode
-            StdOut = Protect-SashimiText ([string](Get-SashimiPropertyValue -Object $fixtureEntry -Name 'StdOut' -DefaultValue ''))
+            StdOut = Protect-SashimiText ([string](Get-SashimiPropertyValue -Object $fixtureEntry -Name 'StdOut' -DefaultValue $defaultStdOut))
             StdErr = Protect-SashimiText ([string](Get-SashimiPropertyValue -Object $fixtureEntry -Name 'StdErr' -DefaultValue ''))
-            Succeeded = ($exitCode -eq 0 -and -not $timedOut -and -not $crashed -and $terminationConfirmed)
+            Succeeded = ($exitCode -eq 0 -and -not $timedOut -and -not $crashed -and $terminationConfirmed -and
+                ($Kind -cne 'Unity' -or ($killOnCloseJobAssigned -and $remainingDescendants.Count -eq 0)))
             TimedOut = $timedOut
             Crashed = $crashed
             TerminationConfirmed = $terminationConfirmed
+            KillOnCloseJobAssigned = $killOnCloseJobAssigned
+            RemainingDescendantProcessIds = @($remainingDescendants | ForEach-Object { [int]$_ })
             ProcessId = Get-SashimiPropertyValue -Object $fixtureEntry -Name 'ProcessId' -DefaultValue $null
             DurationMilliseconds = [int64](Get-SashimiPropertyValue -Object $fixtureEntry -Name 'DurationMilliseconds' -DefaultValue 0)
+            FixtureOutputWriteLeases = $fixtureOutputWriteLeases.ToArray()
             DryRun = $false
             Fixture = $true
         }
@@ -355,9 +471,13 @@ function Invoke-SashimiValidationProcess {
     }
     if ($Kind -ceq 'Unity') {
         $processParameters.RemoveEnvironmentVariables = $removeEnvironmentNames
+        $processParameters.RequireKillOnCloseJob = $true
         if (-not [string]::IsNullOrWhiteSpace($OwnedUnityPidPath)) {
             $processParameters.OwnedProcessRecordPath = $OwnedUnityPidPath
         }
+    }
+    else {
+        $processParameters.RemoveEnvironmentVariables = $script:gitStateEnvironmentOverrides
     }
     if (-not [string]::IsNullOrWhiteSpace($CancellationMarkerPath)) {
         $processParameters.CancellationMarkerPath = $CancellationMarkerPath
@@ -374,6 +494,695 @@ function Assert-SashimiValidationNotCancelled {
     if (-not $DryRun -and -not [string]::IsNullOrWhiteSpace($CancellationMarkerPath) -and
         (Test-Path -LiteralPath $CancellationMarkerPath -PathType Leaf)) {
         throw 'Unity/repository validation was cancelled.'
+    }
+}
+
+function Invoke-SashimiUnityFixtureGitControlMutation {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)][string]$ProjectRoot,
+        [Parameter(Mandatory = $true)][string]$Mutation
+    )
+
+    if (-not (Test-SashimiHarnessMode)) {
+        throw 'Unity Git-control mutation fixtures are available only inside the owned Host test harness.'
+    }
+    $repositoryRoot = [IO.Path]::GetFullPath($ProjectRoot).TrimEnd('\')
+    $gitRoot = [IO.Path]::GetFullPath((Join-Path $repositoryRoot '.git'))
+    if (-not (Test-SashimiPathWithin -Path $gitRoot -Root $repositoryRoot) -or
+        -not (Test-Path -LiteralPath $gitRoot -PathType Container)) {
+        throw 'Unity Git-control mutation fixture has no owned standalone .git directory.'
+    }
+    Assert-SashimiNoReparsePoint -Path $gitRoot -Recurse
+
+    switch -CaseSensitive ($Mutation) {
+        'RemoteOriginPushUrl' {
+            $attackerUrl = 'https://attacker.invalid/replaced.git'
+            Write-SashimiUtf8File -Path (Join-Path $gitRoot 'config') -Content "[remote `"origin`"]`nurl = $($script:canonicalRepositoryUrl)`npushurl = $attackerUrl`n"
+            $script:fixtureGitControlOverrides['GitControlPushUrls'] = $attackerUrl
+            $script:fixtureGitControlOverrides['GitControlLocalConfig'] = "core.hookspath`nNUL`0remote.origin.url`n$($script:canonicalRepositoryUrl)`0remote.origin.pushurl`n$attackerUrl`0"
+        }
+        'ConfigBytes' {
+            Write-SashimiUtf8File -Path (Join-Path $gitRoot 'config') -Content "[fixture]`nvalue = changed-after-unity`n"
+        }
+        'HeadAndRef' {
+            $refPath = Join-Path $gitRoot 'refs\heads\tampered'
+            Write-SashimiUtf8File -Path (Join-Path $gitRoot 'HEAD') -Content "ref: refs/heads/tampered`n"
+            Write-SashimiUtf8File -Path $refPath -Content (('b' * 40) + "`n")
+        }
+        'IndexAndStagedTree' {
+            [IO.File]::WriteAllBytes((Join-Path $gitRoot 'index'), [Text.UTF8Encoding]::new($false).GetBytes('changed-index-after-unity'))
+            $script:fixtureGitControlOverrides['GitControlStagedTree'] = 'changed-staged-tree-after-unity'
+        }
+        'HooksAndAlternates' {
+            Write-SashimiUtf8File -Path (Join-Path $gitRoot 'hooks\post-checkout') -Content "fixture hook must never execute`n"
+            Write-SashimiUtf8File -Path (Join-Path $gitRoot 'objects\info\alternates') -Content "C:\forbidden-object-store`n"
+        }
+        'MergeHeadOperation' {
+            Write-SashimiUtf8File -Path (Join-Path $gitRoot 'MERGE_HEAD') -Content (('b' * 40) + "`n")
+            Write-SashimiUtf8File -Path (Join-Path $gitRoot 'MERGE_MSG') -Content "fixture merge state must never reach Host commit`n"
+        }
+        'SequencerOperation' {
+            $sequencerRoot = Join-Path $gitRoot 'sequencer'
+            [IO.Directory]::CreateDirectory($sequencerRoot) | Out-Null
+            Assert-SashimiNoReparsePoint -Path $sequencerRoot
+            Write-SashimiUtf8File -Path (Join-Path $sequencerRoot 'todo') -Content "pick $('b' * 40) fixture-sequencer`n"
+        }
+        default { throw "Unsupported Unity Git-control mutation fixture '$Mutation'." }
+    }
+    Assert-SashimiNoReparsePoint -Path $gitRoot -Recurse
+}
+
+function Get-SashimiValidationControlFileState {
+    param([Parameter(Mandatory = $true)][string]$Root, [Parameter(Mandatory = $true)][string]$RelativePath)
+
+    $fullPath = [IO.Path]::GetFullPath((Join-Path $Root ($RelativePath.Replace('/', '\'))))
+    if (-not (Test-SashimiPathWithin -Path $fullPath -Root $Root)) { throw 'A Git-control manifest path escaped its expected root.' }
+    if (-not (Test-Path -LiteralPath $fullPath)) {
+        return [pscustomobject][ordered]@{ Path=$RelativePath; Exists=$false; Length=0; Sha256='' }
+    }
+    $item = Get-Item -LiteralPath $fullPath -Force -ErrorAction Stop
+    if ($item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+        throw "Git-control leaf '$RelativePath' is not an ordinary file."
+    }
+    return [pscustomobject][ordered]@{
+        Path=$RelativePath
+        Exists=$true
+        Length=[int64]$item.Length
+        Sha256=(Get-FileHash -LiteralPath $item.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+    }
+}
+
+function Get-SashimiValidationControlTreeState {
+    param([Parameter(Mandatory = $true)][string]$Root, [Parameter(Mandatory = $true)][string]$RelativeRoot)
+
+    $treeRoot = [IO.Path]::GetFullPath((Join-Path $Root ($RelativeRoot.Replace('/', '\'))))
+    if (-not (Test-SashimiPathWithin -Path $treeRoot -Root $Root)) { throw 'A Git-control tree escaped its expected root.' }
+    if (-not (Test-Path -LiteralPath $treeRoot)) { return @() }
+    Assert-SashimiNoReparsePoint -Path $treeRoot -Recurse
+    return @(
+        Get-ChildItem -LiteralPath $treeRoot -File -Force -Recurse -ErrorAction Stop |
+            Sort-Object FullName |
+            ForEach-Object {
+                $relative = $_.FullName.Substring(([IO.Path]::GetFullPath($Root).TrimEnd('\') + '\').Length).Replace('\','/')
+                [pscustomobject][ordered]@{
+                    Path=$relative
+                    Length=[int64]$_.Length
+                    Sha256=(Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+                }
+            }
+    )
+}
+
+function Assert-SashimiValidationGitOperationStateAbsent {
+    param([Parameter(Mandatory = $true)][string]$GitRoot)
+
+    if (-not (Test-Path -LiteralPath $GitRoot -PathType Container)) { return }
+    $operationEntries = @(
+        'MERGE_HEAD','MERGE_MSG','MERGE_MODE','MERGE_RR','AUTO_MERGE','SQUASH_MSG',
+        'CHERRY_PICK_HEAD','REVERT_HEAD','REBASE_HEAD',
+        'BISECT_START','BISECT_LOG','BISECT_NAMES','BISECT_TERMS','BISECT_EXPECTED_REV','BISECT_ANCESTORS_OK',
+        'NOTES_MERGE_REF','NOTES_MERGE_PARTIAL','NOTES_MERGE_WORKTREE',
+        'rebase-apply','rebase-merge','sequencer'
+    )
+    foreach ($relativePath in $operationEntries) {
+        if (Test-Path -LiteralPath (Join-Path $GitRoot $relativePath)) {
+            throw "Git operation state '$relativePath' is present; Unity validation cannot authorize later delivery."
+        }
+    }
+}
+
+function Get-SashimiValidationGitControlManifest {
+    param([Parameter(Mandatory = $true)][string]$Root)
+
+    $gitRoot = [IO.Path]::GetFullPath((Join-Path $Root '.git')).TrimEnd('\')
+    if (-not (Test-Path -LiteralPath $gitRoot -PathType Container)) { return @() }
+    Assert-SashimiNoReparsePoint -Path $gitRoot
+    Assert-SashimiValidationGitOperationStateAbsent -GitRoot $gitRoot
+
+    $pending = [Collections.Generic.Stack[string]]::new()
+    $pending.Push($gitRoot)
+    $records = [Collections.Generic.List[object]]::new()
+    $entryCount = 0
+    while ($pending.Count -gt 0) {
+        $directory = $pending.Pop()
+        $relativeDirectory = if ($directory -ceq $gitRoot) { '' } else {
+            $directory.Substring($gitRoot.Length + 1).Replace('\','/')
+        }
+        if ($relativeDirectory -ceq 'lfs' -or $relativeDirectory -cmatch '^modules/.+/lfs$') { continue }
+        $objectPayloadDirectory = $relativeDirectory -ceq 'objects' -or
+            $relativeDirectory -cmatch '^modules/.+/objects$'
+        foreach ($entry in @(Get-ChildItem -LiteralPath $directory -Force -ErrorAction Stop)) {
+            if ($objectPayloadDirectory -and $entry.Name -cne 'info') { continue }
+            $entryCount++
+            if ($entryCount -gt 250000) { throw 'Git control manifest exceeded its fixed entry bound.' }
+            if (($entry.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+                throw 'Git control manifest contains a reparse point.'
+            }
+            $relative = $entry.FullName.Substring($gitRoot.Length + 1).Replace('\','/')
+            if ($entry.PSIsContainer) {
+                $records.Add([pscustomobject][ordered]@{ Kind='Directory'; Path=(".git/$relative"); Length=0; Sha256='' })
+                $pending.Push($entry.FullName)
+                continue
+            }
+            if ($entry.Name.EndsWith('.lock',[StringComparison]::OrdinalIgnoreCase)) {
+                throw 'Git control manifest contains an active or stale lock file.'
+            }
+            if ([int64]$entry.Length -gt 16777216) {
+                throw 'Git control manifest contains an oversized control file.'
+            }
+            $records.Add([pscustomobject][ordered]@{
+                Kind='File'
+                Path=(".git/$relative")
+                Length=[int64]$entry.Length
+                Sha256=(Get-FileHash -LiteralPath $entry.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            })
+        }
+    }
+    return @($records.ToArray() | Sort-Object Path,Kind)
+}
+
+function Get-SashimiValidationAttributeControlState {
+    param([Parameter(Mandatory = $true)][string]$Root)
+
+    if (-not (Test-Path -LiteralPath $Root -PathType Container)) { return @() }
+    $rootFull = [IO.Path]::GetFullPath($Root).TrimEnd('\')
+    $skipAtRoot = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    foreach ($name in @('.git','Library','Temp','Logs','UserSettings','obj')) { [void]$skipAtRoot.Add($name) }
+    $wanted = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    foreach ($name in @('.gitattributes','.lfsconfig','.gitmodules')) { [void]$wanted.Add($name) }
+    $pending = [Collections.Generic.Stack[string]]::new()
+    $pending.Push($rootFull)
+    $records = [Collections.Generic.List[object]]::new()
+    while ($pending.Count -gt 0) {
+        $directory = $pending.Pop()
+        foreach ($entry in @(Get-ChildItem -LiteralPath $directory -Force -ErrorAction Stop)) {
+            if (($entry.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+                throw 'A reparse point exists in the repository path used for Git attribute control.'
+            }
+            if ($entry.PSIsContainer) {
+                if ($directory -ceq $rootFull -and $skipAtRoot.Contains($entry.Name)) { continue }
+                $pending.Push($entry.FullName)
+                continue
+            }
+            if (-not $wanted.Contains($entry.Name)) { continue }
+            $relative = $entry.FullName.Substring($rootFull.Length + 1).Replace('\','/')
+            $records.Add([pscustomobject][ordered]@{
+                Path=$relative
+                Length=[int64]$entry.Length
+                Sha256=(Get-FileHash -LiteralPath $entry.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            })
+        }
+    }
+    return @($records.ToArray() | Sort-Object Path)
+}
+
+function Get-SashimiUnityGitControlSnapshot {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)][string]$ProjectRoot,
+        [Parameter(Mandatory = $true)][string]$Boundary,
+        [switch]$DryRun
+    )
+
+    try {
+        $repositoryFull = [IO.Path]::GetFullPath($ProjectRoot).TrimEnd('\')
+        $gitDirectory = [IO.Path]::GetFullPath((Join-Path $repositoryFull '.git'))
+        if (-not $DryRun) {
+            if (-not (Test-Path -LiteralPath $gitDirectory -PathType Container)) { throw 'The Unity project is not the run-owned standalone Git worktree.' }
+            Assert-SashimiNoReparsePoint -Path $repositoryFull
+            Assert-SashimiNoReparsePoint -Path $gitDirectory
+        }
+        $read = {
+            param([string]$Name,[string[]]$Arguments)
+            (Invoke-SashimiValidationProcess -Name $Name -Kind Git -FilePath $script:gitExecutable -Arguments $Arguments -WorkingDirectory $repositoryFull -TimeoutSeconds $script:gitTimeout -Fixture $script:gitControlFixture -FixtureGroup GitControl -DryRun:$DryRun).StdOut
+        }
+        $gitDirectoryToken = (& $read 'GitControlGitDirectory' @('-C',$repositoryFull,'rev-parse','--git-dir')).Trim().Replace('\','/')
+        $gitCommonDirectoryToken = (& $read 'GitControlCommonDirectory' @('-C',$repositoryFull,'rev-parse','--git-common-dir')).Trim().Replace('\','/')
+        if (-not $DryRun -and ($gitDirectoryToken -cne '.git' -or $gitCommonDirectoryToken -cne '.git')) {
+            throw 'Only the run-owned standalone .git directory may control Unity validation.'
+        }
+        $head = (& $read 'GitControlHead' @('-C',$repositoryFull,'rev-parse','HEAD')).Trim().ToLowerInvariant()
+        $symbolicHead = (& $read 'GitControlSymbolicHead' @('-C',$repositoryFull,'symbolic-ref','--quiet','HEAD')).Trim()
+        $branch = (& $read 'GitControlBranch' @('-C',$repositoryFull,'symbolic-ref','--quiet','--short','HEAD')).Trim()
+        $upstream = (& $read 'GitControlUpstream' @('-C',$repositoryFull,'for-each-ref','--format=%(upstream:short)',"refs/heads/$branch")).Trim()
+        $originLines = @((& $read 'GitControlOriginUrls' @('-C',$repositoryFull,'remote','get-url','--all','origin')) -split '\r?\n' | Where-Object { $_ -match '\S' })
+        $pushOriginLines = @((& $read 'GitControlPushUrls' @('-C',$repositoryFull,'remote','get-url','--push','--all','origin')) -split '\r?\n' | Where-Object { $_ -match '\S' })
+        $hooks = (& $read 'GitControlHooksPath' @('-C',$repositoryFull,'config','--local','--get','core.hooksPath')).Trim()
+        $refs = & $read 'GitControlRefs' @('-C',$repositoryFull,'for-each-ref','--format=%(refname)%00%(objectname)%00%(symref)')
+        $localConfig = & $read 'GitControlLocalConfig' @('-C',$repositoryFull,'config','--local','--null','--list')
+        $indexFlags = & $read 'GitControlIndexFlags' @('-C',$repositoryFull,'ls-files','-v','-z')
+        $indexEntries = & $read 'GitControlIndexEntries' @('-C',$repositoryFull,'ls-files','--stage','-z')
+        $stagedTree = & $read 'GitControlStagedTree' @('-C',$repositoryFull,'diff','--cached','--raw','--no-abbrev','-z')
+        $worktreeIdentity = & $read 'GitControlWorktreeIdentity' @('-C',$repositoryFull,'worktree','list','--porcelain','-z')
+        $configRecords = @($localConfig -split "`0" | Where-Object { $_ -ne '' })
+        $extensionRecords = @($configRecords | Where-Object { $_ -match '^(?i)extensions\.' } | Sort-Object)
+        $remoteRecords = @($configRecords | Where-Object { $_ -match '^(?i)remote\.' } | Sort-Object)
+
+        if (-not $DryRun) {
+            if ($head -cnotmatch '^[0-9a-f]{40}$' -or $symbolicHead -cne "refs/heads/$branch") { throw 'Unity validation observed an invalid or detached HEAD.' }
+            if ($originLines.Count -ne 1 -or $originLines[0] -cne $script:canonicalRepositoryUrl) { throw 'origin fetch URLs do not equal the canonical repository URL.' }
+            if ($pushOriginLines.Count -ne 1 -or $pushOriginLines[0] -cne $script:canonicalRepositoryUrl) { throw 'origin push URLs do not equal the canonical repository URL.' }
+            if ($hooks -cne 'NUL') { throw 'Repository hooks are not disabled.' }
+            foreach ($record in $configRecords) {
+                $key = if ($record.Contains("`n")) { $record.Substring(0,$record.IndexOf("`n")) } elseif ($record.Contains('=')) { $record.Substring(0,$record.IndexOf('=')) } else { $record }
+                if ($key -match '^(?i)include(?:if)?\.') { throw 'Repository-local Git config includes external configuration.' }
+                if ($key -match '^(?i)remote\.origin\.pushurl$') { throw 'Repository-local origin.pushurl is forbidden.' }
+                if ($key -match '^(?i)remote\.(?!origin\.)[^.]+\.') { throw 'An unexpected repository-local Git remote exists.' }
+            }
+        }
+        $controlFiles = @(
+            '.git/HEAD','.git/config','.git/config.worktree','.git/index','.git/packed-refs','.git/shallow',
+            '.git/commondir','.git/gitdir','.git/info/exclude','.git/info/attributes','.git/objects/info/alternates'
+        ) | ForEach-Object { Get-SashimiValidationControlFileState -Root $repositoryFull -RelativePath $_ }
+        $fixtureState = 'stable'
+        if ($null -ne $script:gitControlFixture) {
+            $stateSpec = Get-SashimiPropertyValue $script:gitControlFixture 'GitControlSnapshotStates' $null
+            if ($null -ne $stateSpec) {
+                if ($stateSpec -is [Collections.IEnumerable] -and $stateSpec -isnot [string] -and $stateSpec -isnot [pscustomobject]) {
+                    $stateSequence = @($stateSpec)
+                    if ($stateSequence.Count -gt 0) {
+                        $stateIndex = [Math]::Min($script:gitControlSnapshotSequence, $stateSequence.Count - 1)
+                        $fixtureState = [string]$stateSequence[$stateIndex]
+                    }
+                }
+                else { $fixtureState = [string](Get-SashimiPropertyValue $stateSpec $Boundary 'stable') }
+            }
+        }
+        $script:gitControlSnapshotSequence++
+        return [pscustomobject][ordered]@{
+            SchemaVersion=2; CanonicalWorkTree=$repositoryFull; CanonicalGitDirectory=$gitDirectory; CanonicalCommonDirectory=$gitDirectory
+            GitDirectoryToken=$gitDirectoryToken; GitCommonDirectoryToken=$gitCommonDirectoryToken
+            Head=$head; SymbolicHead=$symbolicHead; Branch=$branch; Upstream=$upstream; ExpectedBranch=$branch; ExpectedUpstream=$upstream
+            OriginUrls=@($originLines); PushOriginUrls=@($pushOriginLines); HooksPath=$hooks
+            RefsSha256=(Get-SashimiTextSha256 -Text ([string]$refs)); LocalConfigSha256=(Get-SashimiTextSha256 -Text ([string]$localConfig))
+            RepositoryExtensionsSha256=(Get-SashimiTextSha256 -Text ([string]::Join("`0",$extensionRecords)))
+            RemoteConfigurationSha256=(Get-SashimiTextSha256 -Text ([string]::Join("`0",$remoteRecords)))
+            IndexFlagsSha256=(Get-SashimiTextSha256 -Text ([string]$indexFlags)); IndexEntriesSha256=(Get-SashimiTextSha256 -Text ([string]$indexEntries))
+            StagedTreeSha256=(Get-SashimiTextSha256 -Text ([string]$stagedTree)); WorktreeIdentitySha256=(Get-SashimiTextSha256 -Text ([string]$worktreeIdentity))
+            ControlFiles=@($controlFiles); GitControlManifest=@(Get-SashimiValidationGitControlManifest -Root $repositoryFull)
+            RefFiles=@(Get-SashimiValidationControlTreeState -Root $repositoryFull -RelativeRoot '.git/refs')
+            HookFiles=@(Get-SashimiValidationControlTreeState -Root $repositoryFull -RelativeRoot '.git/hooks')
+            AttributeControls=@(Get-SashimiValidationAttributeControlState -Root $repositoryFull); FixtureBoundaryState=$fixtureState
+        }
+    }
+    catch {
+        $script:gitControlSecurityFailure = $true
+        $script:gitControlPassed = $false
+        Add-SashimiValidationFailure -Code GitControlSecurityFailure -Stage $Boundary -Message 'Git control state could not be securely captured or validated.'
+        throw "Terminal Git-control security failure at $Boundary."
+    }
+}
+
+function Assert-SashimiUnityGitControlUnchanged {
+    param([Parameter(Mandatory = $true)][string]$ProjectRoot, [Parameter(Mandatory = $true)][string]$Boundary)
+
+    $after = Get-SashimiUnityGitControlSnapshot -ProjectRoot $ProjectRoot -Boundary $Boundary
+    foreach ($property in $script:gitControlBaseline.PSObject.Properties) {
+        $name = [string]$property.Name
+        # Preserve empty arrays as values instead of allowing PowerShell's
+        # argument enumeration to turn one side of the comparison into no
+        # output and the other into JSON null.
+        $beforeJson = ConvertTo-SashimiJson -InputObject (, $property.Value)
+        $afterProperty = $after.PSObject.Properties[$name]
+        $afterValue = $null
+        if ($null -ne $afterProperty) { $afterValue = $afterProperty.Value }
+        $afterJson = ConvertTo-SashimiJson -InputObject (, $afterValue)
+        if (-not [string]::Equals($beforeJson,$afterJson,[StringComparison]::Ordinal)) {
+            $script:gitControlSecurityFailure = $true
+            $script:gitControlPassed = $false
+            Add-SashimiValidationFailure -Code GitControlDrift -Stage $Boundary -Message "Immutable Git-control field '$name' changed."
+            throw "Terminal Git-control security failure after $Boundary."
+        }
+    }
+    $script:gitControlPassed = $true
+    Add-SashimiValidationCheck -Name "GitControl:$Boundary" -Passed $true -Detail 'Complete Git control state remained identical after the kill-on-close process boundary.'
+}
+
+function Register-SashimiUnityArtifact {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][ValidateRange(1, 268435456)][int64]$MaximumBytes,
+        [Parameter(Mandatory = $true)][ValidateSet('StrictUtf8Text','Binary')][string]$ContentKind
+    )
+
+    if ([string]::IsNullOrWhiteSpace($script:unityArtifactRoot)) {
+        throw 'Unity artifact policy was used before its root was initialized.'
+    }
+    $fullPath = ConvertTo-SashimiPath -Path $Path -AllowMissing -Lexical
+    if (-not (Test-SashimiPathWithin -Path $fullPath -Root $script:unityArtifactRoot)) {
+        throw 'A Unity artifact policy path escaped the exact artifact root.'
+    }
+    if ($script:unityArtifactPolicies.ContainsKey($fullPath)) {
+        $existing = $script:unityArtifactPolicies[$fullPath]
+        if ([int64]$existing.MaximumBytes -ne $MaximumBytes -or [string]$existing.ContentKind -cne $ContentKind) {
+            throw 'A Unity artifact path was registered with conflicting policy.'
+        }
+        return
+    }
+    $script:unityArtifactPolicies.Add($fullPath, [pscustomobject][ordered]@{
+            MaximumBytes = $MaximumBytes
+            ContentKind = $ContentKind
+            Published = $false
+            Length = [int64]0
+            Sha256 = ''
+        })
+    [void]$script:unityArtifactDirectories.Add($script:unityArtifactRoot)
+    $cursor = Split-Path -Parent $fullPath
+    while (-not (Test-SashimiPathEqual -Left $cursor -Right $script:unityArtifactRoot)) {
+        if (-not (Test-SashimiPathWithin -Path $cursor -Root $script:unityArtifactRoot)) {
+            throw 'A Unity artifact directory policy escaped the exact artifact root.'
+        }
+        [void]$script:unityArtifactDirectories.Add($cursor)
+        $parent = Split-Path -Parent $cursor
+        if ([string]::IsNullOrWhiteSpace($parent) -or $parent -eq $cursor) {
+            throw 'A Unity artifact directory policy has no trusted root.'
+        }
+        $cursor = $parent
+    }
+}
+
+function Read-SashimiBoundedStableUtf8File {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][ValidateRange(1, 268435456)][int64]$MaximumBytes
+    )
+
+    $stream = $null
+    try {
+        Assert-SashimiNoReparsePoint -Path $Path
+        $stream = [IO.FileStream]::new(
+            $Path,
+            [IO.FileMode]::Open,
+            [IO.FileAccess]::Read,
+            [IO.FileShare]::Read,
+            65536,
+            [IO.FileOptions]::SequentialScan
+        )
+        $initialLength = [int64]$stream.Length
+        if ($initialLength -lt 0 -or $initialLength -gt $MaximumBytes -or $initialLength -gt [int]::MaxValue) {
+            throw 'size'
+        }
+        $bytes = [byte[]]::new([int]$initialLength)
+        $offset = 0
+        while ($offset -lt $bytes.Length) {
+            $read = $stream.Read($bytes, $offset, $bytes.Length - $offset)
+            if ($read -le 0) { throw 'short-read' }
+            $offset += $read
+        }
+        if ($stream.ReadByte() -ne -1 -or [int64]$stream.Length -ne $initialLength) {
+            throw 'growth'
+        }
+        $text = [Text.UTF8Encoding]::new($false, $true).GetString($bytes)
+        $sha256 = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($bytes)).ToLowerInvariant()
+        return [pscustomobject][ordered]@{ Text = $text; Length = $initialLength; Sha256 = $sha256 }
+    }
+    catch {
+        throw [IO.InvalidDataException]::new('Unity text output was rejected because it was unavailable, changing, oversized, or not strict UTF-8.')
+    }
+    finally {
+        if ($null -ne $stream) { $stream.Dispose() }
+    }
+}
+
+function Measure-SashimiBoundedStableFile {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][ValidateRange(1, 268435456)][int64]$MaximumBytes
+    )
+
+    $stream = $null
+    $hash = $null
+    try {
+        Assert-SashimiNoReparsePoint -Path $Path
+        $stream = [IO.FileStream]::new(
+            $Path,
+            [IO.FileMode]::Open,
+            [IO.FileAccess]::Read,
+            [IO.FileShare]::Read,
+            65536,
+            [IO.FileOptions]::SequentialScan
+        )
+        $initialLength = [int64]$stream.Length
+        if ($initialLength -lt 0 -or $initialLength -gt $MaximumBytes) { throw 'size' }
+        $hash = [Security.Cryptography.SHA256]::Create()
+        $buffer = [byte[]]::new(65536)
+        $totalRead = [int64]0
+        while (($read = $stream.Read($buffer, 0, $buffer.Length)) -gt 0) {
+            $totalRead += $read
+            if ($totalRead -gt $MaximumBytes) { throw 'growth' }
+            [void]$hash.TransformBlock($buffer, 0, $read, $null, 0)
+        }
+        [void]$hash.TransformFinalBlock([byte[]]::new(0), 0, 0)
+        if ($totalRead -ne $initialLength -or [int64]$stream.Length -ne $initialLength) { throw 'growth' }
+        return [pscustomobject][ordered]@{
+            Length = $initialLength
+            Sha256 = [Convert]::ToHexString($hash.Hash).ToLowerInvariant()
+        }
+    }
+    catch {
+        throw [IO.InvalidDataException]::new('Unity artifact was rejected because it was unavailable, changing, or oversized.')
+    }
+    finally {
+        if ($null -ne $hash) { $hash.Dispose() }
+        if ($null -ne $stream) { $stream.Dispose() }
+    }
+}
+
+function Remove-SashimiUnityTreeWithoutReparseTraversal {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)][string]$Root,
+        [Parameter(Mandatory = $true)][string]$ExpectedParent
+    )
+
+    $rootFull = ConvertTo-SashimiPath -Path $Root -AllowMissing -Lexical
+    $parentFull = ConvertTo-SashimiPath -Path $ExpectedParent -AllowMissing -Lexical
+    if (-not (Test-SashimiPathWithin -Path $rootFull -Root $parentFull)) {
+        throw 'Refusing to remove a Unity quarantine tree outside its exact State parent.'
+    }
+    if (-not (Test-Path -LiteralPath $rootFull)) { return }
+    $rootItem = Get-Item -LiteralPath $rootFull -Force -ErrorAction Stop
+    if (($rootItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+        if ($rootItem.PSIsContainer) { [IO.Directory]::Delete($rootFull, $false) }
+        else { [IO.File]::Delete($rootFull) }
+        return
+    }
+    if (-not $rootItem.PSIsContainer) {
+        [IO.File]::Delete($rootFull)
+        return
+    }
+
+    $pending = [Collections.Generic.Stack[string]]::new()
+    $directories = [Collections.Generic.List[string]]::new()
+    $pending.Push($rootFull)
+    while ($pending.Count -gt 0) {
+        $directory = $pending.Pop()
+        $directories.Add($directory)
+        foreach ($entry in (Get-ChildItem -LiteralPath $directory -Force -ErrorAction Stop)) {
+            $entryFull = [IO.Path]::GetFullPath($entry.FullName)
+            if (-not (Test-SashimiPathWithin -Path $entryFull -Root $rootFull)) {
+                throw 'A Unity quarantine entry escaped its exact root.'
+            }
+            if (($entry.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+                if ($entry.PSIsContainer) { [IO.Directory]::Delete($entryFull, $false) }
+                else { [IO.File]::Delete($entryFull) }
+            }
+            elseif ($entry.PSIsContainer) { $pending.Push($entryFull) }
+            else { [IO.File]::Delete($entryFull) }
+        }
+    }
+    foreach ($directory in @($directories | Sort-Object { $_.Length } -Descending)) {
+        [IO.Directory]::Delete($directory, $false)
+    }
+}
+
+function Remove-SashimiUnsafeUnityArtifactRoot {
+    [CmdletBinding()]
+    param()
+
+    if ([string]::IsNullOrWhiteSpace($script:unityArtifactRoot) -or
+        -not (Test-Path -LiteralPath $script:unityArtifactRoot)) { return }
+    if ([string]::IsNullOrWhiteSpace($script:unityArtifactStateRoot)) {
+        throw 'Unity artifact State root is unavailable for closed-tree quarantine.'
+    }
+    if (-not (Test-Path -LiteralPath $script:unityArtifactStateRoot -PathType Container)) {
+        [IO.Directory]::CreateDirectory($script:unityArtifactStateRoot) | Out-Null
+    }
+    Assert-SashimiNoReparsePoint -Path $script:unityArtifactStateRoot
+    $sourceItem = Get-Item -LiteralPath $script:unityArtifactRoot -Force -ErrorAction Stop
+    if (($sourceItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+        if ($sourceItem.PSIsContainer) { [IO.Directory]::Delete($sourceItem.FullName, $false) }
+        else { [IO.File]::Delete($sourceItem.FullName) }
+        return
+    }
+    $quarantine = Join-Path $script:unityArtifactStateRoot ('.discarded-unity-artifacts-' + [Guid]::NewGuid().ToString('N'))
+    if ($sourceItem.PSIsContainer) { [IO.Directory]::Move($sourceItem.FullName, $quarantine) }
+    else { [IO.File]::Move($sourceItem.FullName, $quarantine, $false) }
+    Remove-SashimiUnityTreeWithoutReparseTraversal -Root $quarantine -ExpectedParent $script:unityArtifactStateRoot
+    if (Test-Path -LiteralPath $quarantine) {
+        throw 'Unity artifact quarantine removal could not be confirmed.'
+    }
+}
+
+function Get-SashimiUnityArtifactTreeMeasurement {
+    [CmdletBinding()]
+    param()
+
+    if (-not (Test-Path -LiteralPath $script:unityArtifactRoot -PathType Container)) {
+        throw 'The exact Unity artifact root is missing.'
+    }
+    Assert-SashimiNoReparsePoint -Path $script:unityArtifactRoot
+    $pending = [Collections.Generic.Stack[string]]::new()
+    $records = [Collections.Generic.List[string]]::new()
+    $seenFiles = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    $pending.Push($script:unityArtifactRoot)
+    $totalBytes = [int64]0
+    $entryCount = 0
+    $maximumEntries = $script:unityArtifactPolicies.Count + $script:unityArtifactDirectories.Count
+    while ($pending.Count -gt 0) {
+        $directory = $pending.Pop()
+        foreach ($entry in (Get-ChildItem -LiteralPath $directory -Force -ErrorAction Stop)) {
+            $entryCount++
+            if ($entryCount -gt $maximumEntries) { throw 'The Unity artifact tree contains too many entries.' }
+            if (($entry.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+                throw 'The Unity artifact tree contains a forbidden reparse point.'
+            }
+            $fullPath = ConvertTo-SashimiPath -Path $entry.FullName -Lexical
+            if (-not (Test-SashimiPathWithin -Path $fullPath -Root $script:unityArtifactRoot)) {
+                throw 'The Unity artifact tree escaped its exact root.'
+            }
+            if ($entry.PSIsContainer) {
+                if (-not $script:unityArtifactDirectories.Contains($fullPath)) {
+                    throw 'The Unity artifact tree contains an unexpected directory.'
+                }
+                $records.Add('D:' + $fullPath.Substring($script:unityArtifactRoot.Length).Replace('\','/'))
+                $pending.Push($fullPath)
+                continue
+            }
+            $policy = $null
+            if (-not $script:unityArtifactPolicies.TryGetValue($fullPath, [ref]$policy)) {
+                throw 'The Unity artifact tree contains an unexpected file.'
+            }
+            if (-not [bool]$policy.Published) {
+                throw 'The Unity artifact tree contains a file that was not promoted by the Host.'
+            }
+            $measurement = if ([string]$policy.ContentKind -ceq 'StrictUtf8Text') {
+                Read-SashimiBoundedStableUtf8File -Path $fullPath -MaximumBytes ([int64]$policy.MaximumBytes)
+            }
+            else {
+                Measure-SashimiBoundedStableFile -Path $fullPath -MaximumBytes ([int64]$policy.MaximumBytes)
+            }
+            $totalBytes += [int64]$measurement.Length
+            if ($totalBytes -gt $script:unityArtifactMaximumTotalBytes) {
+                throw 'The Unity artifact tree exceeds its total byte quota.'
+            }
+            if ([int64]$measurement.Length -ne [int64]$policy.Length -or
+                -not [string]::Equals([string]$measurement.Sha256,[string]$policy.Sha256,[StringComparison]::Ordinal)) {
+                throw 'A promoted Unity artifact changed after Host validation.'
+            }
+            [void]$seenFiles.Add($fullPath)
+            $records.Add('F:' + $fullPath.Substring($script:unityArtifactRoot.Length).Replace('\','/') + ':' + $measurement.Length + ':' + $measurement.Sha256)
+        }
+    }
+    foreach ($policyEntry in $script:unityArtifactPolicies.GetEnumerator()) {
+        if ([bool]$policyEntry.Value.Published -and -not $seenFiles.Contains([string]$policyEntry.Key)) {
+            throw 'A Host-promoted Unity artifact is missing from the public tree.'
+        }
+    }
+    return [pscustomobject][ordered]@{
+        TotalBytes = $totalBytes
+        Records = @($records | Sort-Object)
+    }
+}
+
+function Assert-SashimiUnityArtifactTree {
+    [CmdletBinding()]
+    param([Parameter(Mandatory = $true)][string]$Boundary)
+
+    if ($script:unityArtifactBoundaryFailure) {
+        throw 'The Unity artifact boundary is already terminally failed.'
+    }
+    try {
+        $first = Get-SashimiUnityArtifactTreeMeasurement
+        $second = Get-SashimiUnityArtifactTreeMeasurement
+        if ($first.TotalBytes -ne $second.TotalBytes -or
+            -not [string]::Equals(
+                [string]::Join("`n", @($first.Records)),
+                [string]::Join("`n", @($second.Records)),
+                [StringComparison]::Ordinal
+            )) {
+            throw 'The Unity artifact tree changed during validation.'
+        }
+    }
+    catch {
+        $script:unityArtifactBoundaryFailure = $true
+        $removalConfirmed = $false
+        try {
+            Remove-SashimiUnsafeUnityArtifactRoot
+            $removalConfirmed = -not (Test-Path -LiteralPath $script:unityArtifactRoot)
+        }
+        catch { $removalConfirmed = $false }
+        if (-not $removalConfirmed) {
+            throw "Unity artifact boundary validation failed at $Boundary; removal of the public tree could not be confirmed."
+        }
+        throw "Unity artifact boundary validation failed at $Boundary; the public tree was removed without retaining its unvalidated content."
+    }
+}
+
+function Write-SashimiBoundedUnityTextArtifact {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][AllowEmptyString()][string]$Content
+    )
+
+    $fullPath = ConvertTo-SashimiPath -Path $Path -AllowMissing -Lexical
+    $policy = $null
+    if (-not $script:unityArtifactPolicies.TryGetValue($fullPath, [ref]$policy) -or
+        [string]$policy.ContentKind -cne 'StrictUtf8Text') {
+        throw 'Refusing to write a Unity text artifact outside the exact manifest.'
+    }
+    Assert-SashimiUnityArtifactTree -Boundary 'immediately before a text artifact write'
+    $bytes = [Text.UTF8Encoding]::new($false, $true).GetBytes($Content)
+    if ([int64]$bytes.Length -gt [int64]$policy.MaximumBytes) {
+        throw 'Refusing to write an oversized Unity text artifact.'
+    }
+    if (Test-Path -LiteralPath $fullPath) { throw 'Refusing to overwrite a Unity text artifact.' }
+    $parent = Split-Path -Parent $fullPath
+    if (-not $script:unityArtifactDirectories.Contains($parent)) {
+        throw 'Refusing to create an unregistered Unity artifact directory.'
+    }
+    if (-not (Test-Path -LiteralPath $parent -PathType Container)) {
+        [IO.Directory]::CreateDirectory($parent) | Out-Null
+    }
+    Assert-SashimiNoReparsePoint -Path $parent
+    $temporaryPath = Join-Path $parent ('.bounded-' + [Guid]::NewGuid().ToString('N') + '.tmp')
+    try {
+        $stream = [IO.FileStream]::new($temporaryPath,[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::None)
+        try {
+            $stream.Write($bytes,0,$bytes.Length)
+            $stream.Flush($true)
+        }
+        finally { $stream.Dispose() }
+        $verification = Read-SashimiBoundedStableUtf8File -Path $temporaryPath -MaximumBytes ([int64]$policy.MaximumBytes)
+        if (-not [string]::Equals($Content,[string]$verification.Text,[StringComparison]::Ordinal)) {
+            throw 'A bounded Unity text artifact failed verification.'
+        }
+        [IO.File]::Move($temporaryPath,$fullPath,$false)
+        $temporaryPath = ''
+        $policy.Published = $true
+        $policy.Length = [int64]$verification.Length
+        $policy.Sha256 = [string]$verification.Sha256
+        Assert-SashimiUnityArtifactTree -Boundary 'immediately after a text artifact write'
+    }
+    finally {
+        if (-not [string]::IsNullOrWhiteSpace($temporaryPath) -and (Test-Path -LiteralPath $temporaryPath -PathType Leaf)) {
+            try { [IO.File]::Delete($temporaryPath) } catch { }
+        }
     }
 }
 
@@ -405,54 +1214,33 @@ function Publish-SashimiSanitizedTextArtifact {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory = $true)][string]$SourcePath,
-        [Parameter(Mandatory = $true)][string]$DestinationPath
+        [Parameter(Mandatory = $true)][string]$DestinationPath,
+        [Parameter(Mandatory = $true)][ValidateRange(1, 268435456)][int64]$MaximumSourceBytes
     )
 
     if (-not (Test-Path -LiteralPath $SourcePath -PathType Leaf)) { return $false }
     if (Test-Path -LiteralPath $DestinationPath) { throw "Refusing to overwrite a Unity validation artifact: $DestinationPath" }
-    Assert-SashimiNoReparsePoint -Path $SourcePath
-    Assert-SashimiNoReparsePoint -Path $DestinationPath
-    try {
-        $rawText = [IO.File]::ReadAllText($SourcePath, [Text.UTF8Encoding]::new($false, $true))
+    $raw = Read-SashimiBoundedStableUtf8File -Path $SourcePath -MaximumBytes $MaximumSourceBytes
+    $sanitizedText = Protect-SashimiUnityOutputText -Text ([string]$raw.Text)
+    if (Test-SashimiRecognizableSensitiveText -Text $sanitizedText -SensitiveValues @($script:unitySensitiveEnvironmentValues)) {
+        throw 'Sanitized Unity artifact failed its final content verification.'
     }
-    catch {
-        throw 'Raw Unity output could not be read as strict UTF-8 text.'
+    Write-SashimiBoundedUnityTextArtifact -Path $DestinationPath -Content $sanitizedText
+    try { [IO.File]::Delete($SourcePath) } catch { }
+    return [pscustomobject][ordered]@{
+        Published = $true
+        Text = $sanitizedText
+        RawLength = [int64]$raw.Length
     }
-    $sanitizedText = Protect-SashimiUnityOutputText -Text $rawText
-    $destinationParent = Split-Path -Parent $DestinationPath
-    if (-not (Test-Path -LiteralPath $destinationParent -PathType Container)) {
-        [IO.Directory]::CreateDirectory($destinationParent) | Out-Null
-    }
-    Assert-SashimiNoReparsePoint -Path $destinationParent
-    $temporaryPath = Join-Path $destinationParent ('.sanitized-' + [Guid]::NewGuid().ToString('N') + '.tmp')
-    try {
-        [IO.File]::WriteAllText($temporaryPath, $sanitizedText, [Text.UTF8Encoding]::new($false))
-        $verificationText = [IO.File]::ReadAllText($temporaryPath, [Text.UTF8Encoding]::new($false, $true))
-        if (-not [string]::Equals($sanitizedText, $verificationText, [StringComparison]::Ordinal) -or
-            (Test-SashimiRecognizableSensitiveText -Text $verificationText -SensitiveValues @($script:unitySensitiveEnvironmentValues))) {
-            throw 'Sanitized Unity artifact failed its final content verification.'
-        }
-        [IO.File]::Move($temporaryPath, $DestinationPath, $false)
-        $temporaryPath = ''
-        try { [IO.File]::Delete($SourcePath) } catch { }
-    }
-    finally {
-        if (-not [string]::IsNullOrWhiteSpace($temporaryPath) -and (Test-Path -LiteralPath $temporaryPath -PathType Leaf)) {
-            try { [IO.File]::Delete($temporaryPath) } catch { }
-        }
-    }
-    return $true
 }
 
 function Get-SashimiUnityLogDiagnostics {
     [CmdletBinding()]
     param(
-        [Parameter(Mandatory = $true)][string]$LogPath,
+        [Parameter(Mandatory = $true)][AllowEmptyString()][string]$Content,
         [switch]$Compile
     )
 
-    if (-not (Test-Path -LiteralPath $LogPath -PathType Leaf)) { return @() }
-    $content = [IO.File]::ReadAllText($LogPath, [Text.Encoding]::UTF8)
     $signatures = [ordered]@{
         CompilerError = '(?im)(?:^|\s)error\s+CS\d{4}\s*:'
         CompilationFailure = '(?im)Scripts? (?:had|have) compilation errors|Compilation failed'
@@ -513,6 +1301,50 @@ function Get-SashimiUnityLogDiagnostics {
     return $diagnostics.ToArray()
 }
 
+function Get-SashimiUnityNUnitSummaryFromText {
+    [CmdletBinding()]
+    param([Parameter(Mandatory = $true)][AllowEmptyString()][string]$Content)
+
+    try {
+        $settings = [Xml.XmlReaderSettings]::new()
+        $settings.DtdProcessing = [Xml.DtdProcessing]::Prohibit
+        $settings.XmlResolver = $null
+        $settings.MaxCharactersInDocument = $script:unityXmlMaximumBytes
+        $reader = [Xml.XmlReader]::Create([IO.StringReader]::new($Content), $settings)
+        try {
+            $document = [Xml.XmlDocument]::new()
+            $document.XmlResolver = $null
+            $document.Load($reader)
+        }
+        finally { $reader.Dispose() }
+    }
+    catch {
+        throw 'Unity result XML is not a bounded, well-formed document.'
+    }
+    $root = $document.'test-run'
+    if ($null -eq $root) { $root = $document.'test-results' }
+    if ($null -eq $root) { throw 'Unity result XML has no supported root.' }
+    try {
+        $total = [int]$root.total
+        $passed = [int]$root.passed
+        $failed = [int]$root.failed
+        $skipped = [int]$root.skipped
+        $inconclusive = [int]$root.inconclusive
+    }
+    catch { throw 'Unity result XML contains invalid numeric summary fields.' }
+    $strict = ([string]$root.result -ceq 'Passed' -and $total -gt 0 -and $passed -eq $total -and
+        $failed -eq 0 -and $skipped -eq 0 -and $inconclusive -eq 0)
+    return [pscustomobject][ordered]@{
+        Result = [string]$root.result
+        Total = $total
+        Passed = $passed
+        Failed = $failed
+        Skipped = $skipped
+        Inconclusive = $inconclusive
+        StrictPass = $strict
+    }
+}
+
 function Invoke-SashimiUnityValidationStage {
     [CmdletBinding()]
     param(
@@ -542,6 +1374,9 @@ function Invoke-SashimiUnityValidationStage {
         NativeSucceeded = [bool]$native.Succeeded
         TimedOut = [bool]$native.TimedOut
         Crashed = [bool]$native.Crashed
+        TerminationConfirmed = [bool](Get-SashimiPropertyValue -Object $native -Name 'TerminationConfirmed' -DefaultValue $false)
+        KillOnCloseJobAssigned = [bool](Get-SashimiPropertyValue -Object $native -Name 'KillOnCloseJobAssigned' -DefaultValue $false)
+        RemainingDescendantProcessIds = @((Get-SashimiPropertyValue -Object $native -Name 'RemainingDescendantProcessIds' -DefaultValue @(-1)))
         ProcessId = $native.ProcessId
         DurationMilliseconds = [int64]$native.DurationMilliseconds
         LogPath = $LogPath
@@ -559,73 +1394,96 @@ function Invoke-SashimiUnityValidationStage {
         return [pscustomobject]$stage
     }
 
-    $terminationConfirmed = [bool](Get-SashimiPropertyValue -Object $native -Name 'TerminationConfirmed' -DefaultValue $true)
-    if ($terminationConfirmed) {
-        [void](Publish-SashimiSanitizedTextArtifact -SourcePath $RawLogPath -DestinationPath $LogPath)
-        if ($TestStage -and -not [string]::IsNullOrWhiteSpace($RawXmlPath)) {
-            [void](Publish-SashimiSanitizedTextArtifact -SourcePath $RawXmlPath -DestinationPath $XmlPath)
+    $fixtureOutputWriteLeases = @((Get-SashimiPropertyValue -Object $native -Name 'FixtureOutputWriteLeases' -DefaultValue @()))
+    try {
+        $terminationConfirmed = [bool](Get-SashimiPropertyValue -Object $native -Name 'TerminationConfirmed' -DefaultValue $false)
+        $killOnCloseJobAssigned = [bool](Get-SashimiPropertyValue -Object $native -Name 'KillOnCloseJobAssigned' -DefaultValue $false)
+        $remainingDescendants = @((Get-SashimiPropertyValue -Object $native -Name 'RemainingDescendantProcessIds' -DefaultValue @(-1)))
+        if (-not $terminationConfirmed -or -not $killOnCloseJobAssigned -or $remainingDescendants.Count -ne 0) {
+            $script:rawValidationCleanupSafe = $false
+            $script:gitControlSecurityFailure = $true
+            $script:gitControlPassed = $false
+            if (-not $terminationConfirmed) {
+                Add-SashimiValidationFailure -Code 'UnityTerminationUnconfirmed' -Stage $Name -Message 'Unity process-tree termination could not be confirmed.' -NativeExitCode $native.ExitCode
+            }
+            Add-SashimiValidationFailure -Code 'UnityProcessBoundaryUnconfirmed' -Stage $Name -Message 'The per-stage kill-on-close job or descendant termination proof was absent; Git state was not trusted.' -NativeExitCode $native.ExitCode
+            throw "Terminal Git-control security failure after Unity stage '$Name': process-boundary closure was not proved."
         }
-    }
-    else {
-        $script:rawValidationCleanupSafe = $false
-        Add-SashimiValidationFailure -Code 'UnityTerminationUnconfirmed' -Stage $Name -Message 'Unity process termination was not confirmed; raw state was preserved outside Artifacts.' -NativeExitCode $native.ExitCode
-    }
 
-    if ([bool]$native.TimedOut) {
-        Add-SashimiValidationFailure -Code 'UnityTimeout' -Stage $Name -Message "Unity stage timed out after $TimeoutSeconds seconds." -NativeExitCode $native.ExitCode
-    }
-    if ([bool]$native.Crashed) {
-        Add-SashimiValidationFailure -Code 'UnityCrash' -Stage $Name -Message 'Unity stage reported a crash.' -NativeExitCode $native.ExitCode
-    }
-    if (-not [bool]$native.Succeeded) {
-        Add-SashimiValidationFailure -Code 'UnityNativeFailure' -Stage $Name -Message "Unity exited with code $($native.ExitCode): $($stage.StdErr)" -NativeExitCode $native.ExitCode
-    }
+        Assert-SashimiUnityGitControlUnchanged -ProjectRoot $ProjectRoot -Boundary "after Unity stage $Name"
 
-    $stage.LogExists = Test-Path -LiteralPath $LogPath -PathType Leaf
-    if (-not $stage.LogExists) {
-        Add-SashimiValidationFailure -Code 'UnityLogMissing' -Stage $Name -Message "Unity log is missing: $LogPath" -NativeExitCode $native.ExitCode
-    }
-    else {
-        $stage.Diagnostics = @(Get-SashimiUnityLogDiagnostics -LogPath $LogPath -Compile:$Compile)
-        $crashDiagnostics = @($stage.Diagnostics | Where-Object { $_.Category -eq 'UnityCrash' })
-        if ($crashDiagnostics.Count -gt 0 -and -not $stage.Crashed) {
-            $stage.Crashed = $true
-            Add-SashimiValidationFailure -Code 'UnityCrash' -Stage $Name -Message 'Unity crash signature was found in the stage log.' -NativeExitCode $native.ExitCode
+        $publishedLog = $null
+        $publishedXml = $null
+        if ($terminationConfirmed) {
+            $publishedLog = Publish-SashimiSanitizedTextArtifact -SourcePath $RawLogPath -DestinationPath $LogPath -MaximumSourceBytes $script:unityLogMaximumBytes
+            if ($TestStage -and -not [string]::IsNullOrWhiteSpace($RawXmlPath)) {
+                $publishedXml = Publish-SashimiSanitizedTextArtifact -SourcePath $RawXmlPath -DestinationPath $XmlPath -MaximumSourceBytes $script:unityXmlMaximumBytes
+            }
         }
-        if ($stage.Diagnostics.Count -gt 0) {
-            Add-SashimiValidationFailure -Code 'UnityLogDiagnostics' -Stage $Name -Message "Forbidden Unity diagnostics were found in $LogPath." -NativeExitCode $native.ExitCode
-        }
-    }
 
-    if ($TestStage) {
-        $stage.XmlExists = Test-Path -LiteralPath $XmlPath -PathType Leaf
-        $xmlPass = $false
-        if (-not $stage.XmlExists) {
-            Add-SashimiValidationFailure -Code 'UnityResultXmlMissing' -Stage $Name -Message "Unity result XML is missing: $XmlPath" -NativeExitCode $native.ExitCode
+        if ([bool]$native.TimedOut) {
+            Add-SashimiValidationFailure -Code 'UnityTimeout' -Stage $Name -Message "Unity stage timed out after $TimeoutSeconds seconds." -NativeExitCode $native.ExitCode
+        }
+        if ([bool]$native.Crashed) {
+            Add-SashimiValidationFailure -Code 'UnityCrash' -Stage $Name -Message 'Unity stage reported a crash.' -NativeExitCode $native.ExitCode
+        }
+        if (-not [bool]$native.Succeeded) {
+            Add-SashimiValidationFailure -Code 'UnityNativeFailure' -Stage $Name -Message "Unity exited with code $($native.ExitCode): $($stage.StdErr)" -NativeExitCode $native.ExitCode
+        }
+
+        $stage.LogExists = Test-Path -LiteralPath $LogPath -PathType Leaf
+        if (-not $stage.LogExists -or $null -eq $publishedLog) {
+            Add-SashimiValidationFailure -Code 'UnityLogMissing' -Stage $Name -Message "Unity log is missing: $LogPath" -NativeExitCode $native.ExitCode
         }
         else {
-            try {
-                $stage.XmlSummary = Get-SashimiNUnitSummary -Path $XmlPath
-                $xmlPass = [bool]$stage.XmlSummary.StrictPass
-                if (-not $xmlPass) {
-                    Add-SashimiValidationFailure -Code 'UnityResultXmlFailed' -Stage $Name -Message "Unity XML is not a strict PASS: result=$($stage.XmlSummary.Result), total=$($stage.XmlSummary.Total), passed=$($stage.XmlSummary.Passed), failed=$($stage.XmlSummary.Failed), skipped=$($stage.XmlSummary.Skipped), inconclusive=$($stage.XmlSummary.Inconclusive)." -NativeExitCode $native.ExitCode
+            $stage.Diagnostics = @(Get-SashimiUnityLogDiagnostics -Content ([string]$publishedLog.Text) -Compile:$Compile)
+            $crashDiagnostics = @($stage.Diagnostics | Where-Object { $_.Category -eq 'UnityCrash' })
+            if ($crashDiagnostics.Count -gt 0 -and -not $stage.Crashed) {
+                $stage.Crashed = $true
+                Add-SashimiValidationFailure -Code 'UnityCrash' -Stage $Name -Message 'Unity crash signature was found in the stage log.' -NativeExitCode $native.ExitCode
+            }
+            if ($stage.Diagnostics.Count -gt 0) {
+                Add-SashimiValidationFailure -Code 'UnityLogDiagnostics' -Stage $Name -Message "Forbidden Unity diagnostics were found in $LogPath." -NativeExitCode $native.ExitCode
+            }
+        }
+
+        if ($TestStage) {
+            $stage.XmlExists = Test-Path -LiteralPath $XmlPath -PathType Leaf
+            $xmlPass = $false
+            if (-not $stage.XmlExists -or $null -eq $publishedXml) {
+                Add-SashimiValidationFailure -Code 'UnityResultXmlMissing' -Stage $Name -Message "Unity result XML is missing: $XmlPath" -NativeExitCode $native.ExitCode
+            }
+            else {
+                try {
+                    $stage.XmlSummary = Get-SashimiUnityNUnitSummaryFromText -Content ([string]$publishedXml.Text)
+                    $xmlPass = [bool]$stage.XmlSummary.StrictPass
+                    if (-not $xmlPass) {
+                        Add-SashimiValidationFailure -Code 'UnityResultXmlFailed' -Stage $Name -Message "Unity XML is not a strict PASS: result=$($stage.XmlSummary.Result), total=$($stage.XmlSummary.Total), passed=$($stage.XmlSummary.Passed), failed=$($stage.XmlSummary.Failed), skipped=$($stage.XmlSummary.Skipped), inconclusive=$($stage.XmlSummary.Inconclusive)." -NativeExitCode $native.ExitCode
+                    }
+                }
+                catch {
+                    Add-SashimiValidationFailure -Code 'UnityResultXmlInvalid' -Stage $Name -Message $_.Exception.Message -NativeExitCode $native.ExitCode
                 }
             }
-            catch {
-                Add-SashimiValidationFailure -Code 'UnityResultXmlInvalid' -Stage $Name -Message $_.Exception.Message -NativeExitCode $native.ExitCode
+            $nativePass = [bool]$native.Succeeded -and -not [bool]$stage.Crashed -and [bool]$stage.LogExists
+            $stage.NativeXmlAgreement = ($nativePass -eq $xmlPass)
+            if (-not $stage.NativeXmlAgreement) {
+                Add-SashimiValidationFailure -Code 'UnityNativeXmlDisagreement' -Stage $Name -Message "Unity native result and strict XML disagree: nativePass=$nativePass; xmlPass=$xmlPass." -NativeExitCode $native.ExitCode
+            }
+            $stage.Success = ($nativePass -and $xmlPass -and $stage.Diagnostics.Count -eq 0)
+        }
+        else {
+            $stage.Success = ([bool]$native.Succeeded -and -not [bool]$stage.Crashed -and [bool]$stage.LogExists -and $stage.Diagnostics.Count -eq 0)
+        }
+        return [pscustomobject]$stage
+    }
+    finally {
+        foreach ($fixtureOutputWriteLease in $fixtureOutputWriteLeases) {
+            if ($null -ne $fixtureOutputWriteLease) {
+                try { $fixtureOutputWriteLease.Dispose() } catch { }
             }
         }
-        $nativePass = [bool]$native.Succeeded -and -not [bool]$stage.Crashed -and [bool]$stage.LogExists
-        $stage.NativeXmlAgreement = ($nativePass -eq $xmlPass)
-        if (-not $stage.NativeXmlAgreement) {
-            Add-SashimiValidationFailure -Code 'UnityNativeXmlDisagreement' -Stage $Name -Message "Unity native result and strict XML disagree: nativePass=$nativePass; xmlPass=$xmlPass." -NativeExitCode $native.ExitCode
-        }
-        $stage.Success = ($nativePass -and $xmlPass -and $stage.Diagnostics.Count -eq 0)
     }
-    else {
-        $stage.Success = ([bool]$native.Succeeded -and -not [bool]$stage.Crashed -and [bool]$stage.LogExists -and $stage.Diagnostics.Count -eq 0)
-    }
-    return [pscustomobject]$stage
 }
 
 function Get-SashimiIssueValidationDefinition {
@@ -942,9 +1800,18 @@ function Copy-SashimiValidationArtifactHooks {
             throw "$Kind artifact hooks accept only PNG images: $relative"
         }
         $destination = Join-Path (Join-Path $ArtifactRoot ($Kind + 's')) ($relative.Replace('/', [IO.Path]::DirectorySeparatorChar))
-        Assert-SashimiNoReparsePoint -Path $destination
+        $destinationFull = ConvertTo-SashimiPath -Path $destination -AllowMissing -Lexical
+        $destinationPolicy = $null
+        if (-not $script:unityArtifactPolicies.TryGetValue($destinationFull,[ref]$destinationPolicy) -or
+            [string]$destinationPolicy.ContentKind -cne 'Binary') {
+            throw "$Kind artifact hook has no exact public-artifact policy: $relative"
+        }
+        Assert-SashimiUnityArtifactTree -Boundary "immediately before $Kind artifact promotion"
+        Assert-SashimiNoReparsePoint -Path $destinationFull
         $destinationParent = Split-Path -Parent $destination
         [IO.Directory]::CreateDirectory($destinationParent) | Out-Null
+        Assert-SashimiNoReparsePoint -Path $destinationParent
+        $temporaryPath = Join-Path $destinationParent ('.bounded-image-' + [Guid]::NewGuid().ToString('N') + '.tmp')
         $image = $null
         $bitmap = $null
         $graphics = $null
@@ -963,7 +1830,14 @@ function Copy-SashimiValidationArtifactHooks {
             $bitmap = [Drawing.Bitmap]::new($image.Width, $image.Height, [Drawing.Imaging.PixelFormat]::Format32bppArgb)
             $graphics = [Drawing.Graphics]::FromImage($bitmap)
             $graphics.DrawImageUnscaled($image, 0, 0)
-            $bitmap.Save($destination, [Drawing.Imaging.ImageFormat]::Png)
+            $bitmap.Save($temporaryPath, [Drawing.Imaging.ImageFormat]::Png)
+            $verifiedImage = Measure-SashimiBoundedStableFile -Path $temporaryPath -MaximumBytes ([int64]$destinationPolicy.MaximumBytes)
+            [IO.File]::Move($temporaryPath,$destinationFull,$false)
+            $temporaryPath = ''
+            $destinationPolicy.Published = $true
+            $destinationPolicy.Length = [int64]$verifiedImage.Length
+            $destinationPolicy.Sha256 = [string]$verifiedImage.Sha256
+            Assert-SashimiUnityArtifactTree -Boundary "immediately after $Kind artifact promotion"
         }
         catch {
             throw "$Kind artifact hook could not sanitize '$relative': $($_.Exception.Message)"
@@ -972,12 +1846,15 @@ function Copy-SashimiValidationArtifactHooks {
             if ($null -ne $graphics) { $graphics.Dispose() }
             if ($null -ne $bitmap) { $bitmap.Dispose() }
             if ($null -ne $image) { $image.Dispose() }
+            if (-not [string]::IsNullOrWhiteSpace($temporaryPath) -and (Test-Path -LiteralPath $temporaryPath -PathType Leaf)) {
+                try { [IO.File]::Delete($temporaryPath) } catch { }
+            }
         }
         $copied.Add([pscustomobject][ordered]@{
                 Kind = $Kind
                 SourceRelativePath = $relative
-                ArtifactPath = $destination
-                Sha256 = (Get-FileHash -LiteralPath $destination -Algorithm SHA256).Hash.ToLowerInvariant()
+                ArtifactPath = $destinationFull
+                Sha256 = (Get-FileHash -LiteralPath $destinationFull -Algorithm SHA256).Hash.ToLowerInvariant()
             })
     }
     return $copied.ToArray()
@@ -1028,6 +1905,8 @@ $result = [ordered]@{
     BuildTarget = 'StandaloneWindows64'
     ExistingUnityProcessIds = @()
     OwnedUnityProcessIds = @()
+    GitControlPassed = $false
+    GitControlSecurityFailure = $false
     Stages = $stages
     Determinism = [ordered]@{
         Required = $false
@@ -1064,6 +1943,10 @@ $exitCode = 1
 try {
     Assert-SashimiSafeBaselineRef -Value $BaselineRef
     $config = Import-SashimiHostConfig -ConfigPath $ConfigPath
+    $script:canonicalRepositoryUrl = [string](Get-SashimiPropertyValue -Object $config -Name 'RemoteUrl' -DefaultValue '')
+    if ($script:canonicalRepositoryUrl -cne 'https://github.com/DongGyunLeeeee/sashimi-boy-unity.git') {
+        throw 'Protected configuration does not contain the immutable canonical repository URL.'
+    }
     $result.ExpectedUnityVersion = [string](Get-SashimiPropertyValue -Object $config -Name 'ExpectedUnityVersion' -DefaultValue '')
     if ([string]::IsNullOrWhiteSpace($result.ExpectedUnityVersion)) {
         throw 'Config ExpectedUnityVersion is required.'
@@ -1077,6 +1960,8 @@ try {
     $unityTimeout = [int](Get-SashimiPropertyValue -Object $config.Timeouts -Name 'UnityStageSeconds' -DefaultValue 0)
     $generatorTimeout = [int](Get-SashimiPropertyValue -Object $config.Timeouts -Name 'GeneratorSeconds' -DefaultValue 0)
     $gitTimeout = [int](Get-SashimiPropertyValue -Object $config.Timeouts -Name 'GitSeconds' -DefaultValue 600)
+    $script:gitExecutable = $gitExecutable
+    $script:gitTimeout = $gitTimeout
     foreach ($timeout in @($unityTimeout, $generatorTimeout, $gitTimeout)) {
         if ($timeout -lt 1 -or $timeout -gt 86400) { throw 'Unity/Generator/Git timeout values must be between 1 and 86400 seconds.' }
     }
@@ -1087,6 +1972,7 @@ try {
         $fixtureSchema = [int](Get-SashimiPropertyValue -Object $fixture -Name 'SchemaVersion' -DefaultValue 1)
         if ($fixtureSchema -ne 1) { throw "Validation fixture SchemaVersion must be 1; received $fixtureSchema." }
     }
+    $script:gitControlFixture = $fixture
     $validationDefinition = Get-SashimiIssueValidationDefinition -Config $config -ValidationId $IssueValidationId -SelectedIssueNumber $IssueNumber
     if ($null -ne $validationDefinition) { $result.IssueValidationId = [string]$validationDefinition.Id }
 
@@ -1128,6 +2014,8 @@ try {
         # ArtifactsPath by hash so parallel fixture cases cannot collide.
         $stateRoot = Join-Path (Split-Path -Parent $normalizedArtifactsPath) 'State'
     }
+    $script:unityArtifactRoot = $normalizedArtifactsPath
+    $script:unityArtifactStateRoot = ConvertTo-SashimiPath -Path $stateRoot -AllowMissing -Lexical
     $rawValidationLeaf = if (-not [string]::IsNullOrWhiteSpace($OwnedUnityPidPath)) {
         Split-Path -Leaf $normalizedArtifactsPath
     }
@@ -1202,6 +2090,32 @@ try {
         $generatorRun1RawLog, $generatorRun2RawLog
     )
 
+    foreach ($artifactPath in @($compileLog,$editLog,$playLog)) {
+        Register-SashimiUnityArtifact -Path $artifactPath -MaximumBytes $script:unityLogMaximumBytes -ContentKind StrictUtf8Text
+    }
+    foreach ($artifactPath in @($editXml,$playXml)) {
+        Register-SashimiUnityArtifact -Path $artifactPath -MaximumBytes $script:unityXmlMaximumBytes -ContentKind StrictUtf8Text
+    }
+    Register-SashimiUnityArtifact -Path $result.SummaryPath -MaximumBytes $script:unityMetadataMaximumBytes -ContentKind StrictUtf8Text
+    Register-SashimiUnityArtifact -Path (Join-Path $normalizedArtifactsPath 'KnownUnityDefaultDrift.diff') -MaximumBytes $script:unityMetadataMaximumBytes -ContentKind StrictUtf8Text
+    if ($null -ne $validationDefinition) {
+        foreach ($artifactPath in @($generatorRun1Log,$generatorRun2Log)) {
+            Register-SashimiUnityArtifact -Path $artifactPath -MaximumBytes $script:unityLogMaximumBytes -ContentKind StrictUtf8Text
+        }
+        foreach ($artifactName in @('GeneratorRun1.snapshot.json','GeneratorRun2.snapshot.json')) {
+            Register-SashimiUnityArtifact -Path (Join-Path $normalizedArtifactsPath $artifactName) -MaximumBytes $script:unityMetadataMaximumBytes -ContentKind StrictUtf8Text
+        }
+        foreach ($hookSpec in @(
+                @{ Kind='Screenshot'; Paths=$screenshotPaths },
+                @{ Kind='Preview'; Paths=$previewPaths }
+            )) {
+            foreach ($relativeHookPath in @($hookSpec.Paths)) {
+                $hookDestination = Join-Path (Join-Path $normalizedArtifactsPath ($hookSpec.Kind + 's')) ($relativeHookPath.Replace('/',[IO.Path]::DirectorySeparatorChar))
+                Register-SashimiUnityArtifact -Path $hookDestination -MaximumBytes $script:unityPngMaximumBytes -ContentKind Binary
+            }
+        }
+    }
+
     $compileArguments = @('-batchmode', '-nographics', '-buildTarget', 'StandaloneWindows64', '-projectPath', $normalizedProjectPath, '-logFile', $compileRawLog, '-quit')
     $editArguments = @('-batchmode', '-nographics', '-buildTarget', 'StandaloneWindows64', '-projectPath', $normalizedProjectPath, '-runTests', '-testPlatform', 'EditMode', '-testResults', $editRawXml, '-logFile', $editRawLog)
     $playArguments = @('-batchmode', '-nographics', '-buildTarget', 'StandaloneWindows64', '-projectPath', $normalizedProjectPath, '-runTests', '-testPlatform', 'PlayMode', '-testResults', $playRawXml, '-logFile', $playRawLog)
@@ -1234,6 +2148,7 @@ try {
             [void](Invoke-SashimiValidationProcess -Name $gitPlan.Name -Kind Git -FilePath $gitExecutable -Arguments $gitPlan.Arguments -WorkingDirectory $normalizedProjectPath -TimeoutSeconds $gitTimeout -Fixture $fixture -FixtureGroup Git -DryRun)
         }
         Add-SashimiValidationCheck -Name 'PreUnityProtectedProductionScope' -Passed $true -Planned $true -Detail 'Changed, untracked, and protected paths will be checked before Unity loads the project.'
+        Add-SashimiValidationCheck -Name 'GitControlPerStage' -Passed $true -Planned $true -Detail 'Complete Git control state and the per-stage kill-on-close process boundary will be checked after every Unity stage.'
         $stages.CompileImport = Invoke-SashimiUnityValidationStage -Name CompileImport -Arguments $compileArguments -LogPath $compileLog -RawLogPath $compileRawLog -UnityExecutable $unityExecutable -ProjectRoot $normalizedProjectPath -TimeoutSeconds $unityTimeout -Fixture $fixture -Compile -DryRun
         if ($null -ne $validationDefinition) {
             $stages.GeneratorRun1 = Invoke-SashimiUnityValidationStage -Name GeneratorRun1 -Arguments $generatorRun1Arguments -LogPath $generatorRun1Log -RawLogPath $generatorRun1RawLog -UnityExecutable $unityExecutable -ProjectRoot $normalizedProjectPath -TimeoutSeconds $generatorTimeout -Fixture $fixture -Compile -DryRun
@@ -1255,6 +2170,7 @@ try {
         Add-SashimiValidationCheck -Name 'IssueGeneratorAllowlist' -Passed $true -Planned $true -Detail $(if ($null -eq $validationDefinition) { 'No issue-specific generator requested.' } else { "Allowlisted validation '$IssueValidationId' will run twice." })
         $result.Success = $true
         $result.Succeeded = $true
+        $result.GitControlPassed = $true
         $exitCode = 0
     }
     else {
@@ -1293,6 +2209,7 @@ try {
             [IO.Directory]::CreateDirectory($normalizedArtifactsPath) | Out-Null
         }
         Assert-SashimiNoReparsePoint -Path $normalizedArtifactsPath
+        Assert-SashimiUnityArtifactTree -Boundary 'before Unity output production'
         if (-not (Test-Path -LiteralPath $rawValidationPath -PathType Container)) {
             [IO.Directory]::CreateDirectory($rawValidationPath) | Out-Null
         }
@@ -1335,6 +2252,9 @@ try {
             }
 
             if ($preUnityScopePassed) {
+            $script:gitControlBaseline = Get-SashimiUnityGitControlSnapshot -ProjectRoot $normalizedProjectPath -Boundary 'immediately before first Unity stage'
+            $script:gitControlPassed = $true
+            Add-SashimiValidationCheck -Name 'GitControlBaseline' -Passed $true -Detail 'Complete Git control state was captured immediately before Unity execution.'
             $stages.CompileImport = Invoke-SashimiUnityValidationStage -Name CompileImport -Arguments $compileArguments -LogPath $compileLog -RawLogPath $compileRawLog -UnityExecutable $unityExecutable -ProjectRoot $normalizedProjectPath -TimeoutSeconds $unityTimeout -Fixture $fixture -Compile
             $generatorPassed = $true
             if ($null -ne $validationDefinition -and $stages.CompileImport.Success) {
@@ -1345,7 +2265,7 @@ try {
                     $run1Fixture = Get-SashimiPropertyValue -Object $fixtureDeterminism -Name 'Run1' -DefaultValue $null
                     $snapshot1 = if ($null -ne $run1Fixture) { @($run1Fixture) } else { @(Get-SashimiDeterminismSnapshot -ProjectRoot $normalizedProjectPath -RelativePaths $determinismPaths) }
                     $result.Determinism.Run1Snapshot = $snapshot1
-                    Write-SashimiUtf8File -Path (Join-Path $normalizedArtifactsPath 'GeneratorRun1.snapshot.json') -Content (ConvertTo-SashimiJson $snapshot1 -Pretty)
+                    Write-SashimiBoundedUnityTextArtifact -Path (Join-Path $normalizedArtifactsPath 'GeneratorRun1.snapshot.json') -Content (ConvertTo-SashimiJson $snapshot1 -Pretty)
 
                     $stages.GeneratorRun2 = Invoke-SashimiUnityValidationStage -Name GeneratorRun2 -Arguments $generatorRun2Arguments -LogPath $generatorRun2Log -RawLogPath $generatorRun2RawLog -UnityExecutable $unityExecutable -ProjectRoot $normalizedProjectPath -TimeoutSeconds $generatorTimeout -Fixture $fixture -Compile
                     $generatorPassed = [bool]$stages.GeneratorRun2.Success
@@ -1353,7 +2273,7 @@ try {
                         $run2Fixture = Get-SashimiPropertyValue -Object $fixtureDeterminism -Name 'Run2' -DefaultValue $null
                         $snapshot2 = if ($null -ne $run2Fixture) { @($run2Fixture) } else { @(Get-SashimiDeterminismSnapshot -ProjectRoot $normalizedProjectPath -RelativePaths $determinismPaths) }
                         $result.Determinism.Run2Snapshot = $snapshot2
-                        Write-SashimiUtf8File -Path (Join-Path $normalizedArtifactsPath 'GeneratorRun2.snapshot.json') -Content (ConvertTo-SashimiJson $snapshot2 -Pretty)
+                        Write-SashimiBoundedUnityTextArtifact -Path (Join-Path $normalizedArtifactsPath 'GeneratorRun2.snapshot.json') -Content (ConvertTo-SashimiJson $snapshot2 -Pretty)
                         $snapshot1Json = ConvertTo-SashimiJson $snapshot1
                         $snapshot2Json = ConvertTo-SashimiJson $snapshot2
                         $result.Determinism.Passed = [string]::Equals($snapshot1Json, $snapshot2Json, [StringComparison]::Ordinal)
@@ -1397,7 +2317,7 @@ try {
             # fail closed so a Developer cannot stage this production drift.
             $result.KnownUnityDefaultDrift.Allowed = $false
             $driftArtifact = Join-Path $normalizedArtifactsPath 'KnownUnityDefaultDrift.diff'
-            Write-SashimiUtf8File -Path $driftArtifact -Content ((Protect-SashimiText $knownDrift.StdOut) + [Environment]::NewLine)
+            Write-SashimiBoundedUnityTextArtifact -Path $driftArtifact -Content ((Protect-SashimiText $knownDrift.StdOut) + [Environment]::NewLine)
             $result.KnownUnityDefaultDrift.DiffArtifactPath = $driftArtifact
             $result.KnownUnityDefaultDrift.DiffSha256 = (Get-FileHash -LiteralPath $driftArtifact -Algorithm SHA256).Hash.ToLowerInvariant()
         }
@@ -1479,15 +2399,22 @@ try {
             if (-not $ownedPidPassed) { Add-SashimiValidationFailure -Code UnityProcessStillRunning -Stage Cleanup -Message "Run-owned Unity processes remain: $($stillRunning -join ',')." }
         }
 
-        $result.Success = ($failures.Count -eq 0)
+        Assert-SashimiUnityArtifactTree -Boundary 'after every Unity artifact and hook promotion'
+        Add-SashimiValidationCheck -Name 'UnityArtifactClosedTree' -Passed $true -Detail 'Every public Unity artifact matched the recursive exact allowlist, strict type policy, per-file quota, and total quota.'
+        $result.GitControlPassed = [bool]$script:gitControlPassed
+        $result.GitControlSecurityFailure = [bool]$script:gitControlSecurityFailure
+        $result.Success = ($failures.Count -eq 0 -and $result.GitControlPassed -and -not $result.GitControlSecurityFailure)
         $result.Succeeded = $result.Success
         $exitCode = if ($result.Success) { 0 } else { 1 }
     }
 }
 catch {
-    Add-SashimiValidationFailure -Code UnhandledValidationFailure -Stage PreflightOrUnhandled -Message $_.Exception.Message
+    $failureCode = if ($script:unityArtifactBoundaryFailure) { 'UnityArtifactBoundaryViolation' } else { 'UnhandledValidationFailure' }
+    Add-SashimiValidationFailure -Code $failureCode -Stage PreflightOrUnhandled -Message $_.Exception.Message
     $result.Success = $false
     $result.Succeeded = $false
+    $result.GitControlPassed = $false
+    $result.GitControlSecurityFailure = [bool]$script:gitControlSecurityFailure
     $exitCode = 1
 }
 
@@ -1573,23 +2500,28 @@ if (-not $DryRun -and -not [string]::IsNullOrWhiteSpace($rawValidationPath)) {
 }
 
 $result.ExitCode = $exitCode
+$result.GitControlSecurityFailure = [bool]$script:gitControlSecurityFailure
+if (-not $DryRun) { $result.GitControlPassed = [bool]$script:gitControlPassed }
 $result.OwnedUnityProcessIds = @($ownedUnityProcessIds | Sort-Object -Unique)
 $result.ArtifactHooks = $artifactHooks.ToArray()
 $result.Commands = $commands.ToArray()
 $result.Checks = $checks.ToArray()
 $result.Failures = $failures.ToArray()
 
-if (-not $DryRun -and -not [string]::IsNullOrWhiteSpace($normalizedArtifactsPath) -and (Test-Path -LiteralPath $normalizedArtifactsPath -PathType Container)) {
+if (-not $DryRun -and -not $script:unityArtifactBoundaryFailure -and
+    -not [string]::IsNullOrWhiteSpace($normalizedArtifactsPath) -and
+    (Test-Path -LiteralPath $normalizedArtifactsPath -PathType Container)) {
     try {
-        Assert-SashimiNoReparsePoint -Path $normalizedArtifactsPath
         $result.SummaryWritten = $true
         $protectedSummary = Protect-SashimiValidationData -Value $result
-        Write-SashimiUtf8File -Path $result.SummaryPath -Content (ConvertTo-SashimiJson $protectedSummary -Pretty)
+        Write-SashimiBoundedUnityTextArtifact -Path $result.SummaryPath -Content (ConvertTo-SashimiJson $protectedSummary -Pretty)
+        Assert-SashimiUnityArtifactTree -Boundary 'after final Unity summary promotion'
         $summaryWritten = $true
     }
     catch {
         $result.SummaryWritten = $false
-        Add-SashimiValidationFailure -Code SummaryWriteFailed -Stage Artifacts -Message "Unable to write Unity validation summary: $($_.Exception.Message)"
+        $summaryFailureCode = if ($script:unityArtifactBoundaryFailure) { 'UnityArtifactBoundaryViolation' } else { 'SummaryWriteFailed' }
+        Add-SashimiValidationFailure -Code $summaryFailureCode -Stage Artifacts -Message "Unable to write Unity validation summary: $($_.Exception.Message)"
         $result.Success = $false
         $result.Succeeded = $false
         $exitCode = 1
