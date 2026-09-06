@@ -1,0 +1,26 @@
+{
+  "SchemaVersion": 1,
+  "Encoding": "UTF-8",
+  "Fields": [
+    {
+      "Name": "Status",
+      "Options": ["Backlog", "Ready", "In Progress", "Review", "Verification", "Done"]
+    },
+    {
+      "Name": "Priority",
+      "Options": ["P0", "P1", "P2", "P3"]
+    },
+    { "Name": "Area", "Options": [] },
+    { "Name": "Size", "Options": [] }
+  ],
+  "Pages": [
+    {
+      "TotalCount": 0,
+      "Nodes": [],
+      "PageInfo": {
+        "HasNextPage": false,
+        "EndCursor": null
+      }
+    }
+  ]
+}
