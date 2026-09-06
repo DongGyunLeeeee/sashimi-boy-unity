@@ -1,0 +1,64 @@
+{
+  "SchemaVersion": 1,
+  "Repository": "DongGyunLeeeee/sashimi-boy-unity",
+  "ProjectOwner": "DongGyunLeeeee",
+  "ProjectNumber": 1,
+  "DefaultBranch": "main",
+  "RemoteUrl": "https://github.com/DongGyunLeeeee/sashimi-boy-unity.git",
+  "RunRoot": "%LOCALAPPDATA%\\SashimiBoyAutomation\\Runs",
+  "ArtifactRetentionDays": 14,
+  "GitExecutable": "C:\\Program Files\\Git\\cmd\\git.exe",
+  "GitLfsExecutable": "C:\\Program Files\\Git\\cmd\\git-lfs.exe",
+  "GitAuthorName": "DongGyunLeeeee",
+  "GitAuthorEmail": "83210475+DongGyunLeeeee@users.noreply.github.com",
+  "GitHubCli": "C:\\Program Files\\GitHub CLI\\gh.exe",
+  "CodexExecutable": "C:\\Users\\02031\\AppData\\Local\\Programs\\OpenAI\\Codex\\bin\\codex.exe",
+  "PowerShellExecutable": "C:\\Program Files\\PowerShell\\7\\pwsh.exe",
+  "UnityExecutable": "C:\\Program Files\\Unity\\Hub\\Editor\\6000.4.0f1\\Editor\\Unity.exe",
+  "ExpectedUnityVersion": "6000.4.0f1",
+  "MutexName": "Global\\SashimiBoyHostOrchestrator",
+  "Task": {
+    "Name": "SASHIMI BOY Host Orchestrator",
+    "User": "02031",
+    "IntervalMinutes": 15,
+    "StartWhenAvailable": true,
+    "WakeToRun": true,
+    "MultipleInstances": "IgnoreNew"
+  },
+  "Timeouts": {
+    "CodexSeconds": 3600,
+    "GitSeconds": 600,
+    "GitHubSeconds": 300,
+    "UnityStageSeconds": 3600,
+    "GeneratorSeconds": 1800
+  },
+  "Retry": {
+    "MaximumAttempts": 3,
+    "CooldownSeconds": 60
+  },
+  "Security": {
+    "AuthorizedPrAuthors": [
+      "DongGyunLeeeee"
+    ],
+    "CodexWorkspaceWriteNetworkAccess": false,
+    "ProtectedPathPatterns": [
+      "Assets/_SashimiBoy/Art/Source/**",
+      "Assets/**/*.unity",
+      "Assets/**/*.prefab",
+      "Assets/**/*.fbx",
+      "Assets/**/*.wav",
+      "Assets/**/*.mp3",
+      "Packages/**",
+      "ProjectSettings/**"
+    ],
+    "ArtifactExclusionPatterns": [
+      "**/.git/**",
+      "**/.codex/**",
+      "**/Library/**",
+      "**/Temp/**",
+      "**/UserSettings/**",
+      "**/*Save*/**"
+    ]
+  },
+  "IssueValidations": {}
+}
