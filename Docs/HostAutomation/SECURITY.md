@@ -141,6 +141,26 @@ production contract. Developer clones also compare `origin` with the exact
 configured canonical URL before delivery. The mandatory protected-path set
 and minimum artifact-exclusion set cannot be removed from configuration.
 
+The M1 config contract is exercised through both production importers:
+`Import-SashimiHostConfig` and the elevated bootstrap's self-contained
+`Import-InstallerConfig`. Both inspect `JsonDocument` before `ConvertFrom-Json`
+can lose duplicate keys, using decoded names and ordinal case-insensitive
+duplicate detection. Decoded keys and string values are checked for recognizable
+GitHub/OpenAI token, Bearer, private-key and credential-URL forms, including
+Unicode escape representations. Credential rejection and JSON parser failures
+do not echo input content. This cannot detect every arbitrary opaque secret;
+configuration must still contain only non-secret operator data. Git author
+identity remains immutable.
+
+`New-InstallerBundlePlan` compares the captured source projection with the
+validated import, retains only raw source hash/length provenance, and stages
+the canonical `Config.json` with the content-addressed Codex executable path.
+`Assert-InstallerBundle` reuses `Import-InstallerConfig` for staged config
+validation. The M1 fixture writes through the real distribution and bundle
+stagers within its marker-owned temporary root, substitutes only ACL boundaries,
+and verifies the resulting bytes and runtime import. This is not live ACL,
+transaction recovery, scheduler registration, or independent security approval.
+
 Every Developer and Reviewer lifecycle Git process uses `GIT_CONFIG_NOSYSTEM`,
 an empty global config, and a fixed command-scope configuration beginning with
 the pre-clone audit and `clone`. It disables hooks, fsmonitor, external
@@ -292,15 +312,18 @@ runs. Every run has an unguessable ID, an ownership marker named
 %LOCALAPPDATA%\SashimiBoyAutomation\Runs\<run-id>\Repository
 ```
 
-The Host records all children that it creates in multi-entry ledgers. Each
-identity contains both a PID and its UTC process start time to detect PID reuse.
+The Host ledger protocol records a PID and UTC process start time to detect PID
+reuse. Complete child-launch coverage remains an open M3 finding; see the
+[Phase B matrix](REVIEW_53_REMEDIATION.md). Codex probes and execution now receive
+the Developer/Reviewer run ledger and register before the suspended job resumes.
 On timeout, cancellation, or final cleanup, the Host rechecks that complete
 identity, requests process-tree termination, waits for confirmed exit, and
 removes the record only after confirmation. An identity mismatch or
 unconfirmed termination preserves the ledger, workspace, and evidence.
 `Get-Process Unity` is a secondary diagnostic, not an authority to kill
 arbitrary Unity processes, and CIM process enumeration is not a mandatory gate.
-Every Unity stage is additionally placed in a kill-on-close Windows job. After
+Every Unity stage and Codex probe/execution uses a dedicated kill-on-close
+Windows job. After
 the direct stage process exits, the Host closes/terminates that job as required,
 confirms that its active-process count is zero, and only then trusts Git state.
 
@@ -448,6 +471,26 @@ pre-execution verification; the Owner therefore pastes the reviewed launcher
 body into a fresh exact protected PowerShell `-NoProfile` session. A process
 already holding administrator or SYSTEM authority remains outside this local
 same-administrator boundary.
+
+The M2 staging contract verifies the protected parent, binds a GUID sibling
+workspace to purpose/bundle/leaf in its ownership marker, and revalidates the
+plain canonical tree before payload writes, promotion and recursive cleanup.
+Only a closed, hash/length-verified payload with fully imported canonical config
+and verified exact ACLs may be renamed to the final name. Existing destinations
+receive read-only verification, including ACLs; invalid destinations are not
+repaired. Cleanup never removes a final bundle, a different transaction, or an
+unmarked/reparse tree. Preparation and cleanup failures remain failures even
+when an identical retry can succeed using a fresh sibling workspace.
+
+The final bundle is verified again before the production scheduler boundary.
+Registration failure retains it and reports unconfirmed task state requiring
+Owner readback; filesystem rename is not a transaction with Task Scheduler.
+M2 fixtures exercise real marked-temp writes and production integrity/importer
+code, with fake ACL results and the existing injected scheduler branch. The
+inert production checkpoint function has no config/environment callback hook.
+Exception injection is not an fsync, crash-restart, elevated installation, or
+machine-wide security attestation. Live permissions and task readback remain
+Owner rollout gates.
 The bootstrap suite validates this privilege boundary with parser/static order,
 source-tree fail-closed, fixture, and DryRun checks. It deliberately does not
 register the task or execute a real elevated-parent/linked-token relaunch;

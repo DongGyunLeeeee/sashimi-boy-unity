@@ -25,6 +25,15 @@ The fixed service scope is:
 - PowerShell: Core edition `7.5.0` or newer at
   `C:\Program Files\PowerShell\7\pwsh.exe`
 
+For the distinction between a confirmed defect, a human check, and a runner
+failure, read [Review decisions](REVIEW_DECISIONS.md). Installation readiness
+and executed evidence are recorded in the
+[current repair report](REVIEW_REPAIR_20260917.md) and
+[PR #53 remediation matrix](REVIEW_53_REMEDIATION.md). This draft is not an
+installation approval.
+
+Owner workflow in Korean: [이슈·검증 운영 안내](../Automation/OWNER_GUIDE.ko.md).
+
 ## Responsibility boundary
 
 The Host and Codex have deliberately different authority.

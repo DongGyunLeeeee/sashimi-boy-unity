@@ -161,6 +161,28 @@ executable before it loads Common or configuration; Common rechecks a bound
 executable immediately before each launch. Codex additionally requires a
 no-reparse, non-user-writable Program Files ancestry and is held under a
 no-write/no-delete-sharing lease through process creation.
+
+An identical complete bundle is verified and reused without rewriting its files
+or ACLs. An incomplete, altered, unmarked, or noncanonical destination fails
+closed and is never repaired or deleted merely because its name is a hash.
+Before promotion, failures remove only the current transaction's validated
+marker-owned sibling workspace. A cleanup failure is an installation failure;
+the preserved unique workspace does not occupy the final bundle name, so an
+identical approved retry can proceed without deleting it or weakening permissions.
+An interrupted marker write is not ownership proof: a nonempty unmarked
+preparation remainder is preserved and reported. There is no broad cleanup
+command. Investigate only the exact reported transaction under its protected
+parent; never delete unknown directories to make a retry pass.
+
+Directory publication and Task Scheduler registration are separate operations.
+If registration fails, the complete bundle remains available for verified reuse.
+The installer reports task state as unconfirmed because an RPC failure can
+occur after the scheduler accepted the request. The Owner must read back the
+task definition and verify which complete bundle it references before rollout;
+the installer does not claim rollback. Simulated fixture failures establish
+exception/retry behavior, not power-loss durability or live ACL correctness.
+On an error result, `Changed=false` is not rollback or unchanged-task evidence;
+follow the unconfirmed-state diagnostic and obtain the Owner readback.
 Installer and uninstaller startup additionally require the stable PowerShell
 process and matching `PSHOME`, replace `PSModulePath` with the exact PowerShell
 and Windows system module roots, verify Microsoft Authenticode/code-signing
@@ -174,6 +196,35 @@ and re-verifies the bundle, then registers or replaces the task. By default the
 source orchestrator is the script beside the installer; use
 `-OrchestratorPath` only for another reviewed source folder that contains the
 complete sibling runtime set.
+
+Phase B remains incomplete; see [the remediation matrix](REVIEW_53_REMEDIATION.md).
+Do not install based on a local DryRun hash or the functional fake smoke.
+
+The HOST-only functional smoke defaults to Plan and cleans its tiny temporary
+workspace. This command does not launch Codex:
+
+```powershell
+& 'C:\Program Files\PowerShell\7\pwsh.exe' -NoLogo -NoProfile -NonInteractive `
+  -File .\Tools\HostAutomation\Test-SashimiCodexFunctionalSmoke.ps1 `
+  -ConfigPath .\Tools\HostAutomation\Config.example.json -DryRun
+```
+
+After independent remediation review, a human may explicitly select
+`-RunRealCodex` instead of `-DryRun`, with their actual protected runtime config
+and `-TimeoutSeconds 60` (allowed range 1–300 seconds per execution, plus bounded
+capability/adapter overhead). This opt-in uses the production adapter flags,
+workspace-write Developer and read-only Reviewer sandboxes, and no GitHub,
+Unity, scheduler or real Git command. It checks one exact source edit and a
+Host-provided diff review. It does not certify scheduled source discovery,
+arbitrary task editing, network isolation or installation. The internal
+`-FixtureExecution` switch requires the test harness and cannot authorize a
+real model. `-DryRun` overrides execution switches.
+
+The adapter accepts `-OwnedProcessRecordPath`; scheduled role runners pass their
+existing `State/OwnedHostPids.json`. A standalone adapter defaults to
+`OwnedCodexPids.json` beside its artifact directory. Probes and execution register
+PID plus creation time before the job resumes and retain an entry if termination
+is unconfirmed. Do not remove such entries merely to permit cleanup.
 
 Do not edit files below `C:\Program Files\SashimiBoyAutomation\Bundles`.
 To update code or configuration, review and run the installer again; changed

@@ -27,6 +27,11 @@ param(
 
     [string]$CancellationMarkerPath,
 
+    # Only the Host Reviewer supplies this run-bound exception. Developer
+    # validation continues to reject every ProjectSettings mutation.
+    [string]$ReviewRunId,
+    [string[]]$ProtectedWorktrees = @('C:\Dev\sashimi-boy-unity','C:\Dev\sashimi-boy-unity-developer','C:\Dev\sashimi-boy-unity-reviewer'),
+
     [switch]$DryRun,
 
     [Parameter(DontShow = $true)]
@@ -1632,6 +1637,7 @@ function Get-SashimiMetaGuidIntegrity {
     $duplicateGuids = [Collections.Generic.List[object]]::new()
     $missingReferences = [Collections.Generic.List[object]]::new()
     $missingScripts = [Collections.Generic.List[string]]::new()
+    $ignoredPlaceholders = [Collections.Generic.List[string]]::new()
     $guidOwners = @{}
     $knownGuids = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
 
@@ -1646,6 +1652,13 @@ function Get-SashimiMetaGuidIntegrity {
             throw "Assets contains a forbidden reparse point: $($entry.FullName)"
         }
         $relative = [IO.Path]::GetRelativePath($ProjectRoot, $entry.FullName).Replace('\', '/')
+        # Unity does not import the repository's hidden .gitkeep placeholders.
+        # Check reparse points above before this narrow exclusion; all real
+        # files and folders must still have their original .meta/GUID.
+        if (-not $entry.PSIsContainer -and $entry.Name -ceq '.gitkeep') {
+            $ignoredPlaceholders.Add($relative)
+            continue
+        }
         if (-not $entry.Name.EndsWith('.meta', [StringComparison]::OrdinalIgnoreCase)) {
             if (-not (Test-Path -LiteralPath ($entry.FullName + '.meta') -PathType Leaf)) { $missingMeta.Add($relative) }
             continue
@@ -1701,6 +1714,8 @@ function Get-SashimiMetaGuidIntegrity {
     return [pscustomobject][ordered]@{
         Passed = ($missingMeta.Count -eq 0 -and $orphanMeta.Count -eq 0 -and $invalidMeta.Count -eq 0 -and $duplicateGuids.Count -eq 0 -and $missingScripts.Count -eq 0 -and $uniqueMissingReferences.Count -eq 0)
         MetaFiles = $guidOwners.Count
+        IgnoredRepositoryPlaceholderCount = $ignoredPlaceholders.Count
+        IgnoredRepositoryPlaceholders = @($ignoredPlaceholders | Select-Object -First 100)
         MissingMetaCount = $missingMeta.Count
         MissingMeta = @($missingMeta | Select-Object -First 100)
         OrphanMetaCount = $orphanMeta.Count
@@ -1745,6 +1760,50 @@ function Get-SashimiWorkingTreePointers {
         }
     }
     return $pointers.ToArray()
+}
+
+function Get-HostReviewDriftContext {
+    $owned = Get-SashimiOwnedRun -RunPath (Split-Path -Parent $normalizedProjectPath) -RunRoot ([string]$config.RunRoot)
+    if ($owned.RunId -cne $ReviewRunId -or
+        -not (Test-SashimiPathEqual $normalizedProjectPath (Join-Path $owned.RunPath 'Repository')) -or
+        (Test-SashimiPathWithin $normalizedArtifactsPath $normalizedProjectPath) -or
+        $result.DetectedUnityVersion -cne '6000.4.0f1') {
+        throw 'Reviewer drift exception requires this exact disposable Host run and Unity version.'
+    }
+    if ($ProtectedWorktrees.Count -ne 3 -or @($ProtectedWorktrees | Select-Object -Unique).Count -ne 3) { throw 'Three distinct protected worktrees are required.' }
+    $protectedEvidence = @()
+    foreach ($protected in $ProtectedWorktrees) {
+        $path = ConvertTo-SashimiPath $protected
+        if (Test-SashimiPathWithin $path $owned.RunPath) { throw 'Protected worktree cannot be part of the disposable run.' }
+        Assert-SashimiNoReparsePoint $path
+        $status = Invoke-SashimiValidationProcess -Name ProtectedWorktreeStatus -Kind Git -FilePath $gitExecutable -Arguments @('-C',$path,'status','--porcelain=v1','--untracked-files=all') -WorkingDirectory $normalizedProjectPath -TimeoutSeconds $gitTimeout -Fixture $fixture -FixtureGroup Git
+        if (-not $status.Succeeded -or $status.StdOut -match '\S') { throw 'A protected worktree is not clean; Reviewer drift exception refused.' }
+        $protectedEvidence += [pscustomobject]@{ Path=$path; Clean=$true }
+    }
+    $localStatus = Invoke-SashimiValidationProcess -Name ReviewDriftStatus -Kind Git -FilePath $gitExecutable -Arguments @('-C',$normalizedProjectPath,'status','--porcelain=v1','--untracked-files=all') -WorkingDirectory $normalizedProjectPath -TimeoutSeconds $gitTimeout -Fixture $fixture -FixtureGroup Git
+    if (-not $localStatus.Succeeded) { throw 'Cannot inspect disposable Reviewer status.' }
+    $settingsPath = Join-Path $normalizedProjectPath 'ProjectSettings/ProjectSettings.asset'
+    Assert-SashimiNoReparsePoint $settingsPath
+    if ((Get-Item -LiteralPath $settingsPath).Length -gt 4MB) { throw 'ProjectSettings exceeds the review evidence bound.' }
+    return [pscustomobject]@{
+        RunId=$owned.RunId
+        MarkerSha256=(Get-FileHash -LiteralPath $owned.MarkerPath -Algorithm SHA256).Hash
+        Settings=[IO.File]::ReadAllText($settingsPath,[Text.UTF8Encoding]::new($false,$true))
+        SettingsSha256=(Get-FileHash -LiteralPath $settingsPath -Algorithm SHA256).Hash.ToLowerInvariant()
+        Status=$localStatus.StdOut.TrimEnd("`r","`n")
+        ProtectedWorktrees=$protectedEvidence
+    }
+}
+
+function Get-HostReviewDriftAssessment {
+    param([Parameter(Mandatory)][object]$Before)
+    $after = Get-HostReviewDriftContext
+    $mode = Invoke-SashimiValidationProcess -Name ReviewDriftMetadata -Kind Git -FilePath $gitExecutable -Arguments @('-C',$normalizedProjectPath,'diff','--no-ext-diff','--no-textconv','--summary','--','ProjectSettings/ProjectSettings.asset') -WorkingDirectory $normalizedProjectPath -TimeoutSeconds $gitTimeout -Fixture $fixture -FixtureGroup Git
+    $allowed = $Before.RunId -ceq $after.RunId -and $Before.MarkerSha256 -ceq $after.MarkerSha256 -and
+        [string]::IsNullOrEmpty($Before.Status) -and $after.Status -ceq ' M ProjectSettings/ProjectSettings.asset' -and
+        $mode.Succeeded -and [string]::IsNullOrWhiteSpace($mode.StdOut) -and
+        (Test-SashimiUnityDefaultSerialization -Before $Before.Settings -After $after.Settings)
+    return [pscustomobject]@{ Allowed=$allowed; RunId=$after.RunId; MarkerSha256=$after.MarkerSha256; WorkingFileSha256=$after.SettingsSha256; ProtectedWorktrees=$after.ProtectedWorktrees }
 }
 
 function Test-SashimiKnownUnityDefaultDrift {
@@ -1936,6 +1995,7 @@ $result = [ordered]@{
 }
 
 $fixture = $null
+$reviewDriftContext = $null
 $config = $null
 $validationDefinition = $null
 $exitCode = 1
@@ -2122,7 +2182,10 @@ try {
     $generatorRun1Arguments = @()
     $generatorRun2Arguments = @()
     if ($null -ne $validationDefinition) {
-        $generatorBase = @('-batchmode', '-nographics', '-buildTarget', 'StandaloneWindows64', '-projectPath', $normalizedProjectPath, '-executeMethod', $validationDefinition.UnityExecuteMethod) + @($validationDefinition.Arguments)
+        # Authoritative art generators can use Camera.Render. Null graphics
+        # crashes that path even when the resulting game looks correct. Keep
+        # the Editor hidden/batch but allow the interactive runner's graphics.
+        $generatorBase = @('-batchmode', '-buildTarget', 'StandaloneWindows64', '-projectPath', $normalizedProjectPath, '-executeMethod', $validationDefinition.UnityExecuteMethod) + @($validationDefinition.Arguments)
         $generatorRun1Arguments = @($generatorBase + @('-logFile', $generatorRun1RawLog, '-quit'))
         $generatorRun2Arguments = @($generatorBase + @('-logFile', $generatorRun2RawLog, '-quit'))
     }
@@ -2209,6 +2272,9 @@ try {
             [IO.Directory]::CreateDirectory($normalizedArtifactsPath) | Out-Null
         }
         Assert-SashimiNoReparsePoint -Path $normalizedArtifactsPath
+        if (-not $skipFileSystemValidation -and -not [string]::IsNullOrWhiteSpace($ReviewRunId)) {
+            $reviewDriftContext = Get-HostReviewDriftContext
+        }
         Assert-SashimiUnityArtifactTree -Boundary 'before Unity output production'
         if (-not (Test-Path -LiteralPath $rawValidationPath -PathType Container)) {
             [IO.Directory]::CreateDirectory($rawValidationPath) | Out-Null
@@ -2312,14 +2378,19 @@ try {
         $knownDriftDetected = [bool]$knownDrift.Succeeded -and (Test-SashimiKnownUnityDefaultDrift -DiffText $knownDrift.StdOut)
         if ($blockedProtectedChanges -ccontains 'ProjectSettings/ProjectSettings.asset' -and $knownDriftDetected) {
             $result.KnownUnityDefaultDrift.Detected = $true
-            # This validator has no trusted proof that its caller is a disposable,
-            # never-delivered Reviewer integration. Retain exact evidence, but
-            # fail closed so a Developer cannot stage this production drift.
             $result.KnownUnityDefaultDrift.Allowed = $false
             $driftArtifact = Join-Path $normalizedArtifactsPath 'KnownUnityDefaultDrift.diff'
             Write-SashimiBoundedUnityTextArtifact -Path $driftArtifact -Content ((Protect-SashimiText $knownDrift.StdOut) + [Environment]::NewLine)
             $result.KnownUnityDefaultDrift.DiffArtifactPath = $driftArtifact
             $result.KnownUnityDefaultDrift.DiffSha256 = (Get-FileHash -LiteralPath $driftArtifact -Algorithm SHA256).Hash.ToLowerInvariant()
+            if ($null -ne $reviewDriftContext) {
+                $assessment = Get-HostReviewDriftAssessment -Before $reviewDriftContext
+                $result.KnownUnityDefaultDrift['Assessment'] = $assessment
+                if ($assessment.Allowed) {
+                    $result.KnownUnityDefaultDrift.Allowed = $true
+                    $blockedProtectedChanges = @($blockedProtectedChanges | Where-Object { $_ -cne 'ProjectSettings/ProjectSettings.asset' })
+                }
+            }
         }
         $result.ProtectedChanges = $protectedChanges
         $result.BlockedProtectedChanges = $blockedProtectedChanges

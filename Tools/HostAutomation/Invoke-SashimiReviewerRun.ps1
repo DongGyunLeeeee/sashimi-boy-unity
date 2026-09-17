@@ -119,11 +119,13 @@ function Invoke-ReviewerScriptJson {
 function Invoke-ReviewerPublish {
     param([string]$Stage, [string[]]$Arguments)
     $args = @('-ConfigPath',$ConfigPath) + @($Arguments)
+    if ($Arguments -cnotcontains '-FromStatus') { $args += @('-FromStatus','Review') }
     if ($Arguments -cnotcontains '-ProjectItemId' -and $null -ne (Get-Variable selection -ErrorAction SilentlyContinue)) { $args += @('-ProjectItemId',[string](Get-SashimiPropertyValue $selection 'ProjectItemId' '')) }
     if ($script:issueUpdatedAt) { $args += @('-PinnedIssueUpdatedAt',$script:issueUpdatedAt) }
     if ($script:issueBodySha256) { $args += @('-PinnedIssueBodySha256',$script:issueBodySha256) }
     if ($script:conversationSha256) { $args += @('-PinnedConversationSha256',$script:conversationSha256) }
     if ($script:pullRequestContentSha256) { $args += @('-PinnedPullRequestContentSha256',$script:pullRequestContentSha256) }
+    if ($script:pinnedMainSha) { $args += @('-PinnedMainSha',$script:pinnedMainSha) }
     if ($script:cancellationMarkerPath) { $args += @('-CancellationMarkerPath',$script:cancellationMarkerPath) }
     if ($PublishFixturePath) { $args += @('-FixturePath',$PublishFixturePath) }
     if ($DryRun) { $args += '-DryRun' }
@@ -178,7 +180,7 @@ function Get-ReviewerGitVisibleContentSnapshot {
     # byte-for-byte even if their Git status category does not change.
     $listed = Invoke-ReviewerGit 'Snapshot Git-visible worktree paths' @(
         '-C',$script:repositoryPath,'ls-files','-z','--cached','--others','--exclude-standard','--') $normalizedRun
-    if ($DryRun) { return [pscustomobject]@{ FileCount=0; Sha256='planned' } }
+    if ($DryRun) { return [pscustomobject]@{ FileCount=0; Sha256='planned'; WithoutSettingsSha256='planned' } }
 
     $repositoryRoot = [IO.Path]::GetFullPath($script:repositoryPath).TrimEnd([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar)
     $repositoryPrefix = $repositoryRoot + [IO.Path]::DirectorySeparatorChar
@@ -218,6 +220,7 @@ function Get-ReviewerGitVisibleContentSnapshot {
     return [pscustomobject]@{
         FileCount = $sortedPaths.Count
         Sha256 = Get-SashimiTextSha256 -Text ([string]::Join("`n", $records.ToArray()))
+        WithoutSettingsSha256 = Get-SashimiTextSha256 -Text ([string]::Join("`n", [string[]]@($records | Where-Object { -not $_.StartsWith("ProjectSettings/ProjectSettings.asset`0", [StringComparison]::Ordinal) })))
     }
 }
 
@@ -243,16 +246,28 @@ function Get-ReviewerGitSnapshot {
         if ($origin -cne [string]$script:reviewerConfig.RemoteUrl) { throw 'Reviewer repository origin no longer equals the canonical repository URL.' }
         if ($pushOrigin -cne [string]$script:reviewerConfig.RemoteUrl -or $hooks -cne 'NUL') { throw 'Reviewer remote or hooks configuration crossed the Host ownership boundary.' }
     }
-    return [pscustomobject][ordered]@{ Head=$head; Ref=$ref; Status=$status; Refs=$refs; Origin=$origin; PushOrigin=$pushOrigin; Hooks=$hooks; LocalConfig=$localConfig; IndexFlags=$indexFlags; VisibleFileCount=$visibleContent.FileCount; VisibleContentSha256=$visibleContent.Sha256; ControlFiles=[string]::Join(';',$controlFiles) }
+    return [pscustomobject][ordered]@{ Head=$head; Ref=$ref; Status=$status; Refs=$refs; Origin=$origin; PushOrigin=$pushOrigin; Hooks=$hooks; LocalConfig=$localConfig; IndexFlags=$indexFlags; VisibleFileCount=$visibleContent.FileCount; VisibleContentSha256=$visibleContent.Sha256; WithoutSettingsSha256=$visibleContent.WithoutSettingsSha256; ControlFiles=[string]::Join(';',$controlFiles) }
 }
 
 function Assert-ReviewerGitSnapshotUnchanged {
     param(
         [Parameter(Mandatory = $true)][object]$Before,
-        [Parameter(Mandatory = $true)][string]$Boundary
+        [Parameter(Mandatory = $true)][string]$Boundary,
+        [AllowNull()][object]$KnownUnityDefaultDrift
     )
     $after = Get-ReviewerGitSnapshot
-    foreach ($name in @('Head','Ref','Status','Refs','Origin','PushOrigin','Hooks','LocalConfig','IndexFlags','VisibleFileCount','VisibleContentSha256','ControlFiles')) {
+    $allowSettings = $false
+    if (-not $DryRun -and $Boundary -ceq 'Unity validation' -and [bool](Get-SashimiPropertyValue $KnownUnityDefaultDrift 'Allowed' $false)) {
+        $assessment = Get-SashimiPropertyValue $KnownUnityDefaultDrift 'Assessment' $null
+        $settingsPath=Join-Path $script:repositoryPath 'ProjectSettings/ProjectSettings.asset'
+        Assert-SashimiNoReparsePoint $settingsPath
+        $allowSettings = [bool](Get-SashimiPropertyValue $assessment 'Allowed' $false) -and
+            [string]::IsNullOrWhiteSpace($Before.Status) -and $after.Status.TrimEnd("`r","`n") -ceq ' M ProjectSettings/ProjectSettings.asset' -and
+            (Get-FileHash -LiteralPath $settingsPath -Algorithm SHA256).Hash.ToLowerInvariant() -ceq [string](Get-SashimiPropertyValue $assessment 'WorkingFileSha256' '')
+        if (-not $allowSettings) { throw 'Reviewer Unity-default drift evidence no longer matches the worktree.' }
+    }
+    foreach ($name in @('Head','Ref','Status','Refs','Origin','PushOrigin','Hooks','LocalConfig','IndexFlags','VisibleFileCount','VisibleContentSha256','WithoutSettingsSha256','ControlFiles')) {
+        if ($allowSettings -and @('Status','VisibleContentSha256') -ccontains $name) { continue }
         if (-not [string]::Equals([string]$Before.$name, [string]$after.$name, [StringComparison]::Ordinal)) {
             throw "$Boundary crossed the read-only Reviewer boundary by changing Git $name."
         }
@@ -281,6 +296,22 @@ function ConvertTo-ReviewerMarkdownLine {
     $text = [regex]::Replace($text, '[\r\n\t]+', ' ')
     $text = [regex]::Replace($text, '\s{2,}', ' ').Trim()
     return $text.Replace('<','&lt;').Replace('>','&gt;')
+}
+
+function Format-ReviewerFindings {
+    param([Parameter(Mandatory)][object[]]$Findings)
+    $lines = [Collections.Generic.List[string]]::new()
+    $lines.Add("## Independent Review — $($Findings.Count) confirmed blocking finding(s)")
+    $number = 0
+    foreach ($finding in $Findings) {
+        Assert-SashimiReviewFinding $finding
+        $number++
+        $lines.Add("`n### $number. $($finding.severity) — $(ConvertTo-ReviewerMarkdownLine $finding.title)")
+        foreach ($name in @('requirement','location','basis','expected','actual','reproduction','evidence','recommendation')) {
+            $lines.Add("- ${name}: $(ConvertTo-ReviewerMarkdownLine $finding.$name)")
+        }
+    }
+    return [string]::Join("`n", $lines.ToArray())
 }
 
 function Write-ReviewArtifact {
@@ -375,13 +406,16 @@ $([string](Get-SashimiPropertyValue $selection 'PullRequestBody' ''))
 $(ConvertTo-SashimiJson (Get-SashimiPropertyValue $selection 'Conversation' @()) -Pretty)
 ---
 Do not edit any file. Do not run gh, clone/fetch/pull, commit, push, create/update PRs, mutate Project state, merge, close Issues, or access credentials/profile/save data. Report focused Blocker/Major/Minor findings with evidence. Populate manualVerification with exact human-only checks and the evidence the Owner must attach. Return only the required structured result. The Host runs every validation and performs authorized publication.
+Classify every finding before assigning severity. Defect means a demonstrated violation of the CURRENT Owner Decision, acceptance criteria, or an explicit repository invariant. Supply the exact requirement, file/symbol location, expected and actual behavior, a deterministic reproduction or code path, evidence basis, and the smallest required correction. Use Reproduction only for actually observed execution; a reasoned code path is CodePath, not an executed test. Report ALL independently supported defects in this review together. A demonstrated violation of an explicit acceptance/merge gate is at least Major; Minor is reserved for defects that do not violate those gates.
+HumanCheck means visual composition, camera feel, music sync, rhythm readability, interaction feel, story pacing, or final persistence that requires the Owner to play. An unperformed human check is not a defect. A concrete demonstrated violation in these areas can still be a Defect. Infrastructure means licensing, permissions, locks, unavailable tools or other runner failures. Unverified means a concern for which evidence is missing. Neither Infrastructure nor Unverified is a request to change game code. Optional polish, architectural preferences, and requirements you invented are not blocking defects. Respect current Owner decisions and do not reopen an obsolete finding from an older PR head without current evidence. Use category HumanCheck and manualVerification for subjective decisions. Use basis None and empty defect-only fields for observations without defect evidence.
+Use Unverified only when a specific CURRENT required acceptance check cannot be established; name that check and the missing evidence. Your inability to execute Host-owned tests is not itself an Unverified finding: the Host runs them after this analysis. Omit optional polish and architectural preferences from findings, or describe them as optional advice in summary. Do not turn optional advice or hypothetical edge cases into a verification gate.
 "@
     $promptPath = Join-Path $normalizedRun 'State\ReviewerCodexPrompt.txt'
     $codexArgs = @(
         '-ConfigPath',$ConfigPath,'-RepositoryPath',$script:repositoryPath,'-Role','Reviewer','-Mode','Review','-PromptPath',$promptPath,
         '-ArtifactsPath',(Join-Path $script:artifactsPath 'Codex'),'-IssueNumber',[string]$selection.IssueNumber,
         '-PullRequestNumber',[string]$selection.PullRequestNumber,'-PinnedHeadSha',$script:pinnedHeadSha,'-RunId',$runId,
-        '-CancellationMarkerPath',$script:cancellationMarkerPath)
+        '-CancellationMarkerPath',$script:cancellationMarkerPath,'-OwnedProcessRecordPath',$script:ownedHostPidPath)
     if ($CodexFixturePath) { $codexArgs += @('-FixturePath',$CodexFixturePath) }; if ($DryRun) { $codexArgs += '-DryRun' }
     try {
         if (-not $DryRun) {
@@ -403,28 +437,32 @@ Do not edit any file. Do not run gh, clone/fetch/pull, commit, push, create/upda
     Assert-ReviewerNotCancelled
     $codexPayload = Get-SashimiPropertyValue $codex 'Result' $codex
 
-    $validationArgs = @('-ConfigPath',$ConfigPath,'-ProjectPath',$script:repositoryPath,'-ArtifactsPath',(Join-Path $script:artifactsPath 'Unity'),'-IssueNumber',[string]$selection.IssueNumber,'-BaselineRef','origin/main','-OwnedUnityPidPath',(Join-Path $normalizedRun 'State\OwnedUnityPids.json'),'-CancellationMarkerPath',$script:cancellationMarkerPath)
+    $validationArgs = @('-ConfigPath',$ConfigPath,'-ProjectPath',$script:repositoryPath,'-ArtifactsPath',(Join-Path $script:artifactsPath 'Unity'),'-IssueNumber',[string]$selection.IssueNumber,'-BaselineRef','origin/main','-OwnedUnityPidPath',(Join-Path $normalizedRun 'State\OwnedUnityPids.json'),'-CancellationMarkerPath',$script:cancellationMarkerPath,'-ReviewRunId',$runId)
     if ($UnityFixturePath) { $validationArgs += @('-ValidationFixturePath',$UnityFixturePath) }; if ($DryRun) { $validationArgs += '-DryRun' }
     $validationTimeout = (3 * [int]$script:reviewerConfig.Timeouts.UnityStageSeconds) + (2 * [int]$script:reviewerConfig.Timeouts.GeneratorSeconds) + 600
     $beforeUnity = Get-ReviewerGitSnapshot
     $validationResult = Invoke-ReviewerScriptJson 'Host full Unity validation' (Join-Path $PSScriptRoot 'Invoke-SashimiUnityValidation.ps1') $validationArgs $validationTimeout
-    Assert-ReviewerGitSnapshotUnchanged -Before $beforeUnity -Boundary 'Unity validation'
+    Assert-ReviewerGitSnapshotUnchanged -Before $beforeUnity -Boundary 'Unity validation' -KnownUnityDefaultDrift (Get-SashimiPropertyValue $validationResult 'KnownUnityDefaultDrift' $null)
     [void](Invoke-ReviewerGit 'Git whitespace validation' @('-C',$script:repositoryPath,'diff','--check','origin/main...HEAD') $normalizedRun)
     Assert-ReviewerNotCancelled
 
+    $validationChecks = @((Get-SashimiPropertyValue $validationResult 'Checks' @()))
+    if (-not $DryRun -and $validationChecks.Count -eq 0) { throw 'Unity validation returned no named checks; review publication is blocked.' }
+    $failedValidationChecks = @($validationChecks | Where-Object { -not [bool](Get-SashimiPropertyValue $_ 'Passed' $false) })
+    if (-not $DryRun -and $failedValidationChecks.Count -gt 0) { throw 'Unity validation contains a failed named check despite its process result.' }
+
     $findings = @((Get-SashimiPropertyValue $codexPayload 'findings' (Get-SashimiPropertyValue $codexPayload 'Findings' @())))
-    $blocking = @($findings | Where-Object { @('Blocker','Major') -ccontains [string](Get-SashimiPropertyValue $_ 'severity' (Get-SashimiPropertyValue $_ 'Severity' '')) })
+    $reviewDisposition = Get-SashimiReviewDisposition -Findings $findings
+    $blocking = @($reviewDisposition.Blocking)
     $findingCount = $findings.Count
+    [void](Write-ReviewArtifact 'ReviewDecision.json' (ConvertTo-SashimiJson $reviewDisposition -Pretty))
+    if ($reviewDisposition.Disposition -ceq 'Incomplete') {
+        throw 'Review is incomplete: infrastructure or unverified concerns remain. Keep Review; do not create a ReviewFix handoff or claim PASS. See ReviewDecision.json.'
+    }
     if ($blocking.Count -gt 0) {
-        $finding = $blocking[0]
-        $severity = [string](Get-SashimiPropertyValue $finding 'severity' (Get-SashimiPropertyValue $finding 'Severity' 'Major'))
-        $findingTitle = ConvertTo-ReviewerMarkdownLine (Get-SashimiPropertyValue $finding 'title' (Get-SashimiPropertyValue $finding 'Title' 'Finding'))
-        $findingEvidence = ConvertTo-ReviewerMarkdownLine (Get-SashimiPropertyValue $finding 'evidence' (Get-SashimiPropertyValue $finding 'Evidence' 'See retained artifacts.'))
-        $findingFile = ConvertTo-ReviewerMarkdownLine (Get-SashimiPropertyValue $finding 'file' (Get-SashimiPropertyValue $finding 'File' ''))
-        $findingLine = [int](Get-SashimiPropertyValue $finding 'line' (Get-SashimiPropertyValue $finding 'Line' 0))
-        $findingRecommendation = ConvertTo-ReviewerMarkdownLine (Get-SashimiPropertyValue $finding 'recommendation' (Get-SashimiPropertyValue $finding 'Recommendation' 'Resolve the finding and rerun the full host validation.'))
-        $location = if ($findingFile) { "`n`nLocation: $findingFile$(if ($findingLine -gt 0) { ":$findingLine" } else { '' })" } else { '' }
-        $findingText = "## Independent Review — $severity`n`n$findingTitle$location`n`nEvidence: $findingEvidence`n`nRequired correction: $findingRecommendation`n`nPinned PR evidence: #$($selection.PullRequestNumber), $($script:pinnedHeadRef), $($script:pinnedHeadSha).`nPinned latest main: $($script:pinnedMainSha)."
+        $severity = if (@($blocking | Where-Object severity -CEQ 'Blocker').Count -gt 0) { 'Blocker' } else { 'Major' }
+        $findingText = Format-ReviewerFindings -Findings $blocking
+        $findingText += "`n`nPinned PR evidence: #$($selection.PullRequestNumber), $($script:pinnedHeadRef), $($script:pinnedHeadSha).`nPinned latest main: $($script:pinnedMainSha)."
         $findingPath = Write-ReviewArtifact 'ReviewFinding.md' $findingText
         Assert-ReviewerPublicationFreshness 'Pre-finding publication freshness'
         $posted = Invoke-ReviewerPublish 'Post focused review finding' @('-Action','Comment','-Role','Reviewer','-IssueNumber',[string]$selection.IssueNumber,'-PullRequestNumber',[string]$selection.PullRequestNumber,'-PinnedHeadSha',$script:pinnedHeadSha,'-PinnedHeadRef',$script:pinnedHeadRef,'-CommentTarget','PullRequest','-BodyPath',$findingPath)
@@ -440,14 +478,10 @@ Do not edit any file. Do not run gh, clone/fetch/pull, commit, push, create/upda
         $transition = 'Review->In Progress'
     }
     else {
-        $manualVerification = @((Get-SashimiPropertyValue $codexPayload 'manualVerification' (Get-SashimiPropertyValue $codexPayload 'ManualVerification' @())) | ForEach-Object { ConvertTo-ReviewerMarkdownLine $_ } | Where-Object { $_ })
+        $manualVerification = @(@((Get-SashimiPropertyValue $codexPayload 'manualVerification' (Get-SashimiPropertyValue $codexPayload 'ManualVerification' @()))) + @($reviewDisposition.Manual | ForEach-Object { "$($_.title): $($_.evidence)" }) | ForEach-Object { ConvertTo-ReviewerMarkdownLine $_ } | Where-Object { $_ } | Select-Object -Unique)
         if (-not $DryRun -and $manualVerification.Count -eq 0) { throw 'Codex returned no exact Owner manualVerification checklist; Verification publication is blocked.' }
         if ($DryRun -and $manualVerification.Count -eq 0) { $manualVerification = @('Planned: use the exact Codex manualVerification items returned by the live review.') }
 
-        $validationChecks = @((Get-SashimiPropertyValue $validationResult 'Checks' @()))
-        if (-not $DryRun -and $validationChecks.Count -eq 0) { throw 'Unity validation returned no named checks; Verification publication is blocked.' }
-        $failedValidationChecks = @($validationChecks | Where-Object { -not [bool](Get-SashimiPropertyValue $_ 'Passed' $false) })
-        if (-not $DryRun -and $failedValidationChecks.Count -gt 0) { throw 'Unity validation contains a failed named check despite its process result.' }
         $checkLines = @($validationChecks | ForEach-Object {
             $name = ConvertTo-ReviewerMarkdownLine (Get-SashimiPropertyValue $_ 'Name' 'Unnamed host check')
             "- ${name}: PASS"
@@ -479,7 +513,7 @@ Do not edit any file. Do not run gh, clone/fetch/pull, commit, push, create/upda
         $checklist = @"
 ## Independent Verification PASS
 
-The independent read-only review found zero Blocker/Major findings and every required host check passed. Human Owner verification remains required.
+The independent read-only review found zero confirmed Blocker/Major defects and every required host check passed. Human Owner verification remains required.
 
 ## Exact reviewed pins
 

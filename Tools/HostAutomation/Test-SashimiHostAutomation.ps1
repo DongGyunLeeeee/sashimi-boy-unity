@@ -7,7 +7,7 @@ param(
 
     [string]$ConfigPath,
 
-    [switch]$EnvironmentSmoke,
+    [Alias('EnvironmentOnly')][switch]$EnvironmentSmoke,
 
     [switch]$KeepTemporaryFiles
 )
@@ -56,7 +56,7 @@ if ($EnvironmentSmoke) {
         $adapterExit = $LASTEXITCODE
         try { $adapter = @($adapterOutput)[-1] | ConvertFrom-Json -Depth 64 -DateKind String -ErrorAction Stop } catch { throw "Codex capability smoke returned invalid JSON: $($_.Exception.Message)" }
         $adapterPassed = ($adapterExit -eq 0 -and [bool]$adapter.Success -and -not [bool]$adapter.Executed -and [string]$adapter.Sandbox -ceq 'read-only')
-        Add-SmokeCheck 'CodexCapabilityProbe' $adapterPassed "version=$($adapter.CodexVersion); executed=$($adapter.Executed); sandbox=$($adapter.Sandbox)"
+        Add-SmokeCheck 'CodexAdapterPlan' $adapterPassed "DryRun only; live capability/auth/model NOT_RUN; version=$($adapter.CodexVersion); executed=$($adapter.Executed); sandbox=$($adapter.Sandbox)"
         Add-SmokeCheck 'NoSmokeArtifactsCreated' (-not (Test-Path -LiteralPath $smokeArtifactPath)) 'Codex -DryRun did not create its artifact path.'
     }
     catch {

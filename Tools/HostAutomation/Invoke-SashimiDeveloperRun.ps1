@@ -32,6 +32,7 @@ $script:issueBodySha256 = ''
 $script:conversationSha256 = ''
 $script:pullRequestContentSha256 = ''
 $script:pinnedMainSha = ''
+$script:pinnedProjectStatus = ''
 $script:branchName = ''
 $script:canonicalRepositoryUrl = ''
 $script:gitControlSecurityFailure = $false
@@ -259,16 +260,22 @@ function Invoke-PublishAction {
     }
     $publish = Join-Path $PSScriptRoot 'Publish-SashimiRunResult.ps1'
     $args = @('-ConfigPath',$ConfigPath) + $Arguments
+    if ($action -ceq 'Comment' -and $Arguments -cnotcontains '-FromStatus' -and $script:pinnedProjectStatus) { $args += @('-FromStatus',$script:pinnedProjectStatus) }
     if ($Arguments -cnotcontains '-ProjectItemId' -and $null -ne (Get-Variable selection -ErrorAction SilentlyContinue)) { $args += @('-ProjectItemId',[string](Get-SashimiPropertyValue $selection 'ProjectItemId' '')) }
     if ($script:issueUpdatedAt) { $args += @('-PinnedIssueUpdatedAt',$script:issueUpdatedAt) }
     if ($script:issueBodySha256) { $args += @('-PinnedIssueBodySha256',$script:issueBodySha256) }
     if ($script:conversationSha256) { $args += @('-PinnedConversationSha256',$script:conversationSha256) }
     if ($script:pullRequestContentSha256) { $args += @('-PinnedPullRequestContentSha256',$script:pullRequestContentSha256) }
+    if ($script:pinnedMainSha) { $args += @('-PinnedMainSha',$script:pinnedMainSha) }
     if ($cancellationMarkerPath) { $args += @('-CancellationMarkerPath',$cancellationMarkerPath) }
     if ($PublishFixturePath) { $args += @('-FixturePath',$PublishFixturePath) }
     if ($DryRun) { $args += '-DryRun' }
     $publishResult = Invoke-HostScriptJson -Stage $Stage -ScriptPath $publish -Arguments $args -TimeoutSeconds ([int]$script:developerConfig.Timeouts.GitHubSeconds + 120)
     $resultPayload = Get-SashimiPropertyValue $publishResult 'Result' $null
+    if ($action -ceq 'Transition') {
+        $statusAfter = [string](Get-SashimiPropertyValue $resultPayload 'To' '')
+        if ($statusAfter) { $script:pinnedProjectStatus=$statusAfter }
+    }
     $refreshedUpdatedAt = [string](Get-SashimiPropertyValue $resultPayload 'IssueUpdatedAt' '')
     $refreshedBodySha = [string](Get-SashimiPropertyValue $resultPayload 'IssueBodySha256' '')
     $refreshedConversationSha = [string](Get-SashimiPropertyValue $resultPayload 'ConversationSha256' '')
@@ -831,6 +838,7 @@ try {
     }
     $issueNumber = [int]$selection.IssueNumber
     $mode = [string]$selection.Mode
+    $script:pinnedProjectStatus = if ($mode -ceq 'NewWork') { 'Ready' } else { 'In Progress' }
     $script:issueUpdatedAt = [string](Get-SashimiPropertyValue $selection 'IssueUpdatedAt' (Get-SashimiPropertyValue $selection 'UpdatedAt' ''))
     $script:issueBodySha256 = [string](Get-SashimiPropertyValue $selection 'IssueBodySha256' '')
     if (-not $script:issueBodySha256) { $script:issueBodySha256 = Get-SashimiTextSha256 -Text ([string](Get-SashimiPropertyValue $selection 'IssueBody' '')) }
@@ -936,7 +944,8 @@ try {
         '-ConfigPath',$ConfigPath,'-RepositoryPath',$script:repositoryPath,'-Role','Developer','-Mode',$mode,
         '-PromptPath',$promptPath,'-ArtifactsPath',(Join-Path $artifactsPath 'Codex'),'-IssueNumber',[string]$issueNumber,
         '-PinnedHeadSha',$codexPinnedHead,
-        '-RunId',$runId,'-CancellationMarkerPath',$script:cancellationMarkerPath
+        '-RunId',$runId,'-CancellationMarkerPath',$script:cancellationMarkerPath,
+        '-OwnedProcessRecordPath',$ownedHostPidPath
     )
     if ([int](Get-SashimiPropertyValue $selection 'PullRequestNumber' 0) -gt 0) { $codexArgs += @('-PullRequestNumber',[string]$selection.PullRequestNumber) }
     if ($CodexFixturePath) { $codexArgs += @('-FixturePath',$CodexFixturePath) }

@@ -271,6 +271,37 @@ function Assert-InstallerJsonStringArray {
     }
 }
 
+function Assert-InstallerConfigDecodedValues {
+    param([Parameter(Mandatory)][Text.Json.JsonElement]$Element)
+    # Audit decoded JSON strings too: Unicode escapes must not conceal tokens.
+    switch ($Element.ValueKind) {
+        Object {
+            foreach ($property in $Element.EnumerateObject()) {
+                # Audit decoded keys before they can enter schema diagnostics.
+                $nameDocument = [Text.Json.JsonDocument]::Parse(($property.Name | ConvertTo-Json -Compress))
+                try { Assert-InstallerConfigDecodedValues -Element $nameDocument.RootElement }
+                finally { $nameDocument.Dispose() }
+                Assert-InstallerConfigDecodedValues -Element $property.Value
+            }
+        }
+        Array {
+            foreach ($value in $Element.EnumerateArray()) {
+                Assert-InstallerConfigDecodedValues -Element $value
+            }
+        }
+        String {
+            $value = $Element.GetString()
+            if ($value -match '(?i)\bBearer\s+[A-Za-z0-9._~+/=-]+' -or
+                $value -match '(?i)\b(?:github_pat_|gh[pousr]_)[A-Za-z0-9_]{8,}' -or
+                $value -match '(?i)\bsk-[A-Za-z0-9_-]{8,}' -or
+                $value -match '(?i)-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----' -or
+                $value -match '(?i)://[^\s/@:"]+:[^\s/@"]+@') {
+                throw 'Configuration contains recognizable credential material in a decoded value.'
+            }
+        }
+    }
+}
+
 function Assert-InstallerConfigJsonSchema {
     param([Parameter(Mandatory = $true)][string]$JsonText)
 
@@ -288,7 +319,9 @@ function Assert-InstallerConfigJsonSchema {
         $options.AllowTrailingCommas = $false
         $options.CommentHandling = [Text.Json.JsonCommentHandling]::Disallow
         $options.MaxDepth = 64
-        $document = [Text.Json.JsonDocument]::Parse($JsonText, $options)
+        try { $document = [Text.Json.JsonDocument]::Parse($JsonText, $options) }
+        catch { throw 'Configuration is invalid JSON; parser input is not retained.' }
+        Assert-InstallerConfigDecodedValues -Element $document.RootElement
         $rootNames = @(
             'SchemaVersion','Repository','ProjectOwner','ProjectNumber','DefaultBranch','RemoteUrl','RunRoot','ArtifactRetentionDays',
             'GitExecutable','GitLfsExecutable','GitAuthorName','GitAuthorEmail','GitHubCli','CodexExecutable','PowerShellExecutable','UnityExecutable',
@@ -641,10 +674,13 @@ function Invoke-InstallerSchedulerBoundary {
             SchemaVersion=1; Operation='Register-ScheduledTask'; DryRun=[bool]$DryRun; TaskName=$TaskName
             XmlSha256=Get-InstallerTextSha256 -Text $Xml
         }
+        Invoke-InstallerTransactionCheckpoint 'Scheduler.Write' $fixtureLocation.Path
         [IO.File]::AppendAllText($fixtureLocation.Path, ((ConvertTo-InstallerJson $record) + "`n"), [Text.UTF8Encoding]::new($false))
+        Invoke-InstallerTransactionCheckpoint 'Scheduler.Written' $fixtureLocation.Path
         return [pscustomobject][ordered]@{ Invoked=$true; Registered=(-not [bool]$DryRun); Fixture=$true }
     }
     if ($DryRun) { return [pscustomobject][ordered]@{ Invoked=$true; Registered=$false; Fixture=$false } }
+    if (Test-InstallerHarnessMode) { throw 'FIXTURE_LIVE_BOUNDARY_REFUSED: scheduler fixture injection is mandatory in harness mode.' }
     Assert-InstallerTrustedPowerShellState -ScheduledTasks
     ScheduledTasks\Register-ScheduledTask -TaskName $TaskName -Xml $Xml -Force -ErrorAction Stop | Out-Null
     return [pscustomobject][ordered]@{ Invoked=$true; Registered=$true; Fixture=$false }
@@ -792,6 +828,7 @@ function Set-InstallerProtectedAcl {
         [Parameter(Mandatory = $true)][Security.Principal.SecurityIdentifier]$UserSid,
         [switch]$Container
     )
+    if (Test-InstallerHarnessMode) { throw 'FIXTURE_LIVE_BOUNDARY_REFUSED: inject the marked fixture ACL implementation.' }
     $administrators = [Security.Principal.SecurityIdentifier]::new('S-1-5-32-544')
     $system = [Security.Principal.SecurityIdentifier]::new('S-1-5-18')
     $acl = if ($Container) { [Security.AccessControl.DirectorySecurity]::new() } else { [Security.AccessControl.FileSecurity]::new() }
@@ -814,6 +851,7 @@ function Assert-InstallerProtectedAcl {
         [Parameter(Mandatory = $true)][string]$Path,
         [Parameter(Mandatory = $true)][Security.Principal.SecurityIdentifier]$UserSid
     )
+    if (Test-InstallerHarnessMode) { throw 'FIXTURE_LIVE_BOUNDARY_REFUSED: inject the marked fixture ACL implementation.' }
     $item = Get-Item -LiteralPath $Path -Force -ErrorAction Stop
     if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { throw "Protected host path is a reparse point: $Path" }
     Assert-InstallerTrustedPowerShellState
@@ -879,6 +917,40 @@ function Assert-InstallerTreeHasNoReparsePoint {
     }
 }
 
+function Invoke-InstallerTransactionCheckpoint {
+    param([string]$Name,[string]$Path)
+    # Deliberately inert in production: no environment or configuration hooks.
+    # The marked fixture suite substitutes only this fault-observation seam,
+    # leaving every production write, importer and integrity check executable.
+}
+
+function Assert-InstallerFinalPath {
+    param([string]$Path,[string]$ParentRoot,[string]$Identity)
+    $expected = Join-Path ([IO.Path]::GetFullPath($ParentRoot)) $Identity
+    if ($Identity -cnotmatch '^[0-9a-f]{64}$' -or
+        -not [IO.Path]::IsPathFullyQualified($Path) -or
+        -not [string]::Equals($Path,$expected,[StringComparison]::OrdinalIgnoreCase)) {
+        throw 'Installer destination is not the exact canonical content-addressed path.'
+    }
+    Assert-InstallerNoReparsePoint $Path
+}
+
+function Initialize-InstallerProtectedRoots {
+    param([Security.Principal.SecurityIdentifier]$UserSid)
+    foreach ($directory in @($script:InstallRoot,$script:BundlesRoot,$script:CodexDistributionsRoot)) {
+        Assert-InstallerNoReparsePoint $directory
+        if (Test-Path -LiteralPath $directory) {
+            [void](Assert-InstallerPlainDirectory $directory)
+        } else {
+            Invoke-InstallerTransactionCheckpoint 'Root.Create' $directory
+            [IO.Directory]::CreateDirectory($directory) | Out-Null
+            Invoke-InstallerTransactionCheckpoint 'Root.Created' $directory
+        }
+        Set-InstallerProtectedAcl $directory $UserSid -Container
+        Assert-InstallerProtectedAcl $directory $UserSid
+    }
+}
+
 function New-InstallerStagingWorkspace {
     param(
         [Parameter(Mandatory = $true)][string]$ParentRoot,
@@ -888,23 +960,37 @@ function New-InstallerStagingWorkspace {
     )
 
     $parentPath = Assert-InstallerPlainDirectory $ParentRoot
+    Assert-InstallerProtectedAcl $parentPath $UserSid
     $leaf = '.sashimi-stage-' + [Guid]::NewGuid().ToString('N')
     $workspace = Join-Path $parentPath $leaf
     $payload = Join-Path $workspace 'Payload'
     $markerPath = Join-Path $workspace $script:StagingMarkerName
     $markerWritten = $false
+    $created = $false
     try {
+        if (Test-Path -LiteralPath $workspace) { throw 'Unique staging workspace already exists.' }
+        Invoke-InstallerTransactionCheckpoint 'Workspace.Create' $workspace
         [IO.Directory]::CreateDirectory($workspace) | Out-Null
+        $created = $true
+        Invoke-InstallerTransactionCheckpoint 'Workspace.Created' $workspace
         Set-InstallerProtectedAcl $workspace $UserSid -Container
+        Assert-InstallerProtectedAcl $workspace $UserSid
         $marker = [ordered]@{
             SchemaVersion=1; Owner='SashimiBoyHostInstaller'; Purpose=$Purpose
             Identity=$Identity; WorkspaceLeaf=$leaf
         }
+        Invoke-InstallerTransactionCheckpoint 'Marker.Write' $markerPath
         [IO.File]::WriteAllText($markerPath, ((ConvertTo-InstallerJson $marker) + "`n"), [Text.UTF8Encoding]::new($false))
         $markerWritten = $true
+        Invoke-InstallerTransactionCheckpoint 'Marker.Written' $markerPath
         Set-InstallerProtectedAcl $markerPath $UserSid
+        Assert-InstallerProtectedAcl $markerPath $UserSid
+        Assert-InstallerStagingWorkspace $workspace $parentPath $Purpose $Identity
+        Invoke-InstallerTransactionCheckpoint 'Payload.Create' $payload
         [IO.Directory]::CreateDirectory($payload) | Out-Null
+        Invoke-InstallerTransactionCheckpoint 'Payload.Created' $payload
         Set-InstallerProtectedAcl $payload $UserSid -Container
+        Assert-InstallerProtectedAcl $payload $UserSid
         return [pscustomobject][ordered]@{
             ParentRoot=$parentPath; Workspace=$workspace; Payload=$payload; MarkerPath=$markerPath
             Purpose=$Purpose; Identity=$Identity; WorkspaceLeaf=$leaf
@@ -912,26 +998,29 @@ function New-InstallerStagingWorkspace {
     }
     catch {
         $failure = $_
-        if (Test-Path -LiteralPath $workspace -PathType Container) {
-            if ($markerWritten) {
-                try { Remove-InstallerStagingWorkspace -Workspace $workspace -ParentRoot $parentPath -Purpose $Purpose -Identity $Identity } catch { }
-            }
-            else {
-                try {
-                    $createdItem = Get-Item -LiteralPath $workspace -Force -ErrorAction Stop
-                    if ($createdItem.PSIsContainer -and ($createdItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -eq 0 -and
-                        @(Get-ChildItem -LiteralPath $workspace -Force -ErrorAction Stop).Count -eq 0) {
-                        [IO.Directory]::Delete($workspace, $false)
+        if ($created -and (Test-Path -LiteralPath $workspace)) {
+            try {
+                if ($markerWritten) {
+                    Remove-InstallerStagingWorkspace $workspace $parentPath $Purpose $Identity
+                } else {
+                    # Before a complete marker exists, delete only our freshly
+                    # created, still-empty plain directory. Partial marker IO
+                    # is preserved and explicitly reported, never recursively
+                    # treated as ownership proof.
+                    [void](Assert-InstallerPlainDirectory $workspace)
+                    if (@(Get-ChildItem -LiteralPath $workspace -Force -ErrorAction Stop).Count -ne 0) {
+                        throw 'Unmarked preparation remainder must be preserved.'
                     }
+                    Invoke-InstallerTransactionCheckpoint 'Cleanup.EmptyDelete' $workspace
+                    [IO.Directory]::Delete($workspace,$false)
                 }
-                catch { }
-            }
+            } catch { throw "Staging preparation failed; cleanup failed; preserved transaction $leaf. $($_.Exception.Message)" }
         }
         throw $failure
     }
 }
 
-function Remove-InstallerStagingWorkspace {
+function Assert-InstallerStagingWorkspace {
     param(
         [Parameter(Mandatory = $true)][string]$Workspace,
         [Parameter(Mandatory = $true)][string]$ParentRoot,
@@ -957,7 +1046,20 @@ function Remove-InstallerStagingWorkspace {
         [string]$marker.WorkspaceLeaf -cne [IO.Path]::GetFileName($workspacePath)) {
         throw 'Refusing to remove a staging workspace whose ownership marker does not match.'
     }
-    [IO.Directory]::Delete($workspacePath, $true)
+}
+
+function Remove-InstallerStagingWorkspace {
+    param(
+        [Parameter(Mandatory)][string]$Workspace,
+        [Parameter(Mandatory)][string]$ParentRoot,
+        [Parameter(Mandatory)][ValidateSet('Bundle','CodexDistribution')][string]$Purpose,
+        [Parameter(Mandatory)][ValidatePattern('^[0-9a-f]{64}$')][string]$Identity
+    )
+    Assert-InstallerStagingWorkspace $Workspace $ParentRoot $Purpose $Identity
+    Invoke-InstallerTransactionCheckpoint 'Cleanup.Delete' $Workspace
+    # Revalidate after the fault/race seam, immediately before recursive delete.
+    Assert-InstallerStagingWorkspace $Workspace $ParentRoot $Purpose $Identity
+    [IO.Directory]::Delete([IO.Path]::GetFullPath($Workspace),$true)
 }
 
 function Assert-InstallerCodexDistribution {
@@ -993,10 +1095,8 @@ function Install-InstallerCodexDistribution {
         [Parameter(Mandatory = $true)][Security.Principal.SecurityIdentifier]$UserSid
     )
 
+    Assert-InstallerFinalPath $Distribution.Root $script:CodexDistributionsRoot $Distribution.Sha256
     if (Test-Path -LiteralPath ([string]$Distribution.Root)) {
-        Assert-InstallerCodexDistribution $Distribution $UserSid -SkipAcl
-        Set-InstallerProtectedAcl ([string]$Distribution.Path) $UserSid
-        Set-InstallerProtectedAcl ([string]$Distribution.Root) $UserSid -Container
         Assert-InstallerCodexDistribution $Distribution $UserSid
         return $false
     }
@@ -1005,7 +1105,10 @@ function Install-InstallerCodexDistribution {
     $promoted = $false
     try {
         $stagedExecutable = Join-Path $stage.Payload 'codex.exe'
+        Assert-InstallerStagingWorkspace $stage.Workspace $stage.ParentRoot CodexDistribution $Distribution.Sha256
+        Invoke-InstallerTransactionCheckpoint 'Codex.Write' $stagedExecutable
         [IO.File]::WriteAllBytes($stagedExecutable, [byte[]]$Distribution.Bytes)
+        Invoke-InstallerTransactionCheckpoint 'Codex.Written' $stagedExecutable
         if ([int64](Get-Item -LiteralPath $stagedExecutable -Force -ErrorAction Stop).Length -ne [int64]$Distribution.Length -or
             (Get-InstallerFileSha256 $stagedExecutable) -cne [string]$Distribution.Sha256) {
             throw 'Staged Codex distribution bytes changed before promotion.'
@@ -1015,25 +1118,22 @@ function Install-InstallerCodexDistribution {
         $stagedDistribution = [pscustomobject][ordered]@{
             Root=$stage.Payload; Path=$stagedExecutable; Sha256=[string]$Distribution.Sha256; Length=[int64]$Distribution.Length
         }
+        Invoke-InstallerTransactionCheckpoint 'Codex.Verify' $stage.Payload
+        Assert-InstallerCodexDistribution $stagedDistribution $UserSid
+        Invoke-InstallerTransactionCheckpoint 'Codex.Promote' $stage.Payload
+        Assert-InstallerStagingWorkspace $stage.Workspace $stage.ParentRoot CodexDistribution $Distribution.Sha256
         Assert-InstallerCodexDistribution $stagedDistribution $UserSid
         if (Test-Path -LiteralPath ([string]$Distribution.Root)) { throw 'Protected Codex distribution target appeared before atomic promotion.' }
         [IO.Directory]::Move($stage.Payload, [string]$Distribution.Root)
         $promoted = $true
+        Invoke-InstallerTransactionCheckpoint 'Codex.Published' $Distribution.Root
         Assert-InstallerCodexDistribution $Distribution $UserSid
         return $true
     }
     catch {
         $failure = $_
-        if ($promoted -and (Test-Path -LiteralPath ([string]$Distribution.Root))) {
-            try {
-                Assert-InstallerCodexDistribution $Distribution $UserSid -SkipAcl
-                if (-not (Test-Path -LiteralPath $stage.Payload)) {
-                    [IO.Directory]::Move([string]$Distribution.Root, $stage.Payload)
-                    $promoted = $false
-                }
-            }
-            catch { }
-        }
+        # A promoted complete distribution is retained for verified reuse.
+        # Never move a visible destination back based solely on its name/hash.
         throw $failure
     }
     finally {
@@ -1157,6 +1257,7 @@ function Assert-InstallerBundle {
         [switch]$SkipAcl
     )
     [void](Assert-InstallerPlainDirectory $BundleRoot)
+    Assert-InstallerTreeHasNoReparsePoint $BundleRoot
     $manifestPath = Join-Path $BundleRoot $script:ManifestName
     if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) { throw "Staged host manifest is missing: $manifestPath" }
     if ((Get-InstallerFileSha256 $manifestPath) -cne $ExpectedManifestSha256) {
@@ -1191,7 +1292,7 @@ function Assert-InstallerBundle {
     }
     $installedIdentity = Read-InstallerJsonFile (Join-Path $BundleRoot $script:ExecutableIdentityName)
     Assert-InstallerExecutableIdentity -Identity $installedIdentity
-    $installedConfig = Read-InstallerJsonFile (Join-Path $BundleRoot 'Config.json')
+    $installedConfig = Import-InstallerConfig (Join-Path $BundleRoot 'Config.json')
     for ($index=0; $index -lt $script:ExecutableProperties.Count; $index++) {
         $name=$script:ExecutableProperties[$index]
         $configuredPath=ConvertTo-InstallerExecutablePath -Name $name -Path ([string]$installedConfig.$name)
@@ -1212,12 +1313,8 @@ function Install-InstallerBundle {
         [Parameter(Mandatory = $true)][Security.Principal.SecurityIdentifier]$UserSid
     )
 
+    Assert-InstallerFinalPath $BundleRoot $script:BundlesRoot $Plan.BundleId
     if (Test-Path -LiteralPath $BundleRoot) {
-        Assert-InstallerBundle $BundleRoot $Plan.Manifest $Plan.ManifestSha256 $UserSid -SkipAcl
-        foreach ($file in @($Plan.Manifest.Files | ForEach-Object { Join-Path $BundleRoot $_.RelativePath }) + @(Join-Path $BundleRoot $script:ManifestName)) {
-            Set-InstallerProtectedAcl $file $UserSid
-        }
-        Set-InstallerProtectedAcl $BundleRoot $UserSid -Container
         Assert-InstallerBundle $BundleRoot $Plan.Manifest $Plan.ManifestSha256 $UserSid
         return $false
     }
@@ -1226,45 +1323,66 @@ function Install-InstallerBundle {
     $promoted = $false
     try {
         foreach ($entry in $Plan.Entries) {
+            if ([string]$entry.RelativePath -cnotin (@($script:RequiredBundleFiles) + @('Config.json',$script:ExecutableIdentityName))) {
+                throw 'Bundle payload write is outside the closed runtime file set.'
+            }
+            Assert-InstallerStagingWorkspace $stage.Workspace $stage.ParentRoot Bundle $Plan.BundleId
             $destination = Join-Path $stage.Payload ([string]$entry.RelativePath)
+            Invoke-InstallerTransactionCheckpoint 'Bundle.Write' $destination
             if ($null -ne $entry.Bytes) {
                 [IO.File]::WriteAllBytes($destination, [byte[]]$entry.Bytes)
             }
             else {
                 [IO.File]::WriteAllText($destination, [string]$entry.Content, [Text.UTF8Encoding]::new($false))
             }
+            Invoke-InstallerTransactionCheckpoint 'Bundle.Write.After' $destination
         }
         $stagedManifestPath = Join-Path $stage.Payload $script:ManifestName
+        Assert-InstallerStagingWorkspace $stage.Workspace $stage.ParentRoot Bundle $Plan.BundleId
+        Invoke-InstallerTransactionCheckpoint 'Manifest.Write' $stagedManifestPath
         [IO.File]::WriteAllText($stagedManifestPath, [string]$Plan.ManifestContent, [Text.UTF8Encoding]::new($false))
+        Invoke-InstallerTransactionCheckpoint 'Manifest.Written' $stagedManifestPath
         foreach ($file in @($Plan.Manifest.Files | ForEach-Object { Join-Path $stage.Payload $_.RelativePath }) + @($stagedManifestPath)) {
             Set-InstallerProtectedAcl $file $UserSid
         }
         Set-InstallerProtectedAcl $stage.Payload $UserSid -Container
+        Invoke-InstallerTransactionCheckpoint 'Bundle.Verify' $stage.Payload
+        Assert-InstallerBundle $stage.Payload $Plan.Manifest $Plan.ManifestSha256 $UserSid
+        Invoke-InstallerTransactionCheckpoint 'Bundle.Promote' $stage.Payload
+        Assert-InstallerStagingWorkspace $stage.Workspace $stage.ParentRoot Bundle $Plan.BundleId
         Assert-InstallerBundle $stage.Payload $Plan.Manifest $Plan.ManifestSha256 $UserSid
         if (Test-Path -LiteralPath $BundleRoot) { throw 'Content-addressed host bundle target appeared before atomic promotion.' }
         [IO.Directory]::Move($stage.Payload, $BundleRoot)
         $promoted = $true
+        Invoke-InstallerTransactionCheckpoint 'Bundle.Published' $BundleRoot
         Assert-InstallerBundle $BundleRoot $Plan.Manifest $Plan.ManifestSha256 $UserSid
         return $true
     }
     catch {
         $failure = $_
-        if ($promoted -and (Test-Path -LiteralPath $BundleRoot)) {
-            try {
-                Assert-InstallerBundle $BundleRoot $Plan.Manifest $Plan.ManifestSha256 $UserSid -SkipAcl
-                if (-not (Test-Path -LiteralPath $stage.Payload)) {
-                    [IO.Directory]::Move($BundleRoot, $stage.Payload)
-                    $promoted = $false
-                }
-            }
-            catch { }
-        }
+        # Publication completed before any final readback failure. Retain the
+        # complete immutable destination; cleanup owns only this workspace.
         throw $failure
     }
     finally {
         if (Test-Path -LiteralPath $stage.Workspace -PathType Container) {
             Remove-InstallerStagingWorkspace -Workspace $stage.Workspace -ParentRoot $stage.ParentRoot -Purpose Bundle -Identity ([string]$Plan.BundleId)
         }
+    }
+}
+
+function Invoke-InstallerBundleRegistration {
+    param($Plan,[string]$BundleRoot,[Security.Principal.SecurityIdentifier]$UserSid,[string]$Xml)
+    Invoke-InstallerTransactionCheckpoint 'Registration.Verify' $BundleRoot
+    Assert-InstallerFinalPath $BundleRoot $script:BundlesRoot $Plan.BundleId
+    Assert-InstallerBundle $BundleRoot $Plan.Manifest $Plan.ManifestSha256 $UserSid
+    Assert-InstallerExecutableIdentity -Identity $Plan.ExecutableIdentity
+    try { return Invoke-InstallerSchedulerBoundary -TaskName $script:TaskName -Xml $Xml }
+    catch {
+        # Registration is not part of the filesystem rename transaction. The
+        # scheduler may have accepted a request before an RPC/readback failure.
+        # Do not claim rollback or delete a bundle that a task may now reference.
+        throw "Task registration failed; complete bundle retained; task state is unconfirmed and requires Owner readback before rollout. $($_.Exception.Message)"
     }
 }
 
@@ -1374,20 +1492,12 @@ try {
     $result.AclPlan=[ordered]@{ Inheritance='Disabled'; Owner='BUILTIN\Administrators'; Administrators='FullControl'; System='FullControl'; TaskUser="$userId ReadAndExecute" }
     $approved=-not $effectiveDryRun -and $PSCmdlet.ShouldProcess($script:TaskName,"Stage immutable host bundle $($plan.BundleId) and register or replace scheduled task")
     if ($approved) {
-        foreach ($directory in @($script:InstallRoot,$script:BundlesRoot,$script:CodexDistributionsRoot)) {
-            Assert-InstallerNoReparsePoint $directory
-            if (Test-Path -LiteralPath $directory) {
-                $directoryItem=Get-Item -LiteralPath $directory -Force -ErrorAction Stop
-                if (-not $directoryItem.PSIsContainer -or ($directoryItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { throw "Protected install directory is not a plain directory: $directory" }
-            }
-            else { [IO.Directory]::CreateDirectory($directory)|Out-Null }
-            Set-InstallerProtectedAcl $directory $userSid -Container; Assert-InstallerProtectedAcl $directory $userSid
-        }
+        Initialize-InstallerProtectedRoots $userSid
         $result.CodexDistributionStaged=[bool](Install-InstallerCodexDistribution $plan.CodexDistribution $userSid)
         [void](Install-InstallerBundle $plan $bundleRoot $userSid)
         Assert-InstallerExecutableIdentity -Identity $plan.ExecutableIdentity
         $result.Staged=$true; $result.AclVerified=$true; $result.HashesVerified=$true
-        $schedulerResult=Invoke-InstallerSchedulerBoundary -TaskName $script:TaskName -Xml $taskXml
+        $schedulerResult=Invoke-InstallerBundleRegistration $plan $bundleRoot $userSid $taskXml
         $result.SchedulerBoundaryInvoked=[bool]$schedulerResult.Invoked; $result.SchedulerFixture=[bool]$schedulerResult.Fixture
         $result.Changed=[bool]$schedulerResult.Registered
     }

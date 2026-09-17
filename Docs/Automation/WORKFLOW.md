@@ -82,8 +82,14 @@ These transitions are exhaustive:
   merge a PR or move an Issue to `Done`.
 - Pending Manual Verification does not block `Review -> Verification` after
   automated verification passes.
-- A Minor finding does not block `Review -> Verification` unless the finding
-  is explicitly designated as a merge gate.
+- A Minor finding does not block `Review -> Verification`. A demonstrated
+  violation of an explicit acceptance/merge gate is at least Major, with the
+  required evidence.
+- A pending human check is not a defect. An infrastructure failure or an
+  unverified concern leaves the item in `Review`, without a `ReviewFix`
+  handoff or a PASS claim. A blocking finding must identify the current
+  requirement, location, expected/actual behavior, and observed evidence or a
+  deterministic code path. Report all supported blocking findings together.
 - One run handles exactly one Issue. Do not start a second Issue in the same
   run.
 
@@ -305,6 +311,17 @@ Automation rule.
   `ProjectSettings/**`, deletion, reordering, or meaningful build/gameplay
   setting change remains `WorkspaceMutation`. Never restore the file to hide
   the drift or commit the serialized defaults.
+- The Issue #52 Windows Host Reviewer uses its required standalone clone under
+  configured `RunRoot/<run-id>/Repository`, rather than the legacy temporary
+  integration root. Its equivalent exception is `KnownUnityDefaultDrift`:
+  the caller supplies the exact Review run ID; the Host marker is checked
+  before and after validation; the clone starts clean; the full resulting
+  ProjectSettings file must equal the existing six approved replacements;
+  status contains only that one unstaged file; mode/type metadata is unchanged;
+  three distinct protected worktrees are clean; and the full diff/hash is
+  retained outside Repository. The Reviewer independently verifies the final
+  file hash, unchanged Git control state and every other source byte. This
+  exception never applies to Developer delivery and adds no approved setting.
 - `Set-GitHubProjectStatus.ps1` validates an existing Project item and an
   allowed role transition before editing the existing `Status` field. It
   supports `-WhatIf` and never creates schema.

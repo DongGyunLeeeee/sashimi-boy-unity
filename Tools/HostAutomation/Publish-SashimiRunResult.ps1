@@ -10,6 +10,7 @@ param(
     [ValidateRange(0, 2147483647)][int]$PullRequestNumber = 0,
     [string]$PinnedHeadSha,
     [string]$PinnedHeadRef,
+    [string]$PinnedMainSha,
     [string]$PinnedPullRequestContentSha256,
     [string]$PinnedIssueUpdatedAt,
     [string]$PinnedIssueBodySha256,
@@ -32,6 +33,7 @@ $ErrorActionPreference = 'Stop'
 $commands = New-Object 'System.Collections.Generic.List[object]'
 $mutationAttempted = $false
 $pinCurrent = $true
+$script:publicationContract = $null
 $script:publishSensitiveValues = @(
     Get-SashimiSensitiveEnvironmentEntries |
         ForEach-Object { [string]$_.Value } |
@@ -59,7 +61,7 @@ function Invoke-PublishGh {
         if ($CancellationMarkerPath -and (Test-Path -LiteralPath $CancellationMarkerPath -PathType Leaf)) {
             throw "Cancellation was requested before $Operation; no mutation was attempted."
         }
-        [void](Assert-PublishAuthenticatedActor -ImmediatelyBeforeMutation)
+        Assert-PublishMutationBoundary
         $commands.Add($commandRecord)
         $script:mutationAttempted = $true
     }
@@ -67,6 +69,63 @@ function Invoke-PublishGh {
     $result = Invoke-SashimiHostProcess -FilePath ([string]$script:publishConfig.GitHubCli) -ArgumentList $Arguments -TimeoutSeconds ([int]$script:publishConfig.Timeouts.GitHubSeconds) -Kind GitHub -CancellationMarkerPath $CancellationMarkerPath -Environment @{ GH_PROMPT_DISABLED='1'; GIT_TERMINAL_PROMPT='0' }
     if (-not $result.Succeeded) { throw "$Operation failed; exit=$($result.ExitCode); stderr=$($result.StdErr); command=$($result.Command)" }
     return $result
+}
+
+function Assert-PublishMutationBoundary {
+    # Authentication can take time. Repeat every mutable input AFTER that
+    # lookup, at the common write boundary, not only in the calling runner.
+    [void](Assert-PublishAuthenticatedActor -ImmediatelyBeforeMutation)
+    if ($null -ne $script:publishFixture) {
+        $overrides = Get-SashimiPropertyValue $script:publishFixture 'BeforeMutationOverrides' $null
+        if ($null -ne $overrides) {
+            foreach ($property in $overrides.PSObject.Properties) {
+                $script:publishFixture | Add-Member -NotePropertyName $property.Name -NotePropertyValue $property.Value -Force
+            }
+        }
+    }
+    if ($CancellationMarkerPath -and (Test-Path -LiteralPath $CancellationMarkerPath -PathType Leaf)) {
+        throw 'Cancellation was requested during publication preflight; no mutation was attempted.'
+    }
+    if ($null -eq $script:publicationContract) { throw 'Publication is missing its initial Project contract.' }
+    if ($Role -ceq 'Reviewer' -and [string]$script:publicationContract.CurrentStatus -cne 'Review') {
+        throw 'Reviewer publication requires the current Review state.'
+    }
+    $developerStates = if ($Action -ceq 'Comment' -and $FromStatus -ceq 'Review') { @('Review') } else { @('Ready','In Progress') }
+    if ($Role -ceq 'Developer' -and [string]$script:publicationContract.CurrentStatus -cnotin $developerStates) {
+        throw 'Developer publication requires the current Ready or In Progress state.'
+    }
+    if ($Action -ceq 'Comment') {
+        if (-not $FromStatus -and $null -eq $script:publishFixture) { throw 'Comment requires the pinned current Project status.' }
+        if ($FromStatus -and [string]$script:publicationContract.CurrentStatus -cne $FromStatus) {
+            $script:pinCurrent=$false; throw 'Project status changed before comment publication.'
+        }
+    }
+    $pin = if ($PullRequestNumber -gt 0) { Assert-LivePin } else { Assert-LiveIssueConversationPin }
+    if (-not $pin.Current) { $script:pinCurrent=$false; throw 'PR or conversation changed at the final publication boundary.' }
+    $latestContract = Get-ProjectContract
+    if (-not (Test-IssuePin $latestContract) -or
+        (ConvertTo-SashimiJson $latestContract) -cne (ConvertTo-SashimiJson $script:publicationContract)) {
+        $script:pinCurrent=$false
+        throw 'Issue content, Project schema, status, or exact PR linkage changed at the final publication boundary.'
+    }
+    if ($Action -ceq 'CreateDraftPullRequest') { [void](Assert-LiveRemoteBranchPin -Name $Branch -ImmediatelyBeforeMutation) }
+    if ($PinnedMainSha -cnotmatch '^[0-9a-f]{40}$') {
+        if ($null -eq $script:publishFixture) { throw 'Publication requires the exact validated main SHA.' }
+    }
+    else {
+        if ($null -ne $script:publishFixture) {
+            $mainSha = [string](Get-SashimiPropertyValue $script:publishFixture 'LiveMainSha' $PinnedMainSha)
+        }
+        else {
+            $mainResult = Invoke-PublishGh -Operation 'Final validated main pin' -Arguments @('api',"repos/$($script:publishConfig.Repository)/git/ref/heads/main")
+            $main = Convert-RemoteBranchShape (ConvertFrom-PublishJson $mainResult.StdOut 'Final validated main pin')
+            if ($main.Ref -cne 'refs/heads/main' -or $main.ObjectType -cne 'commit') { throw 'Canonical main ref identity changed.' }
+            $mainSha = [string]$main.Sha
+        }
+        if ($mainSha -cne $PinnedMainSha) { $script:pinCurrent=$false; throw 'main advanced at the final publication boundary.' }
+    }
+    # GitHub comment/Project writes have no compare-and-swap for this complete
+    # snapshot. This closes the old preflight gap; it is not an atomic lock.
 }
 
 function Assert-PublishAuthenticatedActor {
@@ -589,7 +648,8 @@ try {
                 if (-not $pin.Current) { throw 'Issue conversation changed immediately before status mutation.' }
             }
             $afterContract = $contract
-            if ($null -ne $script:publishFixture) { [void](Assert-PublishAuthenticatedActor -ImmediatelyBeforeMutation) }
+            $script:publicationContract = $contract
+            if ($null -ne $script:publishFixture) { Assert-PublishMutationBoundary }
             if ($null -eq $script:publishFixture) {
                 $mutationResult = Invoke-PublishGh -Operation "Project transition $FromStatus -> $ToStatus" -Arguments $args -Mutation
                 $mutationJson = ConvertFrom-PublishJson $mutationResult.StdOut 'Project status mutation'
@@ -630,7 +690,8 @@ try {
                 $args = @('issue','comment',[string]$IssueNumber,'--repo',[string]$script:publishConfig.Repository,'--body-file',$resolvedBodyPath)
             }
             $verifiedComment = $null
-            if ($null -ne $script:publishFixture) { [void](Assert-PublishAuthenticatedActor -ImmediatelyBeforeMutation) }
+            $script:publicationContract = $contract
+            if ($null -ne $script:publishFixture) { Assert-PublishMutationBoundary }
             if ($null -eq $script:publishFixture) {
                 $commentResult = Invoke-PublishGh -Operation "$CommentTarget comment" -Arguments $args -Mutation
                 $commentUrl = $commentResult.StdOut.Trim()
@@ -689,7 +750,8 @@ try {
             # preflight. A branch move at the same name now fails before gh can
             # create a PR for a head that was not the Host-validated commit.
             $liveRemoteBranch = Assert-LiveRemoteBranchPin -Name $Branch -ImmediatelyBeforeMutation
-            if ($null -ne $script:publishFixture) { [void](Assert-PublishAuthenticatedActor -ImmediatelyBeforeMutation) }
+            $script:publicationContract = $contract
+            if ($null -ne $script:publishFixture) { Assert-PublishMutationBoundary }
             if ($null -eq $script:publishFixture) {
                 $created = Invoke-PublishGh -Operation 'Create Draft PR' -Arguments $args -Mutation; $createdUrl = $created.StdOut.Trim()
                 if ($createdUrl -notmatch '^https://github\.com/DongGyunLeeeee/sashimi-boy-unity/pull/(?<number>\d+)$') { throw 'Draft PR creation did not return an exact repository PR URL.' }

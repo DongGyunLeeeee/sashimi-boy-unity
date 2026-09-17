@@ -131,6 +131,19 @@ checks remain Pending Manual Verification and do not block an automated
 
 ## Findings and transition
 
+- Separate demonstrated defects, pending human checks, infrastructure failures,
+  and unverified concerns. A severity label without the current requirement,
+  precise location, expected/actual behavior, and observed evidence or a
+  deterministic code path cannot return an item to Developer. Lack of human
+  verification is not evidence of a defect. An incomplete automated review
+  stays in Review and must not claim PASS.
+- Report every supported blocking finding in one handoff, so Developer can
+  address the complete review. Use the latest Owner Decision and current head;
+  do not re-open a superseded finding or invent additional acceptance criteria.
+- The Windows Host schema and its equivalent, strictly bounded Unity-default
+  exception are documented in `Docs/HostAutomation/REVIEW_DECISIONS.md` and
+  `WORKFLOW.md`. The legacy temporary-integration wrapper keeps its existing
+  root/marker contract.
 - Report findings with severity, evidence, affected file or behavior, and a
   reproducible check.
 - If any Blocker or Major remains, first post the focused finding and retain its
@@ -145,8 +158,8 @@ checks remain Pending Manual Verification and do not block an automated
 - If automated verification passes with no Blocker or Major, post the exact
   human verification checklist and required evidence, then use the status tool
   for `Review -> Verification`.
-- A Minor finding does not block Verification unless it is explicitly marked
-  as a merge gate.
+- A Minor finding does not block Verification. A demonstrated violation of an
+  explicit acceptance/merge gate is at least Major, with the required evidence.
 
 Never merge the PR. The owner performs final verification, merge, Issue close,
 and `Done`.

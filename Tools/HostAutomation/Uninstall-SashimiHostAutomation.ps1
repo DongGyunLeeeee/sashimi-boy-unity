@@ -180,6 +180,9 @@ try {
         $result.TaskFound = $null
     }
     else {
+        if ([Environment]::GetEnvironmentVariable('SASHIMI_BOY_HOST_AUTOMATION_TEST_HARNESS', 'Process') -ceq '1') {
+            throw 'FIXTURE_LIVE_BOUNDARY_REFUSED: live scheduler access is prohibited in the uninstaller harness.'
+        }
         Assert-UninstallerTrustedPowerShellState -ScheduledTasks
         $task = ScheduledTasks\Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
         $result.TaskFound = $null -ne $task

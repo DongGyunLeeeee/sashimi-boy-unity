@@ -51,6 +51,8 @@ param(
 
     [string]$CancellationMarkerPath,
 
+    [string]$OwnedProcessRecordPath,
+
     [switch]$DryRun
 )
 
@@ -601,6 +603,8 @@ function Invoke-AdapterProcess {
     $parameters.ClearEnvironment = $true
     $parameters.PreserveRawOutputInMemory = $true
     $parameters.CodexWorkspacePath = $WorkingDirectory
+    $parameters.OwnedProcessRecordPath = $script:adapterLedgerPath
+    $parameters.RequireKillOnCloseJob = $true
     if (-not [string]::IsNullOrWhiteSpace($CancellationMarkerPath) -and
         $runner.Parameters.ContainsKey('CancellationMarkerPath')) {
         $parameters.CancellationMarkerPath = $CancellationMarkerPath
@@ -610,6 +614,10 @@ function Invoke-AdapterProcess {
     }
 
     $processResult = Invoke-SashimiHostProcess @parameters
+    if (-not [bool]$processResult.TerminationConfirmed -or
+        -not [bool]$processResult.KillOnCloseJobAssigned) {
+        throw 'Codex stage process termination was not confirmed; output is not publishable.'
+    }
     $rawStdOut = [string](Get-AdapterProperty -Object $processResult -Names @('UnredactedStdOut') -DefaultValue '')
     $rawStdErr = [string](Get-AdapterProperty -Object $processResult -Names @('UnredactedStdErr') -DefaultValue '')
     if ($null -eq $processResult.PSObject.Properties['UnredactedStdOut'] -or
@@ -801,7 +809,7 @@ function New-CodexResultSchema {
             'pullRequestNumber', 'headSha', 'issueValidationId', 'outcome', 'summary',
             'changedFiles', 'findings', 'manualVerification')
         properties = [ordered]@{
-            schemaVersion = [ordered]@{ type = 'integer'; enum = @(1) }
+            schemaVersion = [ordered]@{ type = 'integer'; enum = @($(if ($ExpectedRole -ceq 'Reviewer') { 2 } else { 1 })) }
             runId = [ordered]@{ type = 'string'; enum = @($ExpectedRunId) }
             role = [ordered]@{ type = 'string'; enum = @($ExpectedRole) }
             mode = [ordered]@{ type = 'string'; enum = @($ExpectedMode) }
@@ -825,7 +833,7 @@ function New-CodexResultSchema {
             }
             findings = [ordered]@{
                 type = 'array'
-                items = [ordered]@{
+                items = if ($ExpectedRole -ceq 'Reviewer') { Get-SashimiReviewFindingSchema } else { [ordered]@{
                     type = 'object'
                     additionalProperties = $false
                     required = @('severity', 'title', 'evidence')
@@ -834,7 +842,7 @@ function New-CodexResultSchema {
                         title = [ordered]@{ type = 'string' }
                         evidence = [ordered]@{ type = 'string' }
                     }
-                }
+                } }
             }
             manualVerification = [ordered]@{
                 type = 'array'
@@ -1172,7 +1180,8 @@ function Assert-CodexResultContract {
             -HostMetadata ([ordered]@{ count = $unexpected.Count }) `
             -UntrustedText ([ordered]@{ propertyNames = [string]::Join("`n", [string[]]$unexpected) }))
     }
-    if ([int]$ResultObject.schemaVersion -ne 1 -or
+    $expectedSchemaVersion = if ($Role -ceq 'Reviewer') { 2 } else { 1 }
+    if ([int]$ResultObject.schemaVersion -ne $expectedSchemaVersion -or
         [string]$ResultObject.runId -cne $RunId -or
         [string]$ResultObject.role -cne $Role -or
         [string]$ResultObject.mode -cne $Mode -or
@@ -1239,6 +1248,11 @@ function Assert-CodexResultContract {
         }
     }
     foreach ($finding in @($ResultObject.findings)) {
+        if ($Role -ceq 'Reviewer') {
+            try { Assert-SashimiReviewFinding $finding }
+            catch { throw (New-CodexContentFreeDiagnostic -Code 'CODEX_RESULT_REVIEW_EVIDENCE_INVALID') }
+            continue
+        }
         $findingNames = @($finding.PSObject.Properties.Name)
         if ($findingNames.Count -ne 3 -or
             $findingNames -cnotcontains 'severity' -or
@@ -1342,6 +1356,9 @@ try {
 
     $normalizedRepository = [IO.Path]::GetFullPath($RepositoryPath)
     $normalizedArtifacts = [IO.Path]::GetFullPath($ArtifactsPath)
+    $script:adapterLedgerPath = if ([string]::IsNullOrWhiteSpace($OwnedProcessRecordPath)) {
+        Join-Path (Split-Path -Parent $normalizedArtifacts) 'OwnedCodexPids.json'
+    } else { ConvertTo-SashimiPath -Path $OwnedProcessRecordPath -AllowMissing -Lexical }
     $normalizedCancellationMarker = if ([string]::IsNullOrWhiteSpace($CancellationMarkerPath)) {
         ''
     }

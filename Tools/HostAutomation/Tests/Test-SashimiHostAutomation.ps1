@@ -34,6 +34,7 @@ $script:ownedTemporaryRoot = $false
 $script:fixtureInvocations = [Collections.Generic.List[object]]::new()
 $script:systemMutationSentinels = [Collections.Generic.List[string]]::new()
 $script:mutationAudit = $null
+$script:m2Rows = [Collections.Generic.List[object]]::new()
 $previousHarnessMode = [Environment]::GetEnvironmentVariable('SASHIMI_BOY_HOST_AUTOMATION_TEST_HARNESS', 'Process')
 
 function Assert-HostTest {
@@ -77,6 +78,46 @@ function Get-HostTestFunctionScriptBlock {
     $body=[string]$matches[0].Body.Extent.Text
     if ($body.Length -lt 2 -or $body[0] -ne '{' -or $body[$body.Length-1] -ne '}') { throw "Production function '$FunctionName' has an invalid AST body." }
     return [scriptblock]::Create($body.Substring(1,$body.Length-2))
+}
+
+function Get-HostFixtureInstalledGitLaunchMatches {
+    [CmdletBinding()]
+    param([Parameter(Mandatory = $true)][AllowEmptyString()][string]$Source)
+
+    # Inspect the command owning -FilePath, not a substring in the entire
+    # source. Calling the pre-launch refusal guard is not launching a process.
+    # This is a source regression check, NOT the executable security boundary.
+    $tokens = $null
+    $errors = $null
+    $ast = [Management.Automation.Language.Parser]::ParseInput($Source, [ref]$tokens, [ref]$errors)
+    if (@($errors).Count -ne 0) { throw 'Fixture launch audit received invalid PowerShell source.' }
+    $parameters = @($ast.FindAll({
+                param($node)
+                $node -is [Management.Automation.Language.CommandParameterAst] -and
+                    $node.ParameterName -ieq 'FilePath'
+            }, $true))
+    $installedTargetPattern = '(?i)^(?:\$gitCommand(?:\.Source)?\b|["'']C:\\Program Files\\Git\\)'
+    foreach ($parameter in $parameters) {
+        $command = $parameter.Parent
+        if ($command -isnot [Management.Automation.Language.CommandAst]) { continue }
+        if ($command.GetCommandName() -ceq 'Assert-SashimiFixtureExecutableBoundary') { continue }
+        $argument = $parameter.Argument
+        if ($null -eq $argument) {
+            $elements = @($command.CommandElements)
+            for ($index = 0; $index -lt ($elements.Count - 1); $index++) {
+                if ([object]::ReferenceEquals($elements[$index], $parameter)) {
+                    $argument = $elements[$index + 1]
+                    break
+                }
+            }
+        }
+        if ($null -ne $argument -and $argument.Extent.Text.Trim() -match $installedTargetPattern) {
+            [pscustomobject]@{
+                Line = $command.Extent.StartLineNumber
+                Command = [string]$command.GetCommandName()
+            }
+        }
+    }
 }
 
 function Invoke-HostTestCase {
@@ -170,6 +211,45 @@ function Invoke-HostTestScript {
         -WorkingDirectory $RepositoryRoot `
         -TimeoutSeconds $TimeoutSeconds `
         -Environment $childEnvironment
+}
+
+function New-HostFixtureCompilationPlan {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$Root,
+        [Parameter(Mandatory)][string]$SourcePath,
+        [Parameter(Mandatory)][string]$OutputPath
+    )
+    $compilerPath = 'C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe'
+    if (-not (Test-Path -LiteralPath $compilerPath -PathType Leaf)) {
+        $compilerPath = 'C:\Windows\Microsoft.NET\Framework\v4.0.30319\csc.exe'
+    }
+    if (-not (Test-Path -LiteralPath $compilerPath -PathType Leaf)) {
+        throw 'The Windows Framework C# compiler needed to build fixture adapters is missing.'
+    }
+    $compilerDirectory = Split-Path -Parent $compilerPath
+    $arguments = @('/nologo','/noconfig','/nostdlib+','/target:exe',('/out:' + $OutputPath))
+    foreach ($name in @('mscorlib.dll','System.dll','System.Core.dll')) {
+        $arguments += '/reference:' + (Join-Path $compilerDirectory $name)
+    }
+    $arguments += $SourcePath
+    return [pscustomobject]@{ FilePath=$compilerPath; Arguments=$arguments; WorkingDirectory=$Root }
+}
+
+function Invoke-HostFixtureCompilation {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$Root,
+        [Parameter(Mandatory)][string]$SourcePath,
+        [Parameter(Mandatory)][string]$OutputPath
+    )
+    $plan = New-HostFixtureCompilationPlan -Root $Root -SourcePath $SourcePath -OutputPath $OutputPath
+    $script:fixtureInvocations.Add([pscustomobject]@{
+        Kind='FixtureCompiler'; Source=[IO.Path]::GetFileName($SourcePath); Output=[IO.Path]::GetFileName($OutputPath)
+    })
+    # Deliberately use the real pre-launch guard and lease, not direct &/Start-Process.
+    return Invoke-SashimiHostProcess -FilePath $plan.FilePath -ArgumentList $plan.Arguments `
+        -WorkingDirectory $plan.WorkingDirectory -Kind Generic -TimeoutSeconds 30
 }
 
 function New-HostFakeToolAdapters {
@@ -550,6 +630,13 @@ public static class SashimiHostFakeTool
             Console.Write("{\"data\":{\"repository\":{\"pullRequest\":{\"reviews\":{\"totalCount\":0,\"nodes\":[],\"pageInfo\":{\"hasNextPage\":false,\"endCursor\":null}}}}}}");
             return 0;
         }
+        if (args.Length > 1 && args[0] == "api" && args[1].EndsWith("/git/ref/heads/main", StringComparison.Ordinal))
+        {
+            string sha = Env("SASHIMI_FAKE_GIT_MAIN_SHA");
+            if (String.IsNullOrWhiteSpace(sha)) sha = new string('1', 40);
+            Console.Write("{\"ref\":\"refs/heads/main\",\"object\":{\"type\":\"commit\",\"sha\":" + JsonString(sha) + "}}");
+            return 0;
+        }
         if (query.Contains("HostPublishContract"))
         {
             string statusPath = Env("SASHIMI_FAKE_STATUS_STATE");
@@ -578,6 +665,30 @@ public static class SashimiHostFakeTool
         throw new InvalidOperationException("Unexpected fake gh invocation: " + String.Join(" ", args));
     }
 
+    private static int WriteFixtureEnvironment(string tool, string[] args)
+    {
+        WriteAudit(tool, args, false);
+        string[] names = new[] {
+            "PATH","GIT_CONFIG_NOSYSTEM","GIT_CONFIG_SYSTEM","GIT_CONFIG_GLOBAL",
+            "GIT_DIR","GIT_WORK_TREE","GIT_INDEX_FILE","GIT_OBJECT_DIRECTORY","GIT_EXEC_PATH",
+            "GIT_CONFIG_COUNT","GIT_CONFIG_KEY_0","GIT_CONFIG_VALUE_0","GIT_ASKPASS","GIT_SSH_COMMAND",
+            "GIT_EDITOR","GIT_PAGER","GIT_EXTERNAL_DIFF","GIT_LFS_SKIP_SMUDGE","GIT_TERMINAL_PROMPT","GIT_OPTIONAL_LOCKS",
+            "GCM_INTERACTIVE","SSH_ASKPASS","HTTPS_PROXY","GH_HOST","GH_CONFIG_DIR",
+            "GH_DEBUG","GH_PAGER","GH_EDITOR","GH_BROWSER","GH_PROMPT_DISABLED","GH_FORCE_TTY"
+        };
+        var fields = names.Select(name => JsonString(name) + ":" + JsonString(Env(name))).ToList();
+        int count;
+        if (!Int32.TryParse(Env("GIT_CONFIG_COUNT"), out count)) count = 0;
+        if (count < 0 || count > 256) throw new InvalidOperationException("Fixture configuration count is outside its bound.");
+        string[] pairs = Enumerable.Range(0, count).Select(index =>
+            JsonString(Env("GIT_CONFIG_KEY_" + index.ToString()) + "=" + Env("GIT_CONFIG_VALUE_" + index.ToString()))).ToArray();
+        fields.Add("\"GitConfigPairs\":[" + String.Join(",", pairs) + "]");
+        bool authAbsent = String.IsNullOrEmpty(Env("GH_ENTERPRISE_TOKEN")) && String.IsNullOrEmpty(Env("GITHUB_TOKEN"));
+        fields.Add("\"GitHubAuthInputsAbsent\":" + (authAbsent ? "true" : "false"));
+        Console.WriteLine("{" + String.Join(",", fields.ToArray()) + "}");
+        return 0;
+    }
+
     public static int Main(string[] args)
     {
         Console.OutputEncoding = new UTF8Encoding(false);
@@ -585,6 +696,8 @@ public static class SashimiHostFakeTool
         string name = Path.GetFileNameWithoutExtension(executable).ToLowerInvariant();
         try
         {
+            if (args.Length == 1 && String.Equals(args[0], "--fixture-environment", StringComparison.Ordinal))
+                return WriteFixtureEnvironment(name.Contains("gh") ? "gh" : "git", args);
             return name.Contains("gh") ? RunGh(args) : RunGit(args, name.Contains("lfs"));
         }
         catch (Exception error)
@@ -597,14 +710,7 @@ public static class SashimiHostFakeTool
 '@
     $sourcePath = Join-Path $Root 'SashimiHostFakeTool.cs'
     Write-HostTestFile -Path $sourcePath -Content $source
-    $compilerPath = 'C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe'
-    if (-not (Test-Path -LiteralPath $compilerPath -PathType Leaf)) {
-        $compilerPath = 'C:\Windows\Microsoft.NET\Framework\v4.0.30319\csc.exe'
-    }
-    if (-not (Test-Path -LiteralPath $compilerPath -PathType Leaf)) {
-        throw 'The Windows .NET Framework C# compiler required for fake executable adapters is missing.'
-    }
-    $compile = Invoke-SashimiHostProcess -FilePath $compilerPath -ArgumentList @('/nologo', '/target:exe', "/out:$assemblyPath", $sourcePath) -WorkingDirectory $Root -TimeoutSeconds 30
+    $compile = Invoke-HostFixtureCompilation -Root $Root -SourcePath $sourcePath -OutputPath $assemblyPath
     if (-not $compile.Succeeded -or -not (Test-Path -LiteralPath $assemblyPath -PathType Leaf)) {
         throw "Unable to compile fake executable adapters: $($compile.StdErr) $($compile.StdOut)"
     }
@@ -792,6 +898,16 @@ public static class SashimiFakeCodex
         }
         Audit(args);
         DetectRepositoryCodexState();
+        string functionalRoot = Path.GetDirectoryName(Directory.GetCurrentDirectory());
+        if (Path.GetFileName(functionalRoot).StartsWith("SashimiBoyFunctionalSmoke-", StringComparison.Ordinal))
+        {
+            string ledger = File.ReadAllText(Path.Combine(functionalRoot, "OwnedHostPids.json"));
+            using (Process current = Process.GetCurrentProcess())
+            {
+                if (!ledger.Contains("\"Id\":" + current.Id.ToString()) ||
+                    !ledger.Contains(current.StartTime.ToUniversalTime().ToString("o"))) return 95;
+            }
+        }
         bool shellDisabled = HasDisabledFeature(args, "shell_tool") &&
             HasDisabledFeature(args, "unified_exec");
         if (HasPoisonedTransport())
@@ -814,6 +930,19 @@ public static class SashimiFakeCodex
         if (!Has(args, "exec")) { Console.Error.WriteLine("unexpected fake Codex invocation"); return 92; }
 
         Console.In.ReadToEnd();
+        string smokeFixture = Path.Combine(Directory.GetCurrentDirectory(), "functional-smoke.fixture.json");
+        if (File.Exists(smokeFixture))
+        {
+            string smokeRoot = Path.GetDirectoryName(Directory.GetCurrentDirectory());
+            if (!Path.GetFileName(smokeRoot).StartsWith("SashimiBoyFunctionalSmoke-", StringComparison.Ordinal) ||
+                !File.Exists(Path.Combine(smokeRoot, ".functional-smoke-owner"))) return 94;
+            string smokeResult = File.ReadAllText(smokeFixture, new UTF8Encoding(false));
+            if (smokeResult.Contains("\"role\":\"Developer\""))
+                File.WriteAllText(Path.Combine(Directory.GetCurrentDirectory(), "Example.txt"), "value=2\n", new UTF8Encoding(false));
+            Console.WriteLine("{\"type\":\"item.completed\",\"item\":{\"id\":\"smoke-result\",\"type\":\"agent_message\",\"text\":" + JsonString(smokeResult) + "}}");
+            Console.WriteLine("{\"type\":\"turn.completed\"}");
+            return 0;
+        }
         string maliciousPath = Sibling(".malicious-jsonl");
         if (File.Exists(maliciousPath))
         {
@@ -832,11 +961,7 @@ public static class SashimiFakeCodex
 }
 '@
     Write-HostTestFile -Path $sourcePath -Content $source
-    $compilerPath = 'C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe'
-    if (-not (Test-Path -LiteralPath $compilerPath -PathType Leaf)) {
-        $compilerPath = 'C:\Windows\Microsoft.NET\Framework\v4.0.30319\csc.exe'
-    }
-    $compile = Invoke-SashimiHostProcess -FilePath $compilerPath -ArgumentList @('/nologo','/target:exe',"/out:$assemblyPath",$sourcePath) -WorkingDirectory $Root -TimeoutSeconds 30
+    $compile = Invoke-HostFixtureCompilation -Root $Root -SourcePath $sourcePath -OutputPath $assemblyPath
     if (-not $compile.Succeeded -or -not (Test-Path -LiteralPath $assemblyPath -PathType Leaf)) {
         throw "Unable to compile fake Codex adapter: $($compile.StdErr) $($compile.StdOut)"
     }
@@ -949,11 +1074,7 @@ public static class SashimiFakeUnityDescendant
 }
 '@
     Write-HostTestFile -Path $sourcePath -Content $source
-    $compilerPath = 'C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe'
-    if (-not (Test-Path -LiteralPath $compilerPath -PathType Leaf)) {
-        $compilerPath = 'C:\Windows\Microsoft.NET\Framework\v4.0.30319\csc.exe'
-    }
-    $compile = Invoke-SashimiHostProcess -FilePath $compilerPath -ArgumentList @('/nologo','/target:exe',"/out:$assemblyPath",$sourcePath) -WorkingDirectory $Root -TimeoutSeconds 30
+    $compile = Invoke-HostFixtureCompilation -Root $Root -SourcePath $sourcePath -OutputPath $assemblyPath
     if (-not $compile.Succeeded -or -not (Test-Path -LiteralPath $assemblyPath -PathType Leaf)) {
         throw "Unable to compile fake Unity descendant adapter: $($compile.StdErr) $($compile.StdOut)"
     }
@@ -995,7 +1116,7 @@ function New-HostTestConfig {
     if (-not [string]::IsNullOrWhiteSpace($GitHubCli)) { $config.GitHubCli = $GitHubCli }
     if (-not [string]::IsNullOrWhiteSpace($CodexExecutable)) { $config.CodexExecutable = $CodexExecutable }
     if (-not [string]::IsNullOrWhiteSpace($UnityExecutable)) { $config.UnityExecutable = $UnityExecutable }
-    $path = Join-Path $script:temporaryRoot 'Config.json'
+    $path = Join-Path $script:temporaryRoot ('Config.{0}.json' -f [Guid]::NewGuid().ToString('N'))
     if (-not [string]::IsNullOrWhiteSpace($GitExecutable) -or -not [string]::IsNullOrWhiteSpace($GitLfsExecutable) -or -not [string]::IsNullOrWhiteSpace($GitHubCli) -or
         -not [string]::IsNullOrWhiteSpace($CodexExecutable) -or -not [string]::IsNullOrWhiteSpace($UnityExecutable)) {
         # Every customized fixture is an immutable snapshot. Reusing one
@@ -1329,7 +1450,7 @@ function New-HostCodexResult {
         [AllowNull()][string]$IssueValidationId = $null
     )
     return [ordered]@{
-        schemaVersion = 1
+        schemaVersion = if ($Role -ceq 'Reviewer') { 2 } else { 1 }
         runId = $RunId
         role = $Role
         mode = $Mode
@@ -1609,6 +1730,7 @@ try {
             'Install-SashimiHostAutomation.ps1',
             'Uninstall-SashimiHostAutomation.ps1',
             'Test-SashimiHostAutomation.ps1',
+            'Test-SashimiCodexFunctionalSmoke.ps1',
             'Invoke-SashimiHostOrchestrator.ps1',
             'Get-SashimiProjectQueue.ps1',
             'Invoke-SashimiCodexExec.ps1',
@@ -1621,6 +1743,25 @@ try {
         foreach ($relative in $required) {
             Assert-HostTest (Test-Path -LiteralPath (Join-Path $hostRoot $relative) -PathType Leaf) "Required HostAutomation file is missing: $relative"
         }
+    }
+
+    Invoke-HostTestCase 'FunctionalSmokePlanAndFakeUseTheProductionAdapter' {
+        $smoke = Join-Path $hostRoot 'Test-SashimiCodexFunctionalSmoke.ps1'
+        $before = @(Get-HostFakeCodexAudit $script:fakeCodex.AuditPath).Count
+        $plan = Invoke-HostTestScript -ScriptPath $smoke -Parameters @{ ConfigPath=$script:fakeConfigPath }
+        $planResult = ConvertFrom-LastHostJson $plan.StdOut
+        Assert-HostTest ($plan.Succeeded -and $planResult.Success -and $planResult.Cleaned -and $planResult.Mode -ceq 'Plan') 'Functional smoke plan failed.'
+        Assert-HostTest (@(Get-HostFakeCodexAudit $script:fakeCodex.AuditPath).Count -eq $before) 'Functional plan launched Codex.'
+        $fake = Invoke-HostTestScript -ScriptPath $smoke -Parameters @{ ConfigPath=$script:fakeConfigPath; FixtureExecution=$true; TimeoutSeconds=10 } -TimeoutSeconds 60
+        $fakeResult = ConvertFrom-LastHostJson $fake.StdOut
+        Assert-HostTest ($fake.Succeeded -and $fakeResult.Success -and $fakeResult.Cleaned -and $fakeResult.DeveloperEdit -and $fakeResult.ReviewerReadOnly) "Functional fake harness failed: $($fakeResult.Error)"
+        Assert-HostTest ($fakeResult.RealCodexFunctionalSmoke -ceq 'NOT_RUN') 'Fake smoke claimed a real-model PASS.'
+        foreach ($stage in $fakeResult.Plans) {
+            Assert-HostTest (@($stage.Arguments) -ccontains 'shell_tool' -and @($stage.Arguments) -ccontains 'unified_exec' -and
+                @($stage.Arguments) -ccontains '--output-schema' -and $stage.Executed) 'Fake smoke bypassed production adapter flags.'
+        }
+        $refused = Invoke-HostTestScript -ScriptPath $smoke -Parameters @{ ConfigPath=$script:fakeConfigPath; RunRealCodex=$true }
+        Assert-HostTest (-not $refused.Succeeded -and $refused.StdOut -match 'prohibited in the fixture harness') 'Harness allowed real Codex opt-in.'
     }
 
     Invoke-HostTestCase 'PowerShell7ParserAcceptsEveryScript' {
@@ -1636,7 +1777,95 @@ try {
         }
     }
 
+    Invoke-HostTestCase 'FixtureCompilerBoundaryAcceptsOnlyTheOwnedBootstrapPlan' {
+        $source = Join-Path $script:temporaryRoot 'SashimiHostFakeTool.cs'
+        $output = Join-Path $script:temporaryRoot 'SashimiHostFakeTool.exe'
+        $plan = New-HostFixtureCompilationPlan -Root $script:temporaryRoot -SourcePath $source -OutputPath $output
+        Assert-SashimiFixtureExecutableBoundary -FilePath $plan.FilePath -Kind Generic `
+            -ArgumentList $plan.Arguments -WorkingDirectory $plan.WorkingDirectory
+        Assert-HostThrows {
+            Assert-SashimiFixtureExecutableBoundary -FilePath $plan.FilePath -Kind Generic
+        } 'FIXTURE_COMPILER_REFUSED'
+        Assert-HostThrows {
+            Assert-SashimiFixtureExecutableBoundary -FilePath $plan.FilePath -Kind Git `
+                -ArgumentList $plan.Arguments -WorkingDirectory $plan.WorkingDirectory
+        } 'FIXTURE_LIVE_BOUNDARY_REFUSED'
+        $badArguments = @($plan.Arguments)
+        $badArguments[1] = '@unreviewed.rsp'
+        Assert-HostThrows {
+            Assert-SashimiFixtureExecutableBoundary -FilePath $plan.FilePath -Kind Generic `
+                -ArgumentList $badArguments -WorkingDirectory $plan.WorkingDirectory
+        } 'FIXTURE_COMPILER_REFUSED'
+        $badArguments = @($plan.Arguments)
+        $badArguments[4] = '/out:' + (Join-Path $RepositoryRoot 'SashimiHostFakeTool.exe')
+        Assert-HostThrows {
+            Assert-SashimiFixtureExecutableBoundary -FilePath $plan.FilePath -Kind Generic `
+                -ArgumentList $badArguments -WorkingDirectory $plan.WorkingDirectory
+        } 'FIXTURE_COMPILER_REFUSED'
+        $badArguments = @($plan.Arguments)
+        $badArguments[6] = '/reference:' + (Join-Path $script:temporaryRoot 'unreviewed.dll')
+        Assert-HostThrows {
+            Assert-SashimiFixtureExecutableBoundary -FilePath $plan.FilePath -Kind Generic `
+                -ArgumentList $badArguments -WorkingDirectory $plan.WorkingDirectory
+        } 'FIXTURE_COMPILER_REFUSED'
+        Assert-HostThrows {
+            Assert-SashimiFixtureExecutableBoundary -FilePath $plan.FilePath -Kind Generic `
+                -ArgumentList (@($plan.Arguments) + '/unsafe') -WorkingDirectory $plan.WorkingDirectory
+        } 'FIXTURE_COMPILER_REFUSED'
+        foreach ($name in @('SashimiHostFakeTool.exe','fake-git.exe','fake-lfs.exe','fake-gh.exe','fake-codex.exe')) {
+            Assert-HostTest (Test-Path -LiteralPath (Join-Path $script:temporaryRoot $name) -PathType Leaf) `
+                "Fixture bootstrap did not actually compile '$name'."
+        }
+        $probe = Invoke-SashimiHostProcess -FilePath $script:fakeTools.Git `
+            -ArgumentList @('--fixture-environment') -Kind Generic -TimeoutSeconds 10 `
+            -WorkingDirectory $script:temporaryRoot -Environment @{ SASHIMI_FAKE_TOOL_LOG=$script:fakeToolLogPath }
+        Assert-HostTest $probe.Succeeded 'Compiled fixture adapter could not execute its non-network environment probe.'
+        [void](ConvertFrom-LastHostJson $probe.StdOut)
+    }
+
+    Invoke-HostTestCase 'FixtureSourceAuditDistinguishesRefusalFromLaunch' {
+        # These snippets are parsed as DATA. Never execute them.
+        $guardOnly = @'
+Assert-HostThrows {
+    Assert-SashimiFixtureExecutableBoundary -FilePath 'C:\Program Files\Git\cmd\git.exe' -Kind Generic
+} 'FIXTURE_LIVE_BOUNDARY_REFUSED'
+'@
+        Assert-HostTest (@(Get-HostFixtureInstalledGitLaunchMatches -Source $guardOnly).Count -eq 0) `
+            'The source audit mistakes a refusal assertion for a process launch.'
+        $launchSamples = @(
+            "Invoke-SashimiHostProcess -FilePath 'C:\Program Files\Git\cmd\git.exe' -Kind Git",
+            "Start-Process -FilePath 'C:\Program Files\Git\cmd\git.exe'",
+            "Microsoft.PowerShell.Management\Start-Process -FilePath:'C:\Program Files\Git\cmd\git.exe'",
+            'Invoke-SashimiHostProcess -FilePath $gitCommand.Source -Kind Git',
+            'Invoke-SashimiHostProcess -FilePath $gitCommand -Kind Git',
+            "Invoke-SashimiHostProcess -FilePath 'C:\Program Files\Git\cmd\git.exe' -ArgumentList 'Assert-SashimiFixtureExecutableBoundary'")
+        foreach ($sample in $launchSamples) {
+            Assert-HostTest (@(Get-HostFixtureInstalledGitLaunchMatches -Source $sample).Count -eq 1) `
+                'The source audit missed an installed-Git process launch.'
+        }
+        $nestedLaunch = @'
+Assert-SashimiFixtureExecutableBoundary -FilePath 'C:\Program Files\Git\cmd\git.exe' -ArgumentList (& {
+    Invoke-SashimiHostProcess -FilePath 'C:\Program Files\Git\cmd\git.exe' -Kind Git
+})
+'@
+        Assert-HostTest (@(Get-HostFixtureInstalledGitLaunchMatches -Source $nestedLaunch).Count -eq 1) `
+            'Excluding the guard must not hide a nested process launch in its argument.'
+        $fakeLaunch = 'Invoke-SashimiHostProcess -FilePath $script:fakeTools.Git -Kind Git'
+        Assert-HostTest (@(Get-HostFixtureInstalledGitLaunchMatches -Source $fakeLaunch).Count -eq 0) `
+            'The source audit rejected the owned fake-tool variable.'
+        Assert-HostThrows { Get-HostFixtureInstalledGitLaunchMatches -Source 'if (' } 'invalid PowerShell'
+    }
+
     Invoke-HostTestCase 'CustomizedFixtureConfigurationsAreDistinctImmutableSnapshots' {
+        foreach ($kind in @('Git','GitHub','Codex','Unity','Generic')) {
+            Assert-HostThrows {
+                Assert-SashimiFixtureExecutableBoundary -FilePath $PowerShellPath -Kind $kind
+                if ($kind -ceq 'Generic') {
+                    Assert-SashimiFixtureExecutableBoundary -FilePath 'C:\Program Files\Git\cmd\git.exe' -Kind $kind
+                }
+            } 'FIXTURE_LIVE_BOUNDARY_REFUSED'
+        }
+        Assert-SashimiFixtureExecutableBoundary -FilePath $script:fakeTools.Git -Kind Git
         $sharedPath = [IO.Path]::GetFullPath($script:fakeConfigPath)
         $sharedHashBefore = (Get-FileHash -LiteralPath $sharedPath -Algorithm SHA256).Hash
         $sharedBefore = Read-SashimiJsonFile $sharedPath
@@ -1967,6 +2196,16 @@ try {
             '"IssueValidations": {"fixture-validation":' + $duplicateValidationDefinition + ',"Fixture-Validation":' + $duplicateValidationDefinition + '}')
         $cases = @(
             [pscustomobject]@{
+                Name='escaped-nested-credential'
+                Text=$secretArgumentText.Replace('--api-key','--label').Replace('opaque-fixture-value','\u0073\u006b-abcdefghijklmno')
+                Pattern='recognizable credential'
+            },
+            [pscustomobject]@{
+                Name='escaped-credential-protected-pattern'
+                Text=$sourceText.Replace('Assets/**/*.fbx','Assets/**/*.fbx", "\u0067hp_abcdefghijklmno')
+                Pattern='recognizable credential'
+            },
+            [pscustomobject]@{
                 Name='unknown'
                 Text=$sourceText.Replace('"SchemaVersion": 1,', '"SchemaVersion": 1, "UnexpectedTopLevel": true,')
                 Pattern='unknown|schema'
@@ -2027,10 +2266,30 @@ try {
                 Pattern='ExpectedUnityVersion.*exactly'
             }
         )
+        $cases += @(
+            [pscustomobject]@{Name='escaped-equivalent-key'; Text=$sourceText.Replace('"SchemaVersion": 1,','"SchemaVersion": 1, "\u0053chemaVersion": 1,'); Pattern='duplicate'},
+            [pscustomobject]@{Name='escaped-case-key'; Text=$sourceText.Replace('"CodexSeconds": 3600,','"CodexSeconds": 3600, "\u0063odexSeconds": 3600,'); Pattern='duplicate'},
+            [pscustomobject]@{Name='number-as-string'; Text=$sourceText.Replace('"ArtifactRetentionDays": 14','"ArtifactRetentionDays": "14"'); Pattern='JSON number'},
+            [pscustomobject]@{Name='boolean-as-string'; Text=$sourceText.Replace('"WakeToRun": true','"WakeToRun": "true"'); Pattern='JSON boolean'},
+            [pscustomobject]@{Name='fractional-integer'; Text=$sourceText.Replace('"MaximumAttempts": 3','"MaximumAttempts": 1.5'); Pattern='integer'},
+            [pscustomobject]@{Name='null-object'; Text=$sourceText.Replace('"IssueValidations": {}','"IssueValidations": null'); Pattern='JSON object'},
+            [pscustomobject]@{Name='wrong-array-element'; Text=$secretArgumentText.Replace('"--api-key"','12'); Pattern='JSON string'},
+            [pscustomobject]@{Name='retention-range'; Text=$sourceText.Replace('"ArtifactRetentionDays": 14','"ArtifactRetentionDays": 366'); Pattern='between'},
+            [pscustomobject]@{Name='timeout-range'; Text=$sourceText.Replace('"CodexSeconds": 3600','"CodexSeconds": 0'); Pattern='between'},
+            [pscustomobject]@{Name='retry-range'; Text=$sourceText.Replace('"CooldownSeconds": 60','"CooldownSeconds": -1'); Pattern='bounds'},
+            [pscustomobject]@{Name='immutable-network'; Text=$sourceText.Replace('"CodexWorkspaceWriteNetworkAccess": false','"CodexWorkspaceWriteNetworkAccess": true'); Pattern='remain false'},
+            [pscustomobject]@{Name='immutable-protection'; Text=$sourceText.Replace('Assets/**/*.fbx','Assets/**/*.obj'); Pattern='protection'},
+            [pscustomobject]@{Name='secret-author'; Text=$sourceText.Replace('"GitAuthorName": "DongGyunLeeeee"','"GitAuthorName": "ghp_M1Synthetic123456"'); Pattern='recognizable credential'},
+            [pscustomobject]@{Name='escaped-secret-key'; Text=$sourceText.Replace('"IssueValidations": {}','"IssueValidations": {"\u0067hp_M1Synthetic123456": {}}'); Pattern='recognizable credential'},
+            [pscustomobject]@{Name='malformed-secret-json'; Text=$sourceText.Replace('"IssueValidations": {}','"IssueValidations": ghp_M1Synthetic123456'); Pattern='recognizable credential'}
+        )
         foreach ($case in $cases) {
             $path = Join-Path $script:temporaryRoot ("config-schema-$($case.Name).json")
             Write-HostTestFile $path ([string]$case.Text)
-            Assert-HostThrows { Import-SashimiHostConfig $path | Out-Null } ([string]$case.Pattern)
+            $runtimeError = ''
+            try { Import-SashimiHostConfig $path | Out-Null } catch { $runtimeError=$_.Exception.Message }
+            Assert-HostTest ($runtimeError -match $case.Pattern) "Runtime failed to reject $($case.Name)."
+            Assert-HostTest ($runtimeError -notmatch 'M1Synthetic123456|abcdefghijklmno|opaque-private-credential-value') 'Runtime diagnostic retained synthetic credential content.'
 
             # The elevated installer owns a separate parser and may not load
             # Common from the source checkout. Exercise that real entry point
@@ -2041,15 +2300,79 @@ try {
             $installer = Invoke-HostTestScript -ScriptPath (Join-Path $hostRoot 'Install-SashimiHostAutomation.ps1') -Parameters @{
                 ConfigPath=$path; OrchestratorPath=(Join-Path $hostRoot 'Invoke-SashimiHostOrchestrator.ps1')
                 StartBoundary='2026-09-05T09:00:00'; InstallRootFixturePath=$installRoot
-                SchedulerFixturePath=$schedulerFixture; DryRun=$true
+                SchedulerFixturePath=$schedulerFixture
+                ExpectedInstallerSha256=(Get-FileHash -LiteralPath (Join-Path $hostRoot 'Install-SashimiHostAutomation.ps1') -Algorithm SHA256).Hash.ToLowerInvariant()
+                ExpectedBundleId=('0' * 64)
             } -TimeoutSeconds 60
             Assert-HostTest ($installer.ExitCode -ne 0) "Installer accepted invalid $($case.Name) configuration."
             $installerResult = ConvertFrom-LastHostJson $installer.StdOut
+            Assert-HostTest (($installer.StdOut + $installer.StdErr) -notmatch 'M1Synthetic123456|abcdefghijklmno|opaque-private-credential-value') 'Installer diagnostics retained synthetic credential content.'
             Assert-HostTest (-not [bool]$installerResult.Success -and [string]$installerResult.Error -match ([string]$case.Pattern)) `
                 "Installer did not reject $($case.Name) through its exact-schema gate: $($installerResult.Error)"
             Assert-HostTest (-not (Test-Path -LiteralPath $installRoot) -and -not (Test-Path -LiteralPath $schedulerFixture)) `
                 "Invalid $($case.Name) configuration reached an installer mutation boundary."
         }
+    }
+
+    Invoke-HostTestCase 'ConfigurationCanonicalStagingMatchesRuntimeWithUnicodeCustomization' {
+        # Load only the production declarations, never the installer entry body.
+        $installerPath = Join-Path $hostRoot 'Install-SashimiHostAutomation.ps1'
+        $installerSource = [IO.File]::ReadAllText($installerPath)
+        $entryOffset = $installerSource.IndexOf('$result = [ordered]@{', [StringComparison]::Ordinal)
+        Assert-HostTest ($entryOffset -gt 0) 'Installer declaration boundary is missing.'
+        . ([scriptblock]::Create($installerSource.Substring(0,$entryOffset))) -ConfigPath $script:fakeConfigPath
+        $InstallRootFixturePath = Join-Path $script:temporaryRoot 'm1-canonical-install'
+        $SchedulerFixturePath = Join-Path $script:temporaryRoot 'm1-canonical-scheduler.jsonl'
+        Initialize-InstallerHarnessBoundaries
+        $aclCalls = [Collections.Generic.List[string]]::new()
+        function Set-InstallerProtectedAcl {
+            param($Path,$UserSid,[switch]$Container)
+            [void](Get-InstallerHarnessFixtureLocation -Path $Path -Purpose 'M1 fake ACL write')
+            $aclCalls.Add($Path)
+        }
+        function Assert-InstallerProtectedAcl {
+            param($Path,$UserSid)
+            [void](Get-InstallerHarnessFixtureLocation -Path $Path -Purpose 'M1 fake ACL read')
+        }
+        $sourceConfig = Read-SashimiJsonFile $script:fakeConfigPath
+        $sourceConfig.ArtifactRetentionDays = 30
+        $sourceConfig.Timeouts.GitSeconds = 123
+        $sourceConfig.Retry.CooldownSeconds = 0
+        $sourceConfig.IssueValidations | Add-Member -NotePropertyName 'm1-custom' -NotePropertyValue ([pscustomobject]@{
+            IssueNumber=52; UnityExecuteMethod='SashimiBoy.Tests.Runner.Execute'
+            Arguments=@('--label','한글 검증 Ω','C:\M1 자료\input.txt')
+            DeterminismPaths=@('Assets/생성/**'); ScreenshotPaths=@('Artifacts/미리보기.png')
+            PreviewPaths=@(); AllowedProtectedPathPatterns=@()
+        })
+        $sourcePath = Join-Path $script:temporaryRoot 'm1-custom-config.json'
+        $sourceText = ($sourceConfig | ConvertTo-Json -Depth 32) + "`n  "
+        Write-HostTestFile $sourcePath $sourceText
+        $runtimeConfig = Import-SashimiHostConfig $sourcePath
+        $installerConfig = Import-InstallerConfig $sourcePath
+        Assert-HostTest ((ConvertTo-InstallerJson (New-InstallerCanonicalConfigProjection $runtimeConfig)) -ceq (ConvertTo-InstallerJson $installerConfig)) 'Runtime and installer canonical values differ.'
+        $plan = New-InstallerBundlePlan -SourceRoot $hostRoot -SourceConfigPath $sourcePath -Config $installerConfig -InstallerBootstrapPath $installerPath
+        foreach ($directory in @($script:InstallRoot,$script:BundlesRoot,$script:CodexDistributionsRoot)) {
+            [void](Get-InstallerHarnessFixtureLocation -Path $directory -Purpose 'M1 staging root')
+            [void][IO.Directory]::CreateDirectory($directory)
+        }
+        $sid = [Security.Principal.SecurityIdentifier]::new('S-1-5-21-1000-1000-1000-1000')
+        [void](Install-InstallerCodexDistribution $plan.CodexDistribution $sid)
+        $bundleRoot = Join-Path $script:BundlesRoot $plan.BundleId
+        [void](Install-InstallerBundle $plan $bundleRoot $sid)
+        $stagedText = [IO.File]::ReadAllText((Join-Path $bundleRoot 'Config.json'))
+        Assert-HostTest ($stagedText -ceq ((ConvertTo-InstallerJson $plan.Config) + "`n") -and $stagedText -cne $sourceText) 'Staging copied raw config instead of canonical projection.'
+        $stagedRuntime = Import-SashimiHostConfig (Join-Path $bundleRoot 'Config.json')
+        Assert-HostTest ((ConvertTo-InstallerJson (New-InstallerCanonicalConfigProjection $stagedRuntime)) -ceq (ConvertTo-InstallerJson $plan.Config)) 'Runtime does not use the staged canonical values.'
+        Assert-HostTest ($stagedRuntime.IssueValidations.'m1-custom'.Arguments[1] -ceq '한글 검증 Ω' -and $stagedRuntime.IssueValidations.'m1-custom'.Arguments[2] -ceq 'C:\M1 자료\input.txt') 'Valid Unicode or Windows path was changed.'
+        Assert-HostTest ($aclCalls.Count -gt 0 -and -not (Test-Path -LiteralPath $SchedulerFixturePath)) 'Canonical staging missed fake ACL boundary or reached scheduler.'
+        Assert-HostTest (@($plan.Entries | Where-Object { $_.RelativePath -eq 'Config.json' -and $null -eq $_.Bytes -and $_.SourcePath -eq '' }).Count -eq 1) 'Raw source configuration is retained in staging entries.'
+        Assert-HostTest ($plan.SourceConfig.Sha256 -ceq (Get-FileHash -LiteralPath $sourcePath -Algorithm SHA256).Hash.ToLowerInvariant()) 'B5 raw source identity was lost.'
+        Import-SashimiHostConfig $script:fakeConfigPath | Out-Null
+    }
+
+    Invoke-HostTestCase 'M2ProductionTransactionFailureMatrixAndRecovery' {
+        . (Join-Path $PSScriptRoot 'M2.TransactionFixtures.ps1')
+        Invoke-HostM2TransactionRegression
     }
 
     Invoke-HostTestCase 'ProtectedManifestIdentityIncludesExactInstallerProvenance' {
@@ -2301,6 +2624,7 @@ if (`$lease.Acquired) { Exit-SashimiHostMutex `$lease }
     }
 
     Invoke-HostTestCase 'StalePullRequestPinFailsClosed' {
+        $invocationCountBefore = $script:fixtureInvocations.Count
         $pinned = [pscustomobject]@{
             Number = 5252; HeadSha = ('a' * 40); HeadRef = 'infra/fixture-5252'
             HeadRepository = 'DongGyunLeeeee/sashimi-boy-unity'; BaseRepository = 'DongGyunLeeeee/sashimi-boy-unity'
@@ -2313,7 +2637,7 @@ if (`$lease.Acquired) { Exit-SashimiHostMutex `$lease }
         $liveContent = $pinned.PSObject.Copy(); $liveContent.ContentSha256 = Get-SashimiPullRequestContentSha256 -Title 'Pinned title' -Body 'Edited body'
         $contentResult = Test-SashimiPinnedPullRequest $pinned $liveContent
         Assert-HostTest (-not $contentResult.Current -and [string]$contentResult.ChangedField -ceq 'ContentSha256') 'Stale PR title/body content was not detected.'
-        Assert-HostTest ($script:fixtureInvocations.Count -eq 0 -or @($script:fixtureInvocations | Where-Object Kind -ne 'PowerShellFixture').Count -eq 0) 'Stale-pin test attempted an external mutation.'
+        Assert-HostTest ($script:fixtureInvocations.Count -eq $invocationCountBefore) 'Stale-pin test attempted a process invocation.'
     }
 
     Invoke-HostTestCase 'StaleHeadCausesNoPushStatusOrCommentMutation' {
@@ -2604,6 +2928,66 @@ if (`$lease.Acquired) { Exit-SashimiHostMutex `$lease }
         Assert-HostTest (-not [bool]$lateJson.PinCurrent -and -not [bool]$lateJson.MutationAttempted -and
             @($lateJson.Commands | Where-Object Mutation).Count -eq 0) `
             'Late remote-branch drift reached the Draft PR mutation boundary.'
+    }
+
+    Invoke-HostTestCase 'PublisherRechecksEveryPinAfterAuthenticationBeforeMutation' {
+        $issue=5381; $pr=6381; $head='a' * 40; $main='1' * 40
+        $bodySha=Get-SashimiTextSha256 'Pinned issue acceptance criteria.'
+        $conversationSha=Get-SashimiConversationSha256 -Records @()
+        $contentSha=Get-SashimiPullRequestContentSha256 -Title 'Pinned PR' -Body 'Pinned change'
+        $run=New-SashimiRunWorkspace -RunRoot ([string](Import-SashimiHostConfig $script:configPath).RunRoot)
+        $bodyPath=Join-Path $run.ArtifactsPath 'Review.md'
+        Write-HostTestFile $bodyPath 'Confirmed review finding.'
+        $baseFixture=[ordered]@{
+            SchemaVersion=1; CurrentStatus='Review'; OpenPullRequestCount=1; OpenPullRequestNumbers=@($pr)
+            IssueUpdatedAt='2026-09-17T00:00:00Z'; IssueBodySha256=$bodySha; LiveMainSha=$main
+            LiveConversationSha256=$conversationSha
+            LivePullRequest=[ordered]@{
+                Number=$pr; State='OPEN'; IsDraft=$true; BaseRefName='main'
+                BaseRepository='DongGyunLeeeee/sashimi-boy-unity'; HeadRepository='DongGyunLeeeee/sashimi-boy-unity'
+                HeadRef='infra/fixture-5381'; HeadSha=$head; AuthorLogin='DongGyunLeeeee'
+                ContentSha256=$contentSha; Url="https://example.invalid/pull/$pr"
+            }
+        }
+        $cases=[ordered]@{
+            Stable=@{}; Main=@{LiveMainSha=('2' * 40)}; Status=@{CurrentStatus='Verification'}
+            Link=@{OpenPullRequestNumbers=@(6382)}; RemovedLink=@{OpenPullRequestCount=0;OpenPullRequestNumbers=@()}
+            IssueBody=@{IssueBodySha256=('2' * 64)}; UpdatedAt=@{IssueUpdatedAt='2026-09-17T01:00:00Z'}
+            Conversation=@{LiveConversationSha256=('3' * 64)}; Project=@{ProjectId='different-project'}
+            Field=@{StatusFieldId='different-field'}
+        }
+        foreach ($name in @('HeadSha','HeadRef','ContentSha256','HeadRepository','State','IsDraft')) {
+            $prCopy=($baseFixture.LivePullRequest | ConvertTo-Json | ConvertFrom-Json -AsHashtable)
+            $prCopy[$name]=switch ($name) {
+                HeadSha { 'b' * 40 }; HeadRef { 'infra/moved' }; ContentSha256 { '4' * 64 }
+                HeadRepository { 'someone/else' }; State { 'CLOSED' }; IsDraft { $false }
+            }
+            $cases[$name]=@{LivePullRequest=$prCopy}
+        }
+        foreach ($action in @('Comment','Transition')) {
+            foreach ($entry in $cases.GetEnumerator()) {
+                $fixture=($baseFixture | ConvertTo-Json -Depth 32 | ConvertFrom-Json -AsHashtable)
+                $fixture.BeforeMutationOverrides=$entry.Value
+                $fixturePath=Join-Path $script:temporaryRoot ("final-publish-$action-$($entry.Key).json")
+                Write-HostTestFile $fixturePath ($fixture | ConvertTo-Json -Depth 32)
+                $parameters=@{
+                    ConfigPath=$script:configPath; Action=$action; Role='Reviewer'; IssueNumber=$issue
+                    ProjectItemId='fixture-item-5381'; PullRequestNumber=$pr; PinnedHeadSha=$head
+                    PinnedHeadRef='infra/fixture-5381'; PinnedMainSha=$main; PinnedPullRequestContentSha256=$contentSha
+                    PinnedIssueUpdatedAt=$baseFixture.IssueUpdatedAt; PinnedIssueBodySha256=$bodySha
+                    PinnedConversationSha256=$conversationSha; FromStatus='Review'; ToStatus='In Progress'
+                    BodyPath=$bodyPath; FixturePath=$fixturePath
+                }
+                $execution=Invoke-HostTestScript -ScriptPath (Join-Path $hostRoot 'Publish-SashimiRunResult.ps1') -Parameters $parameters
+                $result=ConvertFrom-LastHostJson $execution.StdOut
+                if ($entry.Key -ceq 'Stable') {
+                    Assert-HostTest ($execution.ExitCode -eq 0 -and @($result.Commands | Where-Object Mutation).Count -eq 1) "Stable $action failed: $($result.Error)"
+                }
+                else {
+                    Assert-HostTest ($execution.ExitCode -ne 0 -and -not $result.MutationAttempted -and @($result.Commands | Where-Object Mutation).Count -eq 0) "Late $($entry.Key) drift reached $action."
+                }
+            }
+        }
     }
 
     Invoke-HostTestCase 'UnauthorizedAuthenticatedActorCausesNoGitHubMutation' {
@@ -3636,29 +4020,6 @@ wire_api = "responses"
     }
 
     Invoke-HostTestCase 'GitAndGitHubEnvironmentIsScrubbedBeforeHostOverrides' {
-        $probePath = Join-Path $script:temporaryRoot 'tool-environment-probe.ps1'
-        Write-HostTestFile $probePath @'
-$names = @(
-    'PATH','GIT_DIR','GIT_WORK_TREE','GIT_INDEX_FILE','GIT_OBJECT_DIRECTORY','GIT_EXEC_PATH',
-    'GIT_CONFIG_COUNT','GIT_CONFIG_KEY_0','GIT_CONFIG_VALUE_0','GIT_ASKPASS','GIT_SSH_COMMAND',
-    'GIT_EDITOR','GIT_PAGER','GIT_EXTERNAL_DIFF','GIT_LFS_SKIP_SMUDGE','GIT_TERMINAL_PROMPT','GIT_OPTIONAL_LOCKS',
-    'GCM_INTERACTIVE','SSH_ASKPASS','HTTPS_PROXY','GH_HOST','GH_CONFIG_DIR',
-    'GH_DEBUG','GH_PAGER','GH_EDITOR','GH_BROWSER','GH_PROMPT_DISABLED','GH_FORCE_TTY'
-)
-$result = [ordered]@{}
-foreach ($name in $names) { $result[$name] = [Environment]::GetEnvironmentVariable($name, 'Process') }
-$configPairs = [Collections.Generic.List[string]]::new()
-$configCount = [int]([Environment]::GetEnvironmentVariable('GIT_CONFIG_COUNT', 'Process') ?? '0')
-for ($index=0; $index -lt $configCount; $index++) {
-    $key = [Environment]::GetEnvironmentVariable("GIT_CONFIG_KEY_$index", 'Process')
-    $value = [Environment]::GetEnvironmentVariable("GIT_CONFIG_VALUE_$index", 'Process')
-    $configPairs.Add("$key=$value")
-}
-$result['GitConfigPairs'] = $configPairs.ToArray()
-$result['GitHubAuthInputsAbsent'] = [string]::IsNullOrEmpty([Environment]::GetEnvironmentVariable('GH_ENTERPRISE_TOKEN', 'Process')) -and
-    [string]::IsNullOrEmpty([Environment]::GetEnvironmentVariable('GITHUB_TOKEN', 'Process'))
-[Console]::Out.WriteLine(($result | ConvertTo-Json -Compress))
-'@
         $poisoned = [ordered]@{
             GIT_DIR='fixture-poison'; GIT_WORK_TREE='fixture-poison'; GIT_INDEX_FILE='fixture-poison'
             GIT_OBJECT_DIRECTORY='fixture-poison'; GIT_EXEC_PATH='fixture-poison'; GIT_CONFIG_COUNT='1'
@@ -3676,9 +4037,9 @@ $result['GitHubAuthInputsAbsent'] = [string]::IsNullOrEmpty([Environment]::GetEn
             [Environment]::SetEnvironmentVariable([string]$entry.Key, [string]$entry.Value, 'Process')
         }
         try {
-            $arguments = @('-NoLogo','-NoProfile','-NonInteractive','-File',$probePath)
-            $gitProbe = Invoke-SashimiHostProcess -FilePath $PowerShellPath -ArgumentList $arguments -Kind Git -TimeoutSeconds 30 -Environment @{
-                GIT_LFS_SKIP_SMUDGE='1'; GIT_TERMINAL_PROMPT='0'; GCM_INTERACTIVE='Never'
+            $arguments = @('--fixture-environment')
+            $gitProbe = Invoke-SashimiHostProcess -FilePath $script:fakeTools.Git -ArgumentList $arguments -Kind Git -TimeoutSeconds 30 -Environment @{
+                GIT_LFS_SKIP_SMUDGE='1'; GIT_TERMINAL_PROMPT='0'; GCM_INTERACTIVE='Never'; SASHIMI_FAKE_TOOL_LOG=$script:fakeToolLogPath
             }
             Assert-HostTest $gitProbe.Succeeded "Git environment probe failed: $($gitProbe.StdErr)"
             $gitEnvironment = ConvertFrom-LastHostJson $gitProbe.StdOut
@@ -3709,8 +4070,8 @@ $result['GitHubAuthInputsAbsent'] = [string]::IsNullOrEmpty([Environment]::GetEn
                 'Git fixed Host overrides did not win over poisoned inherited values.'
             Assert-HostTest (-not [string]::IsNullOrWhiteSpace([string]$gitEnvironment.PATH)) 'Git lost PATH needed for its installed helpers and credential-store integration.'
 
-            $githubProbe = Invoke-SashimiHostProcess -FilePath $PowerShellPath -ArgumentList $arguments -Kind GitHub -TimeoutSeconds 30 -Environment @{
-                GH_PROMPT_DISABLED='1'; GIT_TERMINAL_PROMPT='0'
+            $githubProbe = Invoke-SashimiHostProcess -FilePath $script:fakeTools.GitHub -ArgumentList $arguments -Kind GitHub -TimeoutSeconds 30 -Environment @{
+                GH_PROMPT_DISABLED='1'; GIT_TERMINAL_PROMPT='0'; SASHIMI_FAKE_TOOL_LOG=$script:fakeToolLogPath
             }
             Assert-HostTest $githubProbe.Succeeded "GitHub environment probe failed: $($githubProbe.StdErr)"
             $githubEnvironment = ConvertFrom-LastHostJson $githubProbe.StdOut
@@ -3724,7 +4085,7 @@ $result['GitHubAuthInputsAbsent'] = [string]::IsNullOrEmpty([Environment]::GetEn
                 'GitHub fixed Host overrides did not win over poisoned inherited values.'
 
             Assert-HostThrows {
-                Invoke-SashimiHostProcess -FilePath $PowerShellPath -ArgumentList $arguments -Kind Git -TimeoutSeconds 30 -Environment @{ GIT_DIR='fixture-poison' } | Out-Null
+                Invoke-SashimiHostProcess -FilePath $script:fakeTools.Git -ArgumentList $arguments -Kind Git -TimeoutSeconds 30 -Environment @{ GIT_DIR='fixture-poison' } | Out-Null
             } 'fixed Host allowlist'
         }
         finally {
@@ -3988,6 +4349,95 @@ $result['GitHubAuthInputsAbsent'] = [string]::IsNullOrEmpty([Environment]::GetEn
             }
             Assert-HostTest (-not [bool]$json.Pushed -and -not [bool]$json.TransitionedToReview) "$($case.Name) reached push or Review transition."
             Assert-HostTest (@($json.Commands | Where-Object { $_.Stage -in @('Commit focused changes','Push required Git LFS objects for exact delivery commit','Normal push exact existing PR branch') }).Count -eq 0) "$($case.Name) reached a commit or push command boundary."
+        }
+    }
+
+    Invoke-HostTestCase 'UnityIntegrityIgnoresOnlyGitkeepAndStillRejectsMissingAssetMeta' {
+        $validatorPath=Join-Path $hostRoot 'Invoke-SashimiUnityValidation.ps1'
+        foreach ($name in @('Assert-SashimiValidationNotCancelled','Get-SashimiMetaGuidIntegrity')) {
+            Set-Item ("Function:$name") (Get-HostTestFunctionScriptBlock $validatorPath $name)
+        }
+        $DryRun=$false; $CancellationMarkerPath=''
+        $project=New-HostUnityFileSystemProject -Name 'gitkeep-integrity'
+        $placeholder=Join-Path $project.ProjectPath 'Assets/FixtureData/.gitkeep'
+        Write-HostTestFile $placeholder ''
+        $result=Get-SashimiMetaGuidIntegrity $project.ProjectPath
+        Assert-HostTest ($result.Passed -and $result.IgnoredRepositoryPlaceholderCount -eq 1) 'Unity-ignored .gitkeep was treated as a missing-meta asset.'
+        Write-HostTestFile (Join-Path $project.ProjectPath 'Assets/FixtureData/gitkeep.prefab') 'This is still an asset.'
+        Write-HostTestFile (Join-Path $project.ProjectPath 'Assets/FixtureData/Real.asset') 'This asset needs its meta.'
+        $result=Get-SashimiMetaGuidIntegrity $project.ProjectPath
+        Assert-HostTest (-not $result.Passed -and $result.MissingMetaCount -eq 2) 'The placeholder exception hid an actual missing asset meta.'
+        Assert-HostTest ($result.MissingMeta -ccontains 'Assets/FixtureData/Real.asset' -and $result.MissingMeta -ccontains 'Assets/FixtureData/gitkeep.prefab') 'The missing-meta evidence lost exact asset paths.'
+    }
+
+    Invoke-HostTestCase 'ReviewerUnityDefaultDriftRequiresOwnedRunAndExactContent' {
+        . (Join-Path $PSScriptRoot 'Reviewer.DriftFixtures.ps1')
+        Invoke-HostReviewerDriftRegression
+    }
+
+    Invoke-HostTestCase 'ReviewerEvidenceContractSeparatesDefectsFromIncompleteAndHumanChecks' {
+        $defect = [pscustomobject]@{
+            severity='Major'; category='Defect'; basis='CodePath'; title='Duplicate purchase charge'
+            evidence='The second purchase deducts currency before the owned-item check.'
+            requirement='Repurchase must not deduct currency.'; location='Shop.cs:Buy'
+            expected='No second deduction'; actual='Currency is deducted twice'
+            reproduction='Buy the same item twice; Buy deducts cost before checking ownership.'
+            recommendation='Check ownership before changing currency and add a repurchase regression.'
+        }
+        Assert-HostTest ((Get-SashimiReviewDisposition @($defect)).Disposition -ceq 'NeedsChanges') 'An evidenced Major was not returned for correction.'
+        foreach ($category in @('HumanCheck','Infrastructure','Unverified')) {
+            $observation = $defect | ConvertTo-Json | ConvertFrom-Json
+            $observation.category=$category; $observation.basis='None'
+            foreach ($name in @('requirement','location','expected','actual','reproduction','recommendation')) { $observation.$name='' }
+            $decision=Get-SashimiReviewDisposition @($observation)
+            $expected=if ($category -ceq 'HumanCheck') { 'AutomatedPassCandidate' } else { 'Incomplete' }
+            Assert-HostTest ($decision.Disposition -ceq $expected -and $decision.Blocking.Count -eq 0) "$category was treated as a game defect because it carried Major severity."
+        }
+        foreach ($field in @('requirement','location','expected','actual','reproduction','recommendation')) {
+            $invalid=$defect | ConvertTo-Json | ConvertFrom-Json; $invalid.$field=''
+            Assert-HostThrows { Get-SashimiReviewDisposition @($invalid) } 'lacks'
+        }
+        $invalid=$defect | ConvertTo-Json | ConvertFrom-Json; $invalid.basis='None'
+        Assert-HostThrows { Get-SashimiReviewDisposition @($invalid) } 'evidence'
+        $minor=$defect | ConvertTo-Json | ConvertFrom-Json; $minor.severity='Minor'
+        Assert-HostTest ((Get-SashimiReviewDisposition @($minor)).Disposition -ceq 'AutomatedPassCandidate') 'A Minor finding became a correction loop.'
+    }
+
+    Invoke-HostTestCase 'ReviewerPublishesEveryBlockingFindingInOneHandoff' {
+        $reviewerPath=Join-Path $hostRoot 'Invoke-SashimiReviewerRun.ps1'
+        Set-Item Function:ConvertTo-ReviewerMarkdownLine (Get-HostTestFunctionScriptBlock $reviewerPath 'ConvertTo-ReviewerMarkdownLine')
+        Set-Item Function:Format-ReviewerFindings (Get-HostTestFunctionScriptBlock $reviewerPath 'Format-ReviewerFindings')
+        $findings=@(1..3 | ForEach-Object { [pscustomobject]@{
+            severity='Major'; category='Defect'; basis='CodePath'; title="Defect $_"; evidence="Evidence $_"
+            requirement="Criterion $_"; location="Example.cs:Method$_"; expected="Expected $_"; actual="Actual $_"
+            reproduction="Deterministic code path $_"; recommendation="Correction $_"
+        } })
+        $decision=Get-SashimiReviewDisposition $findings
+        $markdown=Format-ReviewerFindings $decision.Blocking
+        foreach ($number in 1..3) {
+            foreach ($fragment in @("Defect $number","Evidence $number","Criterion $number","Correction $number")) {
+                Assert-HostTest ($markdown.Contains($fragment)) "The shared handoff omitted $fragment."
+            }
+        }
+    }
+
+    Invoke-HostTestCase 'ReviewerAdapterRejectsLegacyOrUnsupportedMajorEvidence' {
+        $runId='20260917T000003Z-' + ('4' * 32)
+        foreach ($case in @('valid','missing-reproduction','legacy')) {
+            $payload=New-HostCodexResult -RunId $runId -IssueNumber 5363 -Role Reviewer -Mode Review -PullRequestNumber 6363
+            $payload.findings=@([ordered]@{
+                severity='Major'; category='Defect'; basis='CodePath'; title='Reference is cleared'; evidence='The next line dereferences it.'
+                requirement='No new null reference errors'; location='Example.cs:Run'; expected='Valid reference'; actual='Null dereference'
+                reproduction='Run clears the field and then reads its property.'; recommendation='Preserve the reference until after use.'
+            })
+            if ($case -ceq 'missing-reproduction') { $payload.findings[0].reproduction='' }
+            if ($case -ceq 'legacy') { $payload.schemaVersion=1; $payload.findings=@([ordered]@{ severity='Major'; title='Looks uncertain'; evidence='No proof available' }) }
+            $fixture=New-HostCodexFixtureFile -Name "review-evidence-$case" -Result $payload -Events @(
+                [ordered]@{type='item.completed'; item=[ordered]@{id='review';type='agent_message';text=($payload | ConvertTo-Json -Depth 32 -Compress)}},
+                [ordered]@{type='turn.completed'}
+            )
+            $process=Invoke-HostCodexFixture -FixturePath $fixture -RunId $runId -IssueNumber 5363 -Role Reviewer -Mode Review -PullRequestNumber 6363
+            Assert-HostTest (($process.ExitCode -eq 0) -eq ($case -ceq 'valid')) "Reviewer adapter evidence gate failed for $case."
         }
     }
 
@@ -4319,6 +4769,9 @@ $result['GitHubAuthInputsAbsent'] = [string]::IsNullOrEmpty([Environment]::GetEn
         $json = ConvertFrom-LastHostJson $process.StdOut
         Assert-HostTest ([bool]$json.Determinism.Required -and [bool]$json.Determinism.Passed) 'Generator determinism was not required and passed.'
         Assert-HostTest ([bool]$json.Stages.GeneratorRun1.Success -and [bool]$json.Stages.GeneratorRun2.Success) 'Generator did not run twice.'
+        foreach ($generatorCommand in @($json.Commands | Where-Object Name -in @('GeneratorRun1','GeneratorRun2'))) {
+            Assert-HostTest (@($generatorCommand.Arguments) -cnotcontains '-nographics') 'A render-capable generator was forced onto the null graphics device.'
+        }
 
         $differentSnapshot = @([ordered]@{ Path = 'Assets/Generated/result.asset'; Length = 11; Sha256 = ('b' * 64) })
         $fixture = New-HostUnityFixtureFile -Name 'generator-nondeterministic' -Determinism ([ordered]@{ Run1 = $snapshot; Run2 = $differentSnapshot })
@@ -4489,8 +4942,8 @@ $result['GitHubAuthInputsAbsent'] = [string]::IsNullOrEmpty([Environment]::GetEn
                 SASHIMI_FAKE_PUSH_STATE = $bundle.PushState
                 SASHIMI_FAKE_STATUS_STATE = $bundle.StatusState
                 SASHIMI_FAKE_GIT_STATUS = ''
-            } -TimeoutSeconds 60
-            Assert-HostTest ($resume.ExitCode -eq 0) "$mode validation-only fake-boundary run failed: $($resume.StdErr) $($resume.StdOut)"
+            } -TimeoutSeconds 120
+            Assert-HostTest ($resume.ExitCode -eq 0) "$mode validation-only fake-boundary run failed (exit=$($resume.ExitCode), timeout=$($resume.TimedOut)): $($resume.StdErr) $($resume.StdOut)"
             $resumeJson = ConvertFrom-LastHostJson $resume.StdOut
             Assert-HostTest ([bool]$resumeJson.Success -and -not [bool]$resumeJson.Pushed -and -not [bool]$resumeJson.CreatedPullRequest) "$mode validation-only fake-boundary run pushed or created a PR."
             $resumeCalls = @((Get-HostFakeToolAudit $script:fakeToolLogPath) | Select-Object -Skip $auditBefore)
@@ -4523,8 +4976,8 @@ $result['GitHubAuthInputsAbsent'] = [string]::IsNullOrEmpty([Environment]::GetEn
                 SASHIMI_FAKE_PUSH_STATE = $bundle.PushState
                 SASHIMI_FAKE_STATUS_STATE = $bundle.StatusState
                 SASHIMI_FAKE_GIT_STATUS = ''
-            } -TimeoutSeconds 60
-            Assert-HostTest ($resume.ExitCode -eq 0) "$mode changed fake-boundary run failed: $($resume.StdErr) $($resume.StdOut)"
+            } -TimeoutSeconds 120
+            Assert-HostTest ($resume.ExitCode -eq 0) "$mode changed fake-boundary run failed (exit=$($resume.ExitCode), timeout=$($resume.TimedOut)): $($resume.StdErr) $($resume.StdOut)"
             $resumeJson = ConvertFrom-LastHostJson $resume.StdOut
             Assert-HostTest ([bool]$resumeJson.Success -and [bool]$resumeJson.Pushed -and -not [bool]$resumeJson.CreatedPullRequest) "$mode changed fake-boundary run did not push exactly the existing PR."
             $resumeCalls = @((Get-HostFakeToolAudit $script:fakeToolLogPath) | Select-Object -Skip $auditBefore)
@@ -4736,6 +5189,11 @@ $result['GitHubAuthInputsAbsent'] = [string]::IsNullOrEmpty([Environment]::GetEn
             Assert-HostTest (@($unitySummary.Failures | Where-Object { [string]$_.Code -in @('GitControlDrift','GitControlSecurityFailure','UnityProcessBoundaryUnconfirmed') }).Count -ge 1) `
                 "Git-control scenario '$($case.Name)' did not fail at the production Git/process boundary."
         }
+    }
+
+    Invoke-HostTestCase 'ReviewerDecisionControlsRealRunnerTransitions' {
+        . (Join-Path $PSScriptRoot 'Reviewer.DecisionFixtures.ps1')
+        Invoke-HostReviewerDecisionRegression
     }
 
     Invoke-HostTestCase 'ReviewerUsesSyntheticMergeAndNeverPushes' {
@@ -5805,10 +6263,10 @@ pendingCommand: Set-Content -LiteralPath '$sentinel' -Value unsafe
         }
         $fixtureSource = [IO.File]::ReadAllText($PSCommandPath)
         $installedGitResolutionPattern = '(?im)\bGet-' + 'Command\s+' + 'git(?:\.exe)?\b'
-        $installedGitLaunchPattern = '(?im)-FilePath\s+(?:\$' + 'git' + 'Command(?:\.Source)?|["'']C:\\Program Files\\' + 'Git\\)'
         Assert-HostTest ($fixtureSource -notmatch $installedGitResolutionPattern) `
             'Fixture source resolves an installed/native Git executable instead of its fake boundary.'
-        Assert-HostTest ($fixtureSource -notmatch $installedGitLaunchPattern) `
+        $installedGitLaunches = @(Get-HostFixtureInstalledGitLaunchMatches -Source $fixtureSource)
+        Assert-HostTest ($installedGitLaunches.Count -eq 0) `
             'Fixture source launches an installed/native Git executable instead of its fake boundary.'
         foreach ($invocation in $script:fixtureInvocations) {
             $serialized = $invocation | ConvertTo-Json -Depth 16 -Compress
@@ -5851,6 +6309,7 @@ $summary = [ordered]@{
     TemporaryRoot = if ($KeepTemporaryFiles) { $script:temporaryRoot } else { $null }
     ExternalMutationCount = $externalMutationCount
     MutationAudit = $script:mutationAudit
+    M2TransactionMatrix = $script:m2Rows.ToArray()
 }
 [Console]::Out.WriteLine((ConvertTo-SashimiJson $summary))
 if ($failed.Count -gt 0) { exit 1 }

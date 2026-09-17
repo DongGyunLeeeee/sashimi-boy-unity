@@ -521,10 +521,13 @@ function Open-SashimiExecutableLaunchLease {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory = $true)][string]$FilePath,
-        [Parameter(Mandatory = $true)][ValidateSet('Generic','Git','GitHub','Codex','Unity')][string]$Kind
+        [Parameter(Mandatory = $true)][ValidateSet('Generic','Git','GitHub','Codex','Unity')][string]$Kind,
+        [string[]]$ArgumentList = @(),
+        [string]$WorkingDirectory = ''
     )
 
     $candidate = ConvertTo-SashimiExecutablePath -Name 'Process FilePath' -Path $FilePath -RequireFile
+    Assert-SashimiFixtureExecutableBoundary -FilePath $candidate -Kind $Kind -ArgumentList $ArgumentList -WorkingDirectory $WorkingDirectory
     if ($Kind -ceq 'Codex') { [void](Assert-SashimiProtectedCodexExecutable -FilePath $candidate) }
     Assert-SashimiBoundExecutableIdentity -FilePath $candidate
 
@@ -559,6 +562,159 @@ function Open-SashimiExecutableLaunchLease {
         if ($null -ne $stream) { $stream.Dispose() }
         throw
     }
+}
+
+function Get-SashimiMarkedFixtureRoot {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$Path)
+
+    # This ownership marker is the existing test-suite contract, not a runtime
+    # authorization mechanism. Compiler inputs must remain below this boundary.
+    $candidate = ConvertTo-SashimiPath -Path $Path -AllowMissing -Lexical
+    Assert-SashimiNoReparsePoint -Path $candidate
+    $cursor = Split-Path -Parent $candidate
+    $temporaryRoot = [IO.Path]::GetFullPath([IO.Path]::GetTempPath())
+    while (-not [string]::IsNullOrWhiteSpace($cursor) -and
+        (Test-SashimiPathWithin -Path $cursor -Root $temporaryRoot)) {
+        $markerPath = Join-Path $cursor '.host-tests-owner.json'
+        if (Test-Path -LiteralPath $markerPath -PathType Leaf) {
+            Assert-SashimiNoReparsePoint -Path $markerPath
+            $marker = Read-SashimiJsonFile -Path $markerPath
+            $runId = [string](Get-SashimiPropertyValue $marker 'RunId' '')
+            $rootValue = [string](Get-SashimiPropertyValue $marker 'Root' '')
+            if ([int](Get-SashimiPropertyValue $marker 'SchemaVersion' 0) -eq 1 -and
+                $runId -cmatch '^[0-9a-f]{32}$' -and
+                (Split-Path -Leaf $cursor) -ceq ('SashimiBoyHostTests-' + $runId) -and
+                -not [string]::IsNullOrWhiteSpace($rootValue) -and
+                (Test-SashimiPathEqual -Left $rootValue -Right $cursor)) { return $cursor }
+            break
+        }
+        $cursor = Split-Path -Parent $cursor
+    }
+    throw 'FIXTURE_COMPILER_REFUSED: input or output is outside a valid marked fixture.'
+}
+
+function Assert-SashimiFixtureCompilerInvocation {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$FilePath,
+        [string[]]$ArgumentList = @(),
+        [string]$WorkingDirectory = ''
+    )
+
+    if (-not (Test-SashimiHarnessMode)) {
+        throw 'FIXTURE_COMPILER_REFUSED: compilation is a test-harness bootstrap operation only.'
+    }
+    $compilerPaths = @(
+        'C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe',
+        'C:\Windows\Microsoft.NET\Framework\v4.0.30319\csc.exe'
+    )
+    if ($compilerPaths -inotcontains $FilePath) {
+        throw 'FIXTURE_COMPILER_REFUSED: compiler is not the exact Windows Framework compiler.'
+    }
+    if ($ArgumentList.Count -ne 9 -or [string]::IsNullOrWhiteSpace($WorkingDirectory)) {
+        throw 'FIXTURE_COMPILER_REFUSED: expected the fixed nine-argument fixture compilation plan.'
+    }
+    $prefix = @('/nologo','/noconfig','/nostdlib+','/target:exe')
+    for ($i=0; $i -lt $prefix.Count; $i++) {
+        if ($ArgumentList[$i] -cne $prefix[$i]) {
+            throw 'FIXTURE_COMPILER_REFUSED: unexpected compiler switch or response-file request.'
+        }
+    }
+    if (-not $ArgumentList[4].StartsWith('/out:',[StringComparison]::Ordinal)) {
+        throw 'FIXTURE_COMPILER_REFUSED: explicit output is required.'
+    }
+    $sourcePath = [string]$ArgumentList[8]
+    $outputPath = ([string]$ArgumentList[4]).Substring(5)
+    foreach ($path in @($sourcePath,$outputPath,$WorkingDirectory)) {
+        if (-not [IO.Path]::IsPathFullyQualified($path) -or
+            -not [string]::Equals($path,[IO.Path]::GetFullPath($path),[StringComparison]::OrdinalIgnoreCase)) {
+            throw 'FIXTURE_COMPILER_REFUSED: source, output and working directory must be canonical absolute paths.'
+        }
+        Assert-SashimiNoReparsePoint -Path $path
+    }
+    $pairs = @{
+        'SashimiHostFakeTool.cs' = 'SashimiHostFakeTool.exe'
+        'fake-codex.cs' = 'fake-codex.exe'
+        'fake-unity-descendant.cs' = 'fake-unity-descendant.exe'
+    }
+    $sourceName = [IO.Path]::GetFileName($sourcePath)
+    if (-not $pairs.ContainsKey($sourceName) -or
+        [IO.Path]::GetFileName($outputPath) -cne [string]$pairs[$sourceName]) {
+        throw 'FIXTURE_COMPILER_REFUSED: only the three reviewed fake-adapter source/output pairs are accepted.'
+    }
+    $sourceRoot = Get-SashimiMarkedFixtureRoot -Path $sourcePath
+    $outputRoot = Get-SashimiMarkedFixtureRoot -Path $outputPath
+    if (-not (Test-SashimiPathEqual -Left $sourceRoot -Right $outputRoot) -or
+        -not (Test-SashimiPathEqual -Left (Split-Path -Parent $sourcePath) -Right $WorkingDirectory) -or
+        -not (Test-SashimiPathEqual -Left (Split-Path -Parent $outputPath) -Right $WorkingDirectory)) {
+        throw 'FIXTURE_COMPILER_REFUSED: compiler working directory, source and output must share the owned fixture directory.'
+    }
+    if (-not (Test-Path -LiteralPath $sourcePath -PathType Leaf) -or
+        (Get-Item -LiteralPath $sourcePath).Length -gt 1048576) {
+        throw 'FIXTURE_COMPILER_REFUSED: source is absent, not a file, or over the one-MiB bootstrap limit.'
+    }
+    $compilerDirectory = Split-Path -Parent $FilePath
+    $references = @('mscorlib.dll','System.dll','System.Core.dll')
+    for ($i=0; $i -lt $references.Count; $i++) {
+        $referencePath = Join-Path $compilerDirectory $references[$i]
+        if ($ArgumentList[5+$i] -cne ('/reference:' + $referencePath) -or
+            -not (Test-Path -LiteralPath $referencePath -PathType Leaf)) {
+            throw 'FIXTURE_COMPILER_REFUSED: unexpected or missing Framework reference.'
+        }
+        Assert-SashimiNoReparsePoint -Path $referencePath
+    }
+    Assert-SashimiNoReparsePoint -Path $FilePath
+    $signature = Microsoft.PowerShell.Security\Get-AuthenticodeSignature -LiteralPath $FilePath -ErrorAction Stop
+    if ([string]$signature.Status -cne 'Valid' -or $null -eq $signature.SignerCertificate -or
+        [string]$signature.SignerCertificate.Subject -notmatch '(?:^|,\s*)O=(?:"Microsoft Corporation"|Microsoft Corporation)(?:,|$)') {
+        throw 'FIXTURE_COMPILER_REFUSED: the exact Framework compiler lacks a valid Microsoft signature.'
+    }
+    # The caller still applies the executable identity check and launch lease.
+}
+
+function Assert-SashimiFixtureExecutableBoundary {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$FilePath,
+        [Parameter(Mandatory)][string]$Kind,
+        [string[]]$ArgumentList = @(),
+        [string]$WorkingDirectory = ''
+    )
+
+    if (-not (Test-SashimiHarnessMode)) { return }
+    if ($Kind -ceq 'Generic' -and @(
+            'C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe',
+            'C:\Windows\Microsoft.NET\Framework\v4.0.30319\csc.exe'
+        ) -icontains $FilePath) {
+        Assert-SashimiFixtureCompilerInvocation -FilePath $FilePath -ArgumentList $ArgumentList -WorkingDirectory $WorkingDirectory
+        return
+    }
+    # The harness may run reviewed PowerShell scripts, but every other child
+    # must be fixture-owned. A partially customized config must never fall
+    # back to installed Git, gh, Unity, or Codex, even for a read-only probe.
+    if ($Kind -ceq 'Generic' -and [string]::Equals($FilePath,
+            'C:\Program Files\PowerShell\7\pwsh.exe', [StringComparison]::OrdinalIgnoreCase)) { return }
+    $cursor = Split-Path -Parent $FilePath
+    $temporaryRoot = [IO.Path]::GetFullPath([IO.Path]::GetTempPath())
+    while (-not [string]::IsNullOrWhiteSpace($cursor) -and
+        (Test-SashimiPathWithin -Path $cursor -Root $temporaryRoot)) {
+        $markerPath = Join-Path $cursor '.host-tests-owner.json'
+        if (Test-Path -LiteralPath $markerPath -PathType Leaf) {
+            Assert-SashimiNoReparsePoint -Path $FilePath
+            $marker = Read-SashimiJsonFile -Path $markerPath
+            if ([string]$marker.RunId -cmatch '^[0-9a-f]{32}$' -and
+                (Split-Path -Leaf $cursor) -ceq ('SashimiBoyHostTests-' + [string]$marker.RunId) -and
+                (Test-SashimiPathEqual -Left ([string]$marker.Root) -Right $cursor)) { return }
+            break
+        }
+        $cursor = Split-Path -Parent $cursor
+    }
+    $leaf = [IO.Path]::GetFileName($FilePath) -replace '[^A-Za-z0-9._-]', '_'
+    if ($leaf.Length -gt 80) { $leaf = $leaf.Substring(0,80) }
+    $kindLabel = $Kind -replace '[^A-Za-z0-9_-]', '_'
+    if ($kindLabel.Length -gt 24) { $kindLabel = $kindLabel.Substring(0,24) }
+    throw "FIXTURE_LIVE_BOUNDARY_REFUSED: kind=$kindLabel; executable=$leaf; executable is not owned by the marked fixture; installed-tool fallback is prohibited."
 }
 
 function Get-SashimiJsonObjectMap {
@@ -646,6 +802,37 @@ function Assert-SashimiJsonStringArray {
     }
 }
 
+function Assert-SashimiConfigDecodedValues {
+    param([Parameter(Mandatory)][Text.Json.JsonElement]$Element)
+    # Audit decoded JSON strings too: Unicode escapes must not conceal tokens.
+    switch ($Element.ValueKind) {
+        Object {
+            foreach ($property in $Element.EnumerateObject()) {
+                # Audit decoded keys before they can enter schema diagnostics.
+                $nameDocument = [Text.Json.JsonDocument]::Parse(($property.Name | ConvertTo-Json -Compress))
+                try { Assert-SashimiConfigDecodedValues -Element $nameDocument.RootElement }
+                finally { $nameDocument.Dispose() }
+                Assert-SashimiConfigDecodedValues -Element $property.Value
+            }
+        }
+        Array {
+            foreach ($value in $Element.EnumerateArray()) {
+                Assert-SashimiConfigDecodedValues -Element $value
+            }
+        }
+        String {
+            $value = $Element.GetString()
+            if ($value -match '(?i)\bBearer\s+[A-Za-z0-9._~+/=-]+' -or
+                $value -match '(?i)\b(?:github_pat_|gh[pousr]_)[A-Za-z0-9_]{8,}' -or
+                $value -match '(?i)\bsk-[A-Za-z0-9_-]{8,}' -or
+                $value -match '(?i)-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----' -or
+                $value -match '(?i)://[^\s/@:"]+:[^\s/@"]+@') {
+                throw 'Configuration contains recognizable credential material in a decoded value.'
+            }
+        }
+    }
+}
+
 function Assert-SashimiHostConfigJsonSchema {
     [CmdletBinding()]
     param([Parameter(Mandatory = $true)][string]$JsonText)
@@ -667,7 +854,9 @@ function Assert-SashimiHostConfigJsonSchema {
         $options.AllowTrailingCommas = $false
         $options.CommentHandling = [Text.Json.JsonCommentHandling]::Disallow
         $options.MaxDepth = 64
-        $document = [Text.Json.JsonDocument]::Parse($JsonText, $options)
+        try { $document = [Text.Json.JsonDocument]::Parse($JsonText, $options) }
+        catch { throw 'Configuration is invalid JSON; parser input is not retained.' }
+        Assert-SashimiConfigDecodedValues -Element $document.RootElement
         $rootNames = @(
             'SchemaVersion','Repository','ProjectOwner','ProjectNumber','DefaultBranch','RemoteUrl','RunRoot','ArtifactRetentionDays',
             'GitExecutable','GitLfsExecutable','GitAuthorName','GitAuthorEmail','GitHubCli','CodexExecutable','PowerShellExecutable','UnityExecutable',
@@ -1569,7 +1758,8 @@ namespace SashimiBoyAutomation
         }
 
         public static KillOnCloseProcessResult Run(string executable, string[] arguments, string workingDirectory,
-            string standardInput, IDictionary<string,string> environment, int timeoutSeconds, string cancellationMarkerPath)
+            string standardInput, IDictionary<string,string> environment, int timeoutSeconds, string cancellationMarkerPath,
+            Action<int,string,bool> updateLedger)
         {
             KillOnCloseProcessResult result = new KillOnCloseProcessResult();
             Stopwatch stopwatch = Stopwatch.StartNew();
@@ -1580,6 +1770,7 @@ namespace SashimiBoyAutomation
             IntPtr stdinRead = IntPtr.Zero, stdinWrite = IntPtr.Zero;
             PROCESS_INFORMATION process = new PROCESS_INFORMATION();
             bool processCreated = false, jobClosed = false;
+            string processStartTime = null;
             SafeFileHandle stdoutSafe = null, stderrSafe = null, stdinSafe = null;
             FileStream stdoutStream = null, stderrStream = null, stdinStream = null;
             Task<byte[]> stdoutTask = null, stderrTask = null;
@@ -1613,6 +1804,9 @@ namespace SashimiBoyAutomation
                 // instruction can execute until kernel job assignment succeeds.
                 if (!AssignProcessToJobObject(job, process.hProcess)) throw Error("AssignProcessToJobObject");
                 result.KillOnCloseJobAssigned = true;
+                using (Process owned = Process.GetProcessById(result.ProcessId))
+                    processStartTime = owned.StartTime.ToUniversalTime().ToString("o");
+                if (updateLedger != null) updateLedger(result.ProcessId, processStartTime, true);
 
                 CloseNativeHandle(ref stdoutWrite);
                 CloseNativeHandle(ref stderrWrite);
@@ -1722,6 +1916,8 @@ namespace SashimiBoyAutomation
                 CloseNativeHandle(ref stderrRead); CloseNativeHandle(ref stderrWrite);
                 stopwatch.Stop();
                 result.DurationMilliseconds = stopwatch.ElapsedMilliseconds;
+                if (result.TerminationConfirmed && processStartTime != null && updateLedger != null)
+                    updateLedger(result.ProcessId, processStartTime, false);
             }
         }
     }
@@ -1922,8 +2118,8 @@ function Invoke-SashimiHostProcess {
     if ($PreserveRawOutputInMemory -and ($Kind -cne 'Codex' -or -not [string]::IsNullOrWhiteSpace($InvocationRecordPath))) {
         throw 'Unredacted in-memory output is allowed only for Codex without an invocation-record path.'
     }
-    if ($RequireKillOnCloseJob -and $Kind -cne 'Unity') {
-        throw 'The kill-on-close suspended process boundary is supported only for Unity.'
+    if ($RequireKillOnCloseJob -and $Kind -notin @('Unity','Codex')) {
+        throw 'The kill-on-close suspended process boundary is supported only for Unity and Codex.'
     }
     if ($Kind -ceq 'Codex') {
         if (-not $ClearEnvironment) { throw 'Codex process launch requires a cleared inherited environment.' }
@@ -2024,7 +2220,19 @@ function Invoke-SashimiHostProcess {
             # native boundary assigns the process to its kill-on-close job
             # before ResumeThread, then closes the job and confirms that every
             # captured descendant has exited before returning control here.
-            $launchLease = Open-SashimiExecutableLaunchLease -FilePath $FilePath -Kind $Kind
+            if ($Kind -ceq 'Codex') {
+                Assert-SashimiCodexWorkspaceConfigurationAbsent -RepositoryPath $CodexWorkspacePath
+            }
+            $launchLease = Open-SashimiExecutableLaunchLease -FilePath $FilePath -Kind $Kind -ArgumentList $ArgumentList -WorkingDirectory $startInfo.WorkingDirectory
+            $ledgerCallback = $null
+            if (-not [string]::IsNullOrWhiteSpace($OwnedProcessRecordPath)) {
+                $ledgerCallback = [Action[int,string,bool]]{
+                    param($childPid, $createdUtc, $add)
+                    Update-SashimiOwnedProcessLedger -Path $OwnedProcessRecordPath `
+                        -Action $(if ($add) { 'Add' } else { 'Remove' }) `
+                        -ProcessId $childPid -StartTimeUtc $createdUtc
+                }
+            }
             $native = [SashimiBoyAutomation.KillOnCloseProcess]::Run(
                 [string]$FilePath,
                 [string[]]@($ArgumentList),
@@ -2032,7 +2240,8 @@ function Invoke-SashimiHostProcess {
                 [string]$StandardInput,
                 [Collections.Generic.IDictionary[string,string]]$startInfo.Environment,
                 [int]$TimeoutSeconds,
-                [string]$CancellationMarkerPath)
+                [string]$CancellationMarkerPath,
+                $ledgerCallback)
         }
         catch { $nativeException = $_.Exception }
         finally {
@@ -2075,6 +2284,10 @@ function Invoke-SashimiHostProcess {
             DurationMilliseconds = [int64]$native.DurationMilliseconds
             DryRun = $false
         }
+        if ($PreserveRawOutputInMemory) {
+            $result | Add-Member -NotePropertyName UnredactedStdOut -NotePropertyValue $stdout
+            $result | Add-Member -NotePropertyName UnredactedStdErr -NotePropertyValue $stderr
+        }
         if (-not [string]::IsNullOrWhiteSpace($InvocationRecordPath)) {
             Write-SashimiUtf8File -Path $InvocationRecordPath -Content (ConvertTo-SashimiJson $result)
         }
@@ -2113,7 +2326,7 @@ function Invoke-SashimiHostProcess {
         # process creation or replace an ancestor with privileged operations;
         # that same-admin boundary is explicitly outside this task-user threat
         # model and is never treated as protection from a hostile administrator.
-        $launchLease = Open-SashimiExecutableLaunchLease -FilePath $FilePath -Kind $Kind
+        $launchLease = Open-SashimiExecutableLaunchLease -FilePath $FilePath -Kind $Kind -ArgumentList $ArgumentList -WorkingDirectory $startInfo.WorkingDirectory
         $started = [bool]$process.Start()
         if (-not $started) { throw "Unable to start process: $commandText" }
         $launchLease.Stream.Dispose()
@@ -2561,5 +2774,76 @@ function Invoke-SashimiWithRetry {
             if ($CancellationMarkerPath -and (Test-Path -LiteralPath $CancellationMarkerPath -PathType Leaf)) { throw 'Run cancellation was requested during retry cooldown.' }
             Start-Sleep -Seconds 1
         }
+    }
+}
+function Test-SashimiUnityDefaultSerialization {
+    param([Parameter(Mandatory)][string]$Before, [Parameter(Mandatory)][string]$After)
+    $expected = $Before.Replace("`r`n", "`n")
+    $replacements = @(
+        @('  targetPixelDensity: 0', '  targetPixelDensity: 30'),
+        @('  buildNumber: {}', "  buildNumber:`n    Standalone: 0`n    VisionOS: 0`n    iPhone: 0`n    tvOS: 0"),
+        @('  iOSTargetOSVersionString: ', '  iOSTargetOSVersionString: 15.0'),
+        @('  tvOSTargetOSVersionString: ', '  tvOSTargetOSVersionString: 15.0'),
+        @('  VisionOSTargetOSVersionString: ', '  VisionOSTargetOSVersionString: 1.0'),
+        @('  macOSTargetOSVersion: ', '  macOSTargetOSVersion: 12.0')
+    )
+    foreach ($pair in $replacements) {
+        $pattern = '(?m)^' + [regex]::Escape($pair[0]) + '$'
+        if ([regex]::Matches($expected, $pattern).Count -ne 1) { return $false }
+        $expected = [regex]::Replace($expected, $pattern, [string]$pair[1])
+    }
+    return [string]::Equals($expected, $After.Replace("`r`n", "`n"), [StringComparison]::Ordinal)
+}
+
+function Get-SashimiReviewFindingSchema {
+    # A severity label alone is not evidence for returning work to Developer.
+    $properties = [ordered]@{
+        severity = [ordered]@{ type='string'; enum=@('Blocker','Major','Minor') }
+        category = [ordered]@{ type='string'; enum=@('Defect','HumanCheck','Infrastructure','Unverified') }
+        basis = [ordered]@{ type='string'; enum=@('Reproduction','CodePath','RenderedEvidence','None') }
+    }
+    foreach ($name in @('title','evidence','requirement','location','expected','actual','reproduction','recommendation')) {
+        $properties[$name] = [ordered]@{ type='string' }
+    }
+    return [ordered]@{ type='object'; additionalProperties=$false; required=@($properties.Keys); properties=$properties }
+}
+
+function Assert-SashimiReviewFinding {
+    param([Parameter(Mandatory)][object]$Finding)
+    $schema = Get-SashimiReviewFindingSchema
+    $names = @($Finding.PSObject.Properties.Name)
+    if ($names.Count -ne $schema.required.Count -or @($names | Where-Object { $schema.required -cnotcontains $_ }).Count -ne 0) {
+        throw 'Review finding does not satisfy the evidence contract.'
+    }
+    foreach ($name in $schema.required) {
+        $value = $Finding.$name
+        if ($value -isnot [string] -or $value.Length -gt 8192) { throw 'Review finding contains an invalid or oversized field.' }
+    }
+    if (@('Blocker','Major','Minor') -cnotcontains $Finding.severity -or
+        @('Defect','HumanCheck','Infrastructure','Unverified') -cnotcontains $Finding.category -or
+        @('Reproduction','CodePath','RenderedEvidence','None') -cnotcontains $Finding.basis -or
+        [string]::IsNullOrWhiteSpace($Finding.title) -or $Finding.title.Length -gt 512 -or
+        [string]::IsNullOrWhiteSpace($Finding.evidence)) {
+        throw 'Review finding classification is invalid.'
+    }
+    if ($Finding.category -ceq 'Defect') {
+        if ($Finding.basis -ceq 'None') { throw 'A defect requires observed or deterministic code-path evidence.' }
+        foreach ($name in @('requirement','location','expected','actual','reproduction','recommendation')) {
+            if ([string]::IsNullOrWhiteSpace($Finding.$name)) { throw 'A defect lacks its requirement, location, behavior, reproduction, or correction.' }
+        }
+    }
+}
+
+function Get-SashimiReviewDisposition {
+    param([Parameter(Mandatory)][AllowEmptyCollection()][object[]]$Findings)
+    foreach ($finding in $Findings) { Assert-SashimiReviewFinding $finding }
+    $blocking = @($Findings | Where-Object { $_.category -ceq 'Defect' -and @('Blocker','Major') -ccontains $_.severity })
+    $incomplete = @($Findings | Where-Object { @('Infrastructure','Unverified') -ccontains $_.category })
+    $manual = @($Findings | Where-Object { $_.category -ceq 'HumanCheck' })
+    $minor = @($Findings | Where-Object { $_.category -ceq 'Defect' -and $_.severity -ceq 'Minor' })
+    return [pscustomobject]@{
+        # Missing evidence never becomes either an automatic failure or a PASS.
+        Disposition = if ($blocking.Count -gt 0) { 'NeedsChanges' } elseif ($incomplete.Count -gt 0) { 'Incomplete' } else { 'AutomatedPassCandidate' }
+        Blocking = $blocking; Incomplete = $incomplete; Manual = $manual; Minor = $minor
     }
 }
