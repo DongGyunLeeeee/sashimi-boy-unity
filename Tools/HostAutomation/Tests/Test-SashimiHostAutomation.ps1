@@ -2807,8 +2807,9 @@ if (`$lease.Acquired) { Exit-SashimiHostMutex `$lease }
             SASHIMI_FAKE_PUSH_STATE = $bundle.PushState
             SASHIMI_FAKE_STATUS_STATE = $bundle.StatusState
             SASHIMI_FAKE_GIT_STATUS = ''
-        } -TimeoutSeconds 60
+        } -TimeoutSeconds 120
 
+        Assert-HostTest (-not $developer.TimedOut -and $developer.TerminationConfirmed) 'PR-content drift fixture did not finish within its test deadline.'
         Assert-HostTest ($developer.ExitCode -ne 0) 'Developer accepted edited PR prose at the same head SHA/ref.'
         $developerJson = ConvertFrom-LastHostJson $developer.StdOut
         Assert-HostTest (-not [bool]$developerJson.Pushed -and -not [bool]$developerJson.TransitionedToReview) 'PR-content-stale Developer reported a push or status transition.'
