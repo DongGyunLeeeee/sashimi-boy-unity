@@ -2657,6 +2657,19 @@ if (`$lease.Acquired) { Exit-SashimiHostMutex `$lease }
         Assert-HostTest (@($ledger.Processes).Count -eq 0) 'A confirmed-terminated process remained in the owned PID ledger.'
     }
 
+    Invoke-HostTestCase 'NativePreAssignmentFailureTerminatesSuspendedChildAndClearsLedger' {
+        foreach ($boundary in @('Assignment','Ledger','Termination')) {
+            $evidencePath = Join-Path $script:temporaryRoot "pre-assignment-$boundary.json"
+            Write-HostTestFile $evidencePath '{}'
+            $native = Invoke-HostTestScript -ScriptPath (Join-Path $PSScriptRoot 'Native.PreAssignmentFixture.ps1') -Parameters @{
+                RepositoryRoot=$RepositoryRoot; ChildExecutable=$script:fakeCodex.Path
+                EvidencePath=$evidencePath; FailureBoundary=$boundary
+            }
+            $result = ConvertFrom-LastHostJson $native.StdOut
+            Assert-HostTest ($native.ExitCode -eq 0 -and $result.Success) "$boundary failure left an owned child or lost ledger identity: $($native.StdOut) $($native.StdErr)"
+        }
+    }
+
     Invoke-HostTestCase 'ForkBaseAndUnauthorizedAuthorAreRejected' {
         $sha = 'a' * 40
         $trusted = [pscustomobject]@{

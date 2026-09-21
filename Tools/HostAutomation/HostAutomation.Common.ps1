@@ -1592,6 +1592,10 @@ namespace SashimiBoyAutomation
         private static extern bool TerminateJobObject(IntPtr job, UInt32 exitCode);
 
         [DllImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool TerminateProcess(IntPtr process, UInt32 exitCode);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
         private static extern IntPtr OpenProcess(UInt32 desiredAccess, [MarshalAs(UnmanagedType.Bool)] bool inheritHandle, UInt32 processId);
 
         private static Win32Exception Error(string operation)
@@ -1800,13 +1804,13 @@ namespace SashimiBoyAutomation
                     true, flags, environmentBlock, workingDirectory, ref startup, out process)) throw Error("CreateProcessW");
                 processCreated = true;
                 result.ProcessId = unchecked((int)process.dwProcessId);
+                using (Process owned = Process.GetProcessById(result.ProcessId))
+                    processStartTime = owned.StartTime.ToUniversalTime().ToString("o");
+                if (updateLedger != null) updateLedger(result.ProcessId, processStartTime, true);
                 // The primary thread is still suspended here. No editor/code
                 // instruction can execute until kernel job assignment succeeds.
                 if (!AssignProcessToJobObject(job, process.hProcess)) throw Error("AssignProcessToJobObject");
                 result.KillOnCloseJobAssigned = true;
-                using (Process owned = Process.GetProcessById(result.ProcessId))
-                    processStartTime = owned.StartTime.ToUniversalTime().ToString("o");
-                if (updateLedger != null) updateLedger(result.ProcessId, processStartTime, true);
 
                 CloseNativeHandle(ref stdoutWrite);
                 CloseNativeHandle(ref stderrWrite);
@@ -1910,9 +1914,26 @@ namespace SashimiBoyAutomation
             {
                 if (!jobClosed && job != IntPtr.Zero)
                 {
-                    if (processCreated) TerminateJobObject(job, FORCED_TERMINATION_EXIT_CODE);
+                    if (processCreated)
+                    {
+                        if (result.KillOnCloseJobAssigned)
+                            TerminateJobObject(job, FORCED_TERMINATION_EXIT_CODE);
+                        else
+                            // Assignment failed before ResumeThread. This
+                            // suspended process is not a member of our job,
+                            // so closing the job cannot terminate it.
+                            TerminateProcess(process.hProcess, FORCED_TERMINATION_EXIT_CODE);
+                    }
                     CloseNativeHandle(ref job);
-                    if (processCreated) WaitForSingleObject(process.hProcess, TERMINATION_CONFIRM_MILLISECONDS);
+                    if (processCreated)
+                    {
+                        UInt32 cleanupWait = WaitForSingleObject(process.hProcess, TERMINATION_CONFIRM_MILLISECONDS);
+                        // An unassigned process has never resumed and cannot
+                        // have descendants. Retain its ledger if termination
+                        // is unconfirmed; never resume it to obtain cleanup.
+                        if (!result.KillOnCloseJobAssigned)
+                            result.TerminationConfirmed = cleanupWait == WAIT_OBJECT_0;
+                    }
                 }
                 if (environmentBlock != IntPtr.Zero) Marshal.FreeHGlobal(environmentBlock);
                 if (stdoutStream != null) stdoutStream.Dispose();
