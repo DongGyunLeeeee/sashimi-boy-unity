@@ -92,8 +92,9 @@ try {
     Assert-HostTest ((Split-Path -Parent $pair.Executable.Path) -ceq (Split-Path -Parent $pair.CodeModeHost.Path)) 'Source snapshots came from different resolved directories.'
 } finally {
     if (Test-Path -LiteralPath $alias) {
-        [void](Get-SashimiMarkedFixtureRoot $alias)
+        [void](Get-SashimiMarkedFixtureRoot (Split-Path -Parent $alias))
         Assert-HostTest ([IO.Path]::GetDirectoryName($alias) -ceq (Split-Path -Parent $BundleRoot)) 'Source alias escaped fixture root.'
+        Assert-HostTest (((Get-Item -LiteralPath $alias -Force).Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) 'Expected the fixture source junction itself.'
         [IO.Directory]::Delete($alias,$false)
     }
 }
