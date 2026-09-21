@@ -1,6 +1,22 @@
-# PR #53 remediation — Phase A and partial Phase B
+# PR #53 remediation
 
-## Review-loop repair — 2026-09-17 (current)
+## Host completion — 2026-09-21 (current)
+
+M3, M6, M7 and M8 now have production implementations and additional executable
+regressions: all common processes use owned jobs; generators start from
+independent identical inputs; capture and recursive artifact seals enforce
+bounded evidence; Unity inventories all scenes and prefabs. The protected
+bundle also supplies scoped Developer/Reviewer source MCP tools. See
+[the completion report](COMPLETION_20260921.md) for exact executed evidence and
+remaining live-only rollout gates.
+
+The real protected Codex model smoke, independent review, Owner merge,
+installation and #20 pilot remain separate gates. **SAFE_TO_INSTALL: NO** until
+the required independent review and Owner merge. Desktop schedules stay
+PAUSED. The September 17 and earlier sections below are historical checkpoints;
+their open-code-gap lists and totals are not a statement about this head.
+
+## Review-loop repair — 2026-09-17 (historical)
 
 The prior local M1/M2 fixes and partial M3 work have been recovered into an
 isolated clone without changing the original prepared checkout. This run adds

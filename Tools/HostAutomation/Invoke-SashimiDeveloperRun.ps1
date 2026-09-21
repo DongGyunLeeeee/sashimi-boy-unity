@@ -957,6 +957,7 @@ try {
         if (-not $DryRun -and (Test-Path -LiteralPath $promptPath -PathType Leaf)) { Remove-Item -LiteralPath $promptPath -Force -ErrorAction SilentlyContinue }
     }
     [void](Assert-GitOwnershipUnchanged -Before $gitOwnershipBeforeCodex -Boundary 'immediately after Codex execution')
+    if (-not $DryRun) { Write-SashimiStageArtifactSeal -RunPath $normalizedRun -Scope Codex }
     Assert-NotCancelled
 
     $statusLines = @(Get-RepositoryStatusLines)
@@ -979,7 +980,7 @@ try {
     if ($validationId) { $validationArgs += @('-IssueValidationId',$validationId) }
     if ($UnityFixturePath) { $validationArgs += @('-ValidationFixturePath',$UnityFixturePath) }
     if ($DryRun) { $validationArgs += '-DryRun' }
-    $validationTimeout = (3 * [int]$script:developerConfig.Timeouts.UnityStageSeconds) + (2 * [int]$script:developerConfig.Timeouts.GeneratorSeconds) + 600
+    $validationTimeout = (4 * [int]$script:developerConfig.Timeouts.UnityStageSeconds) + (2 * [int]$script:developerConfig.Timeouts.GeneratorSeconds) + 600
     try {
         $validationResult = Invoke-HostScriptJson -Stage 'Host Unity and repository validation' -ScriptPath (Join-Path $PSScriptRoot 'Invoke-SashimiUnityValidation.ps1') -Arguments $validationArgs -TimeoutSeconds $validationTimeout
     }
@@ -992,6 +993,7 @@ try {
         $script:gitControlSecurityFailure = $true
         throw 'Terminal Git-control security failure: Unity did not prove a stable Git-control snapshot after every stage.'
     }
+    if (-not $DryRun) { Write-SashimiStageArtifactSeal -RunPath $normalizedRun -Scope Unity }
     Assert-NotCancelled
 
     $postValidationStatusLines = @(Get-RepositoryStatusLines)

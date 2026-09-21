@@ -273,7 +273,20 @@ functions, modules, call/background/pipeline-chain operators, scriptblocks,
 `cmd.exe` metacharacters or nested shells, Git/GitHub mutation, Task Scheduler,
 interpreters, profiles, `.git` control paths, or paths outside the approved
 workspace surface.
-Production edits must arrive through the workspace file-change capability;
+Production source access uses the bundle-pinned `Invoke-SashimiSourceServer.ps1`
+as an explicitly required stdio MCP server. Its command and argument array come
+from the protected Host, not repository configuration. It lists text paths,
+reads up to 300 lines with a whole-file SHA-256, and permits Developer-only
+whole-file writes or unique literal replacements against that hash. Reviewer
+does not receive either write tool, and the server independently refuses them.
+Requests, responses, file size, file count, and total read/write bytes have fixed
+bounds. `.git`, `.codex`, caches, profile paths, traversal, reparse points and
+hard-linked files are refused. Parent directory handles deny rename/delete
+while a file operation is in progress, and the final file handle must resolve
+to the exact expected path. Existing `.meta` GUIDs cannot change. Source art,
+Packages, ProjectSettings and serialized scene/prefab/asset writes are refused;
+approved generated assets use the Host's allowlisted generator.
+Production edits must arrive through these source tools;
 Git, GitHub, Unity, compilation, tests, and publication remain Host work.
 The no-command capability and unelevated, network-disabled OS sandbox are
 mandatory independent containment boundaries; post-run audit is not treated as
@@ -313,19 +326,24 @@ runs. Every run has an unguessable ID, an ownership marker named
 ```
 
 The Host ledger protocol records a PID and UTC process start time to detect PID
-reuse. Complete child-launch coverage remains an open M3 finding; see the
-[Phase B matrix](REVIEW_53_REMEDIATION.md). Codex probes and execution now receive
-the Developer/Reviewer run ledger and register before the suspended job resumes.
+reuse. All common process invocations, including Git, GitHub and nested
+PowerShell adapters, use the suspended kill-on-close job boundary. Run-bound
+commands inherit the Host ledger from the verified cancellation marker's run.
+Codex probes and execution receive the Developer/Reviewer run ledger and
+register before the suspended job resumes.
 On timeout, cancellation, or final cleanup, the Host rechecks that complete
 identity, requests process-tree termination, waits for confirmed exit, and
 removes the record only after confirmation. An identity mismatch or
 unconfirmed termination preserves the ledger, workspace, and evidence.
 `Get-Process Unity` is a secondary diagnostic, not an authority to kill
 arbitrary Unity processes, and CIM process enumeration is not a mandatory gate.
-Every Unity stage and Codex probe/execution uses a dedicated kill-on-close
+Every common process invocation uses a dedicated kill-on-close
 Windows job. After
 the direct stage process exits, the Host closes/terminates that job as required,
 confirms that its active-process count is zero, and only then trusts Git state.
+A missing root PID alone never proves the descendants stopped. Fallback cleanup
+keeps such ledger entries; both repository cleanup and retention refuse a
+nonempty or invalid ledger.
 
 The Developer snapshots complete Git control state before untrusted execution
 and compares it after every Codex/Unity boundary and immediately before commit,
@@ -360,6 +378,45 @@ sensitive evidence: validation and cleanup fail, the entry remains outside the
 publishable `Artifacts` tree, and diagnostics omit its path and contents.
 
 ## Credentials and artifacts
+
+All process stdout/stderr capture is bounded at 16 MiB/1 MiB with strict UTF-8
+decoding. Non-Codex output is checked for recognizable credentials before
+redaction; Git/GitHub output also checks removed secret environment values.
+Disclosure is a failed invocation.
+The linked-token launcher and Owner installer launcher also use bounded byte
+capture and deadlines instead of unbounded text reads.
+
+While Unity or Codex is active, the process boundary checks its capture roots
+every 250 ms and after termination: at most 512 entries, 8 MiB per log,
+16 MiB per other text file, 25 MiB per PNG, and 160 MiB total. Exceeding a bound
+terminates the owning job and suppresses success. This is a detection-and-stop
+boundary with possible growth between checks, not a filesystem disk quota.
+It does not monitor arbitrary writes by trusted Unity code outside capture
+roots. Unity's stricter promotion quotas and original-text audits still apply.
+
+After each completed Codex/Unity adapter, Host seals the exact recursive set of
+artifact files and directories, lengths and SHA-256 hashes in private State.
+Publication rechecks those seals and an exact allowlist of top-level result
+files. The final run receives a complete seal; retention checks it before
+deletion. Missing seals, extra entries, changed bytes, reparse points or quota
+violations preserve evidence and fail the boundary. PNGs require a valid
+signature and are also screened for recognizable credential strings. Pattern
+screening cannot identify arbitrary opaque secrets.
+
+Generator reproducibility uses two byte-identical pre-generator workspaces.
+The second is a marker-owned private State copy, with a complete source
+manifest (excluding Git payload, caches, temporary files and logs). Host
+compares both declared outputs and the complete source delta, rejects
+undeclared writes, and requires Reviewer regeneration to equal the committed
+deliverable. It removes the private baseline only after confirmed termination.
+This catches generators that generate random output only when an asset is
+missing; simply running twice in the same directory cannot establish that.
+
+The Unity Editor inventory opens every scene and prefab under Assets, including
+unloaded assets, and records active AudioListeners/EventSystems, missing
+scripts and object references. Host checks exact filesystem coverage, record
+counts and schema. Inactive ancestors and disabled components are excluded
+from duplicate-active counts. Neither the scan nor the tests save assets.
 
 `Config.json` contains no secret. Authentication is obtained through the
 current user's approved GitHub CLI, Git credential, and Codex credential

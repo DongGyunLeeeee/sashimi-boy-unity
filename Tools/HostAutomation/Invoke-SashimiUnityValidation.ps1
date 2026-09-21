@@ -58,6 +58,7 @@ $summaryWritten = $false
 $normalizedArtifactsPath = $null
 $rawValidationPath = $null
 $rawValidationFiles = @()
+$generatorWorkspace = $null
 $script:rawValidationCleanupSafe = $true
 $script:gitControlSecurityFailure = $false
 $script:gitControlPassed = $false
@@ -357,6 +358,9 @@ function Invoke-SashimiValidationProcess {
             $defaultLog = if ($FixtureGroup -eq 'Stages' -and $Name -in @('EditMode', 'PlayMode')) {
                 "Running tests for ExecutionSettings with details:`nTest run completed. Exiting with code $exitCode`n"
             }
+            elseif ($Name -ceq 'ComponentInventory') {
+                'SASHIMI_COMPONENT_INVENTORY={"schemaVersion":1,"passed":true,"assets":[],"errors":[]}' + "`n"
+            }
             else { "Fixture stage $Name completed with exit code $exitCode.`n" }
             $logContent = [string](Get-SashimiPropertyValue -Object $fixtureEntry -Name 'LogContent' -DefaultValue $defaultLog)
             Write-SashimiUtf8File -Path $LogPath -Content $logContent
@@ -477,6 +481,7 @@ function Invoke-SashimiValidationProcess {
     if ($Kind -ceq 'Unity') {
         $processParameters.RemoveEnvironmentVariables = $removeEnvironmentNames
         $processParameters.RequireKillOnCloseJob = $true
+        $processParameters.CaptureRoots = @($script:rawValidationPath,$script:unityArtifactRoot)
         if (-not [string]::IsNullOrWhiteSpace($OwnedUnityPidPath)) {
             $processParameters.OwnedProcessRecordPath = $OwnedUnityPidPath
         }
@@ -1491,6 +1496,55 @@ function Invoke-SashimiUnityValidationStage {
     }
 }
 
+function Read-SashimiComponentInventory {
+    param([string]$LogPath, [string]$ProjectRoot, [switch]$SkipFixtureCoverage)
+    $text = Read-SashimiBoundedStableUtf8File -Path $LogPath -MaximumBytes $script:unityLogMaximumBytes
+    $lines = @([regex]::Matches([string]$text.Text, '(?m)^SASHIMI_COMPONENT_INVENTORY=(.+)\r?$'))
+    if ($lines.Count -ne 1) { throw 'Component inventory is missing or ambiguous.' }
+    $inventory = $lines[0].Groups[1].Value | ConvertFrom-Json -Depth 32 -DateKind String
+    if ($inventory.schemaVersion -ne 1 -or $inventory.passed -isnot [bool] -or
+        $inventory.assets -isnot [array] -or $inventory.errors -isnot [array]) {
+        throw 'Component inventory has an invalid schema.'
+    }
+    $paths = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    foreach ($asset in $inventory.assets) {
+        if ($asset.path -notmatch '^Assets/.+\.(unity|prefab)$' -or $asset.path -match '(^|/)\.\.(/|$)' -or
+            -not $paths.Add([string]$asset.path) -or $asset.kind -notin @('Scene','Prefab') -or
+            $asset.components -isnot [array]) { throw 'Component inventory contains an invalid or duplicate asset.' }
+        foreach ($field in @('activeAudioListeners','activeEventSystems','missingScripts','missingReferences')) {
+            if ($asset.$field -isnot [long] -and $asset.$field -isnot [int]) { throw 'Component inventory counts must be integers.' }
+            if ($asset.$field -lt 0) { throw 'Component inventory contains a negative count.' }
+        }
+        if (($asset.path.EndsWith('.unity') -and $asset.kind -cne 'Scene') -or
+            ($asset.path.EndsWith('.prefab') -and $asset.kind -cne 'Prefab')) { throw 'Component inventory asset kind mismatch.' }
+        foreach ($component in $asset.components) {
+            if ($component.active -isnot [bool] -or $component.type -cnotin @('AudioListener','EventSystem') -or
+                $component.path -isnot [string] -or [string]::IsNullOrWhiteSpace($component.path)) {
+                throw 'Component inventory contains an invalid component record.'
+            }
+        }
+        if (@($asset.components | Where-Object { $_.active -and $_.type -ceq 'AudioListener' }).Count -ne $asset.activeAudioListeners -or
+            @($asset.components | Where-Object { $_.active -and $_.type -ceq 'EventSystem' }).Count -ne $asset.activeEventSystems) {
+            throw 'Component inventory counts do not match its records.'
+        }
+        if ($asset.activeAudioListeners -gt 1 -or $asset.activeEventSystems -gt 1 -or
+            $asset.missingScripts -ne 0 -or $asset.missingReferences -ne 0) {
+            throw "Component inventory found duplicate active components or broken references in $($asset.path)."
+        }
+    }
+    if ($SkipFixtureCoverage -and -not (Test-SashimiHarnessMode)) { throw 'Fixture coverage override is prohibited.' }
+    if (-not $SkipFixtureCoverage) {
+        Assert-SashimiNoReparsePoint -Path (Join-Path $ProjectRoot 'Assets') -Recurse
+        $expected = @(Get-ChildItem -LiteralPath (Join-Path $ProjectRoot 'Assets') -File -Recurse -Force |
+            Where-Object Extension -in @('.unity','.prefab') |
+            ForEach-Object { [IO.Path]::GetRelativePath($ProjectRoot,$_.FullName).Replace('\','/') })
+        if ($expected.Count -ne $paths.Count) { throw 'Component inventory did not cover every scene and prefab.' }
+        foreach ($path in $expected) { if (-not $paths.Contains($path)) { throw 'Component inventory omitted an asset.' } }
+    }
+    if (-not $inventory.passed -or $inventory.errors.Count -ne 0) { throw 'Unity component inventory failed.' }
+    return $inventory
+}
+
 function Get-SashimiIssueValidationDefinition {
     [CmdletBinding()]
     param(
@@ -1615,6 +1669,81 @@ function Get-SashimiDeterminismSnapshot {
         }
     }
     return @($entries.ToArray() | Sort-Object Path, Kind)
+}
+
+function Get-SashimiGeneratorSourceManifest {
+    param([Parameter(Mandatory)][string]$ProjectRoot)
+    $files = [Collections.Generic.List[object]]::new()
+    $pending = [Collections.Generic.Stack[string]]::new()
+    $pending.Push($ProjectRoot)
+    [long]$total = 0
+    while ($pending.Count -gt 0) {
+        foreach ($entry in Get-ChildItem -LiteralPath $pending.Pop() -Force) {
+            $relative = [IO.Path]::GetRelativePath($ProjectRoot,$entry.FullName).Replace('\','/')
+            if ($relative -match '^(\.git|Library|Temp|Logs|UserSettings|obj|\.vs)(/|$)') { continue }
+            Assert-SashimiNoReparsePoint -Path $entry.FullName
+            if ($entry.PSIsContainer) { $pending.Push($entry.FullName); continue }
+            $total += $entry.Length
+            if ($files.Count -ge 20000 -or $total -gt 16GB) { throw 'Generator source manifest exceeds its fixed workspace quota.' }
+            $files.Add([pscustomobject]@{ Path=$relative; Length=[long]$entry.Length;
+                Sha256=(Get-FileHash -LiteralPath $entry.FullName -Algorithm SHA256).Hash.ToLowerInvariant() })
+        }
+    }
+    return @($files.ToArray() | Sort-Object Path -CaseSensitive)
+}
+
+function New-SashimiGeneratorBaseline {
+    param([string]$ProjectRoot, [string]$StateRoot, [object[]]$ExpectedManifest)
+    $parent = Join-Path $StateRoot ('generator-baseline-' + [Guid]::NewGuid().ToString('N'))
+    Assert-SashimiNoReparsePoint -Path $parent
+    if (Test-Path -LiteralPath $parent) { throw 'Generator baseline destination already exists.' }
+    [void][IO.Directory]::CreateDirectory($parent)
+    Write-SashimiUtf8File -Path (Join-Path $parent '.generator-owner') -Content (Split-Path -Leaf $parent)
+    $destination = Join-Path $parent 'Repository'
+    [void][IO.Directory]::CreateDirectory($destination)
+    $pending = [Collections.Generic.Stack[string]]::new(); $pending.Push($ProjectRoot)
+    [long]$copiedBytes = 0; $copiedEntries = 0
+    while ($pending.Count -gt 0) {
+        foreach ($entry in Get-ChildItem -LiteralPath $pending.Pop() -Force) {
+            $relative = [IO.Path]::GetRelativePath($ProjectRoot,$entry.FullName).Replace('\','/')
+            if ($relative -match '^(Library|Temp|Logs|UserSettings|obj|\.vs|\.git/lfs)(/|$)') { continue }
+            Assert-SashimiNoReparsePoint -Path $entry.FullName
+            $copiedEntries++
+            if (-not $entry.PSIsContainer) { $copiedBytes += $entry.Length }
+            if ($copiedEntries -gt 40000 -or $copiedBytes -gt 16GB) { throw 'Generator baseline copy, including Git metadata and objects, exceeded its fixed quota.' }
+            $target = Join-Path $destination $relative
+            if ($entry.PSIsContainer) { [void][IO.Directory]::CreateDirectory($target); $pending.Push($entry.FullName) }
+            else { [IO.File]::Copy($entry.FullName,$target,$false) }
+        }
+    }
+    $copied = @(Get-SashimiGeneratorSourceManifest -ProjectRoot $destination)
+    $stillOriginal = @(Get-SashimiGeneratorSourceManifest -ProjectRoot $ProjectRoot)
+    $expectedJson = ConvertTo-SashimiJson $ExpectedManifest
+    if ((ConvertTo-SashimiJson $copied) -cne $expectedJson -or
+        (ConvertTo-SashimiJson $stillOriginal) -cne $expectedJson) {
+        throw 'Generator baselines are not byte-identical before either generator executes.'
+    }
+    return [pscustomobject]@{ Parent=$parent; Repository=$destination; StateRoot=$StateRoot }
+}
+
+function Get-SashimiGeneratorDelta {
+    param([object[]]$Before, [object[]]$After, [string[]]$AllowedPaths)
+    $old = @{}; $new = @{}
+    foreach ($entry in $Before) { $old[[string]$entry.Path] = $entry }
+    foreach ($entry in $After) { $new[[string]$entry.Path] = $entry }
+    $delta = [Collections.Generic.List[object]]::new()
+    foreach ($path in @( @($old.Keys) + @($new.Keys) | Sort-Object -Unique -CaseSensitive)) {
+        if ($old.ContainsKey($path) -and $new.ContainsKey($path) -and
+            $old[$path].Sha256 -ceq $new[$path].Sha256 -and $old[$path].Length -eq $new[$path].Length) { continue }
+        $allowed = $false
+        foreach ($root in $AllowedPaths) {
+            if ($path -ceq $root -or $path.StartsWith($root.TrimEnd('/') + '/', [StringComparison]::Ordinal)) { $allowed=$true; break }
+        }
+        if (-not $allowed) { throw "Generator changed an undeclared source path: $path" }
+        $delta.Add([pscustomobject]@{ Path=$path; Before=$(if($old.ContainsKey($path)){$old[$path]}else{$null});
+            After=$(if($new.ContainsKey($path)){$new[$path]}else{$null}) })
+    }
+    return $delta.ToArray()
 }
 
 function ConvertTo-SashimiGitPathList {
@@ -1988,6 +2117,7 @@ $result = [ordered]@{
     }
     Lfs = $null
     Integrity = $null
+    ComponentInventory = $null
     ArtifactHooks = @()
     Commands = @()
     Checks = @()
@@ -2137,6 +2267,7 @@ try {
     $playXml = Join-Path $normalizedArtifactsPath 'PlayMode.xml'
     $generatorRun1Log = Join-Path $normalizedArtifactsPath 'GeneratorRun1.log'
     $generatorRun2Log = Join-Path $normalizedArtifactsPath 'GeneratorRun2.log'
+    $inventoryLog = Join-Path $normalizedArtifactsPath 'ComponentInventory.log'
 
     $compileRawLog = Join-Path $rawValidationPath 'CompileImport.raw.log'
     $editRawLog = Join-Path $rawValidationPath 'EditMode.raw.log'
@@ -2145,12 +2276,13 @@ try {
     $playRawXml = Join-Path $rawValidationPath 'PlayMode.raw.xml'
     $generatorRun1RawLog = Join-Path $rawValidationPath 'GeneratorRun1.raw.log'
     $generatorRun2RawLog = Join-Path $rawValidationPath 'GeneratorRun2.raw.log'
+    $inventoryRawLog = Join-Path $rawValidationPath 'ComponentInventory.raw.log'
     $rawValidationFiles = @(
         $compileRawLog, $editRawLog, $editRawXml, $playRawLog, $playRawXml,
-        $generatorRun1RawLog, $generatorRun2RawLog
+        $generatorRun1RawLog, $generatorRun2RawLog, $inventoryRawLog
     )
 
-    foreach ($artifactPath in @($compileLog,$editLog,$playLog)) {
+    foreach ($artifactPath in @($compileLog,$editLog,$playLog,$inventoryLog)) {
         Register-SashimiUnityArtifact -Path $artifactPath -MaximumBytes $script:unityLogMaximumBytes -ContentKind StrictUtf8Text
     }
     foreach ($artifactPath in @($editXml,$playXml)) {
@@ -2162,7 +2294,7 @@ try {
         foreach ($artifactPath in @($generatorRun1Log,$generatorRun2Log)) {
             Register-SashimiUnityArtifact -Path $artifactPath -MaximumBytes $script:unityLogMaximumBytes -ContentKind StrictUtf8Text
         }
-        foreach ($artifactName in @('GeneratorRun1.snapshot.json','GeneratorRun2.snapshot.json')) {
+        foreach ($artifactName in @('GeneratorRun1.snapshot.json','GeneratorRun2.snapshot.json','GeneratorInputs.snapshot.json','GeneratorRun1.delta.json','GeneratorRun2.delta.json')) {
             Register-SashimiUnityArtifact -Path (Join-Path $normalizedArtifactsPath $artifactName) -MaximumBytes $script:unityMetadataMaximumBytes -ContentKind StrictUtf8Text
         }
         foreach ($hookSpec in @(
@@ -2177,6 +2309,7 @@ try {
     }
 
     $compileArguments = @('-batchmode', '-nographics', '-buildTarget', 'StandaloneWindows64', '-projectPath', $normalizedProjectPath, '-logFile', $compileRawLog, '-quit')
+    $inventoryArguments = @('-batchmode', '-nographics', '-buildTarget', 'StandaloneWindows64', '-projectPath', $normalizedProjectPath, '-logFile', $inventoryRawLog, '-executeMethod', 'SashimiBoy.EditorTools.AutomationComponentInventory.ScanBatch')
     $editArguments = @('-batchmode', '-nographics', '-buildTarget', 'StandaloneWindows64', '-projectPath', $normalizedProjectPath, '-runTests', '-testPlatform', 'EditMode', '-testResults', $editRawXml, '-logFile', $editRawLog)
     $playArguments = @('-batchmode', '-nographics', '-buildTarget', 'StandaloneWindows64', '-projectPath', $normalizedProjectPath, '-runTests', '-testPlatform', 'PlayMode', '-testResults', $playRawXml, '-logFile', $playRawLog)
     $generatorRun1Arguments = @()
@@ -2324,6 +2457,16 @@ try {
             $stages.CompileImport = Invoke-SashimiUnityValidationStage -Name CompileImport -Arguments $compileArguments -LogPath $compileLog -RawLogPath $compileRawLog -UnityExecutable $unityExecutable -ProjectRoot $normalizedProjectPath -TimeoutSeconds $unityTimeout -Fixture $fixture -Compile
             $generatorPassed = $true
             if ($null -ne $validationDefinition -and $stages.CompileImport.Success) {
+                $secondGeneratorProject = $normalizedProjectPath
+                $generatorInputSnapshot = @()
+                $committedOutputSnapshot = @()
+                if ($null -eq $fixture) {
+                    $generatorInputSnapshot = @(Get-SashimiGeneratorSourceManifest -ProjectRoot $normalizedProjectPath)
+                    $committedOutputSnapshot = @(Get-SashimiDeterminismSnapshot -ProjectRoot $normalizedProjectPath -RelativePaths $determinismPaths)
+                    $generatorWorkspace = New-SashimiGeneratorBaseline -ProjectRoot $normalizedProjectPath -StateRoot $script:unityArtifactStateRoot -ExpectedManifest $generatorInputSnapshot
+                    $secondGeneratorProject = $generatorWorkspace.Repository
+                    Write-SashimiBoundedUnityTextArtifact -Path (Join-Path $normalizedArtifactsPath 'GeneratorInputs.snapshot.json') -Content (ConvertTo-SashimiJson $generatorInputSnapshot)
+                }
                 $stages.GeneratorRun1 = Invoke-SashimiUnityValidationStage -Name GeneratorRun1 -Arguments $generatorRun1Arguments -LogPath $generatorRun1Log -RawLogPath $generatorRun1RawLog -UnityExecutable $unityExecutable -ProjectRoot $normalizedProjectPath -TimeoutSeconds $generatorTimeout -Fixture $fixture -Compile
                 $generatorPassed = [bool]$stages.GeneratorRun1.Success
                 if ($generatorPassed) {
@@ -2333,23 +2476,49 @@ try {
                     $result.Determinism.Run1Snapshot = $snapshot1
                     Write-SashimiBoundedUnityTextArtifact -Path (Join-Path $normalizedArtifactsPath 'GeneratorRun1.snapshot.json') -Content (ConvertTo-SashimiJson $snapshot1 -Pretty)
 
-                    $stages.GeneratorRun2 = Invoke-SashimiUnityValidationStage -Name GeneratorRun2 -Arguments $generatorRun2Arguments -LogPath $generatorRun2Log -RawLogPath $generatorRun2RawLog -UnityExecutable $unityExecutable -ProjectRoot $normalizedProjectPath -TimeoutSeconds $generatorTimeout -Fixture $fixture -Compile
+                    $firstGitBaseline = $script:gitControlBaseline
+                    try {
+                        if ($null -eq $fixture) {
+                            $script:gitControlBaseline = Get-SashimiUnityGitControlSnapshot -ProjectRoot $secondGeneratorProject -Boundary 'independent generator baseline'
+                        }
+                        $secondArguments = @($generatorRun2Arguments | ForEach-Object { if ($_ -ceq $normalizedProjectPath) { $secondGeneratorProject } else { $_ } })
+                        $stages.GeneratorRun2 = Invoke-SashimiUnityValidationStage -Name GeneratorRun2 -Arguments $secondArguments -LogPath $generatorRun2Log -RawLogPath $generatorRun2RawLog -UnityExecutable $unityExecutable -ProjectRoot $secondGeneratorProject -TimeoutSeconds $generatorTimeout -Fixture $fixture -Compile
+                    }
+                    finally { $script:gitControlBaseline = $firstGitBaseline }
                     $generatorPassed = [bool]$stages.GeneratorRun2.Success
                     if ($generatorPassed) {
                         $run2Fixture = Get-SashimiPropertyValue -Object $fixtureDeterminism -Name 'Run2' -DefaultValue $null
-                        $snapshot2 = if ($null -ne $run2Fixture) { @($run2Fixture) } else { @(Get-SashimiDeterminismSnapshot -ProjectRoot $normalizedProjectPath -RelativePaths $determinismPaths) }
+                        $snapshot2 = if ($null -ne $run2Fixture) { @($run2Fixture) } else { @(Get-SashimiDeterminismSnapshot -ProjectRoot $secondGeneratorProject -RelativePaths $determinismPaths) }
                         $result.Determinism.Run2Snapshot = $snapshot2
                         Write-SashimiBoundedUnityTextArtifact -Path (Join-Path $normalizedArtifactsPath 'GeneratorRun2.snapshot.json') -Content (ConvertTo-SashimiJson $snapshot2 -Pretty)
                         $snapshot1Json = ConvertTo-SashimiJson $snapshot1
                         $snapshot2Json = ConvertTo-SashimiJson $snapshot2
                         $result.Determinism.Passed = [string]::Equals($snapshot1Json, $snapshot2Json, [StringComparison]::Ordinal)
-                        Add-SashimiValidationCheck -Name 'GeneratorDeterminism' -Passed ([bool]$result.Determinism.Passed) -Detail $(if ($result.Determinism.Passed) { 'Two generator runs produced identical path, length, and SHA-256 snapshots.' } else { 'Generator run snapshots differ.' })
+                        if ($null -eq $fixture) {
+                            $allowedGeneratorPaths = @($determinismPaths) + @($screenshotPaths) + @($previewPaths)
+                            $delta1 = @(Get-SashimiGeneratorDelta -Before $generatorInputSnapshot -After @(Get-SashimiGeneratorSourceManifest $normalizedProjectPath) -AllowedPaths $allowedGeneratorPaths)
+                            $delta2 = @(Get-SashimiGeneratorDelta -Before $generatorInputSnapshot -After @(Get-SashimiGeneratorSourceManifest $secondGeneratorProject) -AllowedPaths $allowedGeneratorPaths)
+                            Write-SashimiBoundedUnityTextArtifact -Path (Join-Path $normalizedArtifactsPath 'GeneratorRun1.delta.json') -Content (ConvertTo-SashimiJson $delta1)
+                            Write-SashimiBoundedUnityTextArtifact -Path (Join-Path $normalizedArtifactsPath 'GeneratorRun2.delta.json') -Content (ConvertTo-SashimiJson $delta2)
+                            if ((ConvertTo-SashimiJson $delta1) -cne (ConvertTo-SashimiJson $delta2) -or
+                                @($snapshot1 | Where-Object Kind -eq 'Missing').Count -gt 0) { $result.Determinism.Passed = $false }
+                            if (-not [string]::IsNullOrWhiteSpace($ReviewRunId) -and
+                                (ConvertTo-SashimiJson $committedOutputSnapshot) -cne $snapshot1Json) {
+                                $result.Determinism.Passed = $false
+                                Add-SashimiValidationFailure -Code GeneratorDeliverableMismatch -Stage GeneratorRun1 -Message 'Generated outputs differ from the committed Reviewer deliverable.'
+                            }
+                        }
+                        Add-SashimiValidationCheck -Name 'GeneratorDeterminism' -Passed ([bool]$result.Determinism.Passed) -Detail $(if ($result.Determinism.Passed) { 'Independent byte-identical baselines produced matching outputs and complete source deltas.' } else { 'Generator outputs, deltas, or committed deliverables differ.' })
                         if (-not $result.Determinism.Passed) { Add-SashimiValidationFailure -Code GeneratorNonDeterministic -Stage GeneratorRun2 -Message 'Two generator runs produced different outputs.' }
                     }
                 }
             }
 
             if ($stages.CompileImport.Success -and $generatorPassed) {
+                $stages.ComponentInventory = Invoke-SashimiUnityValidationStage -Name ComponentInventory -Arguments $inventoryArguments -LogPath $inventoryLog -RawLogPath $inventoryRawLog -UnityExecutable $unityExecutable -ProjectRoot $normalizedProjectPath -TimeoutSeconds $unityTimeout -Fixture $fixture -Compile
+                if (-not $stages.ComponentInventory.Success) { throw 'Component inventory stage failed.' }
+                $result.ComponentInventory = Read-SashimiComponentInventory -LogPath $inventoryLog -ProjectRoot $normalizedProjectPath -SkipFixtureCoverage:($null -ne $fixture)
+                Add-SashimiValidationCheck -Name 'UnityComponentInventory' -Passed $true -Detail 'All scenes and prefabs were inspected for duplicate active AudioListener/EventSystem components and broken references.' -Data $result.ComponentInventory
                 $stages.EditMode = Invoke-SashimiUnityValidationStage -Name EditMode -Arguments $editArguments -LogPath $editLog -RawLogPath $editRawLog -XmlPath $editXml -RawXmlPath $editRawXml -UnityExecutable $unityExecutable -ProjectRoot $normalizedProjectPath -TimeoutSeconds $unityTimeout -Fixture $fixture -TestStage
                 $stages.PlayMode = Invoke-SashimiUnityValidationStage -Name PlayMode -Arguments $playArguments -LogPath $playLog -RawLogPath $playRawLog -XmlPath $playXml -RawXmlPath $playRawXml -UnityExecutable $unityExecutable -ProjectRoot $normalizedProjectPath -TimeoutSeconds $unityTimeout -Fixture $fixture -TestStage
             }
@@ -2487,6 +2656,19 @@ catch {
     $result.GitControlPassed = $false
     $result.GitControlSecurityFailure = [bool]$script:gitControlSecurityFailure
     $exitCode = 1
+}
+
+if ($null -ne $generatorWorkspace) {
+    try {
+        if (-not $script:rawValidationCleanupSafe) { throw 'Generator process termination was not confirmed; baseline preserved.' }
+        $marker = Join-Path $generatorWorkspace.Parent '.generator-owner'
+        if ([IO.File]::ReadAllText($marker) -cne (Split-Path -Leaf $generatorWorkspace.Parent)) { throw 'Generator workspace ownership mismatch.' }
+        Remove-SashimiUnityTreeWithoutReparseTraversal -Root $generatorWorkspace.Parent -ExpectedParent $generatorWorkspace.StateRoot
+    }
+    catch {
+        Add-SashimiValidationFailure -Code GeneratorWorkspacePreserved -Stage Cleanup -Message $_.Exception.Message
+        $result.Success=$false; $result.Succeeded=$false; $exitCode=1
+    }
 }
 
 if (-not $DryRun -and -not [string]::IsNullOrWhiteSpace($rawValidationPath)) {

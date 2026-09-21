@@ -22,6 +22,14 @@ try {
     if ($execute) { $result.Mode = if ($FixtureExecution) { 'Fixture' } else { 'RealHostOptIn' } }
     $ConfigPath = ConvertTo-SashimiPath -Path $ConfigPath
     $config = Import-SashimiHostConfig -ConfigPath $ConfigPath
+    $adapterRoot = $PSScriptRoot
+    if ($RunRealCodex) {
+        $adapterRoot = Split-Path -Parent $ConfigPath
+        $bundleRoot = Join-Path $script:SashimiProtectedInstallRoot 'Bundles'
+        if (-not (Test-SashimiPathWithin -Path $adapterRoot -Root $bundleRoot) -or
+            (Split-Path -Leaf $adapterRoot) -cnotmatch '^[0-9a-f]{64}$') { throw 'Real smoke requires the installed protected bundle configuration.' }
+        Assert-SashimiNoReparsePoint -Path $adapterRoot
+    }
     if ($execute -and $FixtureExecution) {
         Assert-SashimiFixtureExecutableBoundary -FilePath $config.CodexExecutable -Kind Codex
     }
@@ -51,9 +59,9 @@ try {
         $mode = if ($role -ceq 'Developer') { 'NewWork' } else { 'Review' }
         $artifacts = Join-Path $root ('Artifacts/' + $role)
         $prompt = if ($role -ceq 'Developer') {
-            "HOST FUNCTIONAL SMOKE. The complete source of Example.txt is value=1 followed by LF. Use a supported non-shell editing interface to change exactly that file to value=2 followed by LF. Do not run commands. Report changedFiles containing only Example.txt. If no supported editing interface exists, return Blocked."
+            "HOST FUNCTIONAL SMOKE. Use sashimi_source.read_file to read Example.txt and its SHA-256, then sashimi_source.write_file to change exactly that file to value=2 followed by LF. Do not run commands. Report changedFiles containing only Example.txt. If the source tools are unavailable, return Blocked."
         } else {
-            "HOST FUNCTIONAL SMOKE. Host-verified complete diff for Example.txt: -value=1 +value=2 (LF preserved). Inspect this supplied diff without commands or edits. Return summary containing SMOKE_REVIEW_VALUE_2, changedFiles=[], findings=[]."
+            "HOST FUNCTIONAL SMOKE. Host-verified complete diff for Example.txt: -value=1 +value=2 (LF preserved). Read Example.txt through sashimi_source.read_file to independently confirm value=2. Do not run commands or edit. Return summary containing SMOKE_REVIEW_VALUE_2, changedFiles=[], findings=[]."
         }
         if ($FixtureExecution -and $execute) {
             $fixtureResult = [ordered]@{ schemaVersion=$(if ($role -ceq 'Reviewer') { 2 } else { 1 }); runId=$runId; role=$role; mode=$mode;
@@ -66,7 +74,7 @@ try {
                 -Content (ConvertTo-SashimiJson $fixtureResult)
         }
         $arguments = @('-NoLogo','-NoProfile','-NonInteractive','-File',
-            (Join-Path $PSScriptRoot 'Invoke-SashimiCodexExec.ps1'),'-ConfigPath',$ConfigPath,
+            (Join-Path $adapterRoot 'Invoke-SashimiCodexExec.ps1'),'-ConfigPath',$ConfigPath,
             '-RepositoryPath',$workspace,'-ArtifactsPath',$artifacts,'-Role',$role,'-Mode',$mode,
             '-IssueNumber','52','-PinnedHeadSha',$head,'-RunId',$runId,'-Prompt',$prompt,
             '-TimeoutSeconds',[string]$TimeoutSeconds,'-OwnedProcessRecordPath',(Join-Path $root 'OwnedHostPids.json'))

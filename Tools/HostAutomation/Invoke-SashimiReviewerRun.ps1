@@ -437,9 +437,10 @@ Use Unverified only when a specific CURRENT required acceptance check cannot be 
     Assert-ReviewerNotCancelled
     $codexPayload = Get-SashimiPropertyValue $codex 'Result' $codex
 
+    if (-not $DryRun) { Write-SashimiStageArtifactSeal -RunPath $normalizedRun -Scope Codex }
     $validationArgs = @('-ConfigPath',$ConfigPath,'-ProjectPath',$script:repositoryPath,'-ArtifactsPath',(Join-Path $script:artifactsPath 'Unity'),'-IssueNumber',[string]$selection.IssueNumber,'-BaselineRef','origin/main','-OwnedUnityPidPath',(Join-Path $normalizedRun 'State\OwnedUnityPids.json'),'-CancellationMarkerPath',$script:cancellationMarkerPath,'-ReviewRunId',$runId)
     if ($UnityFixturePath) { $validationArgs += @('-ValidationFixturePath',$UnityFixturePath) }; if ($DryRun) { $validationArgs += '-DryRun' }
-    $validationTimeout = (3 * [int]$script:reviewerConfig.Timeouts.UnityStageSeconds) + (2 * [int]$script:reviewerConfig.Timeouts.GeneratorSeconds) + 600
+    $validationTimeout = (4 * [int]$script:reviewerConfig.Timeouts.UnityStageSeconds) + (2 * [int]$script:reviewerConfig.Timeouts.GeneratorSeconds) + 600
     $beforeUnity = Get-ReviewerGitSnapshot
     $validationResult = Invoke-ReviewerScriptJson 'Host full Unity validation' (Join-Path $PSScriptRoot 'Invoke-SashimiUnityValidation.ps1') $validationArgs $validationTimeout
     Assert-ReviewerGitSnapshotUnchanged -Before $beforeUnity -Boundary 'Unity validation' -KnownUnityDefaultDrift (Get-SashimiPropertyValue $validationResult 'KnownUnityDefaultDrift' $null)
@@ -448,6 +449,9 @@ Use Unverified only when a specific CURRENT required acceptance check cannot be 
 
     $validationChecks = @((Get-SashimiPropertyValue $validationResult 'Checks' @()))
     if (-not $DryRun -and $validationChecks.Count -eq 0) { throw 'Unity validation returned no named checks; review publication is blocked.' }
+    if (-not $DryRun -and @($validationChecks | Where-Object { $_.Name -ceq 'UnityComponentInventory' -and $_.Passed -and -not $_.Planned }).Count -ne 1) {
+        throw 'Executed scene/prefab component inventory evidence is required for review publication.'
+    }
     $failedValidationChecks = @($validationChecks | Where-Object { -not [bool](Get-SashimiPropertyValue $_ 'Passed' $false) })
     if (-not $DryRun -and $failedValidationChecks.Count -gt 0) { throw 'Unity validation contains a failed named check despite its process result.' }
 
@@ -455,6 +459,7 @@ Use Unverified only when a specific CURRENT required acceptance check cannot be 
     $reviewDisposition = Get-SashimiReviewDisposition -Findings $findings
     $blocking = @($reviewDisposition.Blocking)
     $findingCount = $findings.Count
+    if (-not $DryRun) { Write-SashimiStageArtifactSeal -RunPath $normalizedRun -Scope Unity }
     [void](Write-ReviewArtifact 'ReviewDecision.json' (ConvertTo-SashimiJson $reviewDisposition -Pretty))
     if ($reviewDisposition.Disposition -ceq 'Incomplete') {
         throw 'Review is incomplete: infrastructure or unverified concerns remain. Keep Review; do not create a ReviewFix handoff or claim PASS. See ReviewDecision.json.'

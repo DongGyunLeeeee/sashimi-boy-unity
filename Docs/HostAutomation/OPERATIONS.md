@@ -192,12 +192,15 @@ files, and resolve the ACL/scheduler commands by module-qualified name.
 and task XML without creating a directory, changing an ACL, or registering a
 task. Its result therefore keeps `Staged`, `AclVerified`, and `HashesVerified`
 false even though source hashes were computed. Outside `-DryRun`, it stages
-and re-verifies the bundle, then registers or replaces the task. By default the
+and re-verifies the bundle, then registers or replaces the task **disabled**.
+Updating an existing installation also leaves it disabled until the required
+functional check and one-Issue pilot pass. By default the
 source orchestrator is the script beside the installer; use
 `-OrchestratorPath` only for another reviewed source folder that contains the
 complete sibling runtime set.
 
-Phase B remains incomplete; see [the remediation matrix](REVIEW_53_REMEDIATION.md).
+Readiness remains subject to independent review and the live rollout gates;
+see [the completion report](COMPLETION_20260921.md).
 Do not install based on a local DryRun hash or the functional fake smoke.
 
 The HOST-only functional smoke defaults to Plan and cleans its tiny temporary
@@ -215,7 +218,8 @@ and `-TimeoutSeconds 60` (allowed range 1–300 seconds per execution, plus boun
 capability/adapter overhead). This opt-in uses the production adapter flags,
 workspace-write Developer and read-only Reviewer sandboxes, and no GitHub,
 Unity, scheduler or real Git command. It checks one exact source edit and a
-Host-provided diff review. It does not certify scheduled source discovery,
+source read through the scoped MCP tools and Host-provided diff review.
+It does not certify arbitrary scheduled source discovery,
 arbitrary task editing, network isolation or installation. The internal
 `-FixtureExecution` switch requires the test harness and cannot authorize a
 real model. `-DryRun` overrides execution switches.
@@ -372,13 +376,41 @@ function Invoke-OwnerPinnedInstaller {
     $Process = [Diagnostics.Process]::new()
     $Process.StartInfo = $Start
     if (-not $Process.Start()) { throw 'Protected PowerShell did not start.' }
-    $StdoutTask = $Process.StandardOutput.ReadToEndAsync()
-    $StderrTask = $Process.StandardError.ReadToEndAsync()
-    $Process.WaitForExit()
-    $Stdout = $StdoutTask.GetAwaiter().GetResult()
-    $Stderr = $StderrTask.GetAwaiter().GetResult()
+    if ($null -eq ('OwnerInstallerCapture' -as [type])) {
+      Add-Type -TypeDefinition @'
+using System;
+using System.IO;
+using System.Threading.Tasks;
+public static class OwnerInstallerCapture {
+  public static async Task<byte[]> Read(Stream source, int maximum) {
+    using (var output = new MemoryStream()) {
+      var buffer = new byte[8192]; int count;
+      while ((count = await source.ReadAsync(buffer, 0, buffer.Length)) != 0) {
+        if (output.Length + count > maximum) throw new IOException("Installer capture quota exceeded.");
+        output.Write(buffer, 0, count);
+      }
+      return output.ToArray();
+    }
+  }
+}
+'@
+    }
+    $StdoutTask = [OwnerInstallerCapture]::Read($Process.StandardOutput.BaseStream,16MB)
+    $StderrTask = [OwnerInstallerCapture]::Read($Process.StandardError.BaseStream,1MB)
+    $Deadline = [Diagnostics.Stopwatch]::StartNew()
+    while (-not $Process.WaitForExit(50)) {
+      if ($StdoutTask.IsFaulted -or $StderrTask.IsFaulted -or $Deadline.Elapsed.TotalSeconds -ge 300) {
+        throw 'Pinned installer exceeded its output or time boundary.'
+      }
+    }
+    if (-not [Threading.Tasks.Task]::WaitAll(@($StdoutTask,$StderrTask),5000)) {
+      throw 'Pinned installer output completion was not confirmed.'
+    }
+    $Decoder = [Text.UTF8Encoding]::new($false,$true)
+    $Stdout = $Decoder.GetString($StdoutTask.GetAwaiter().GetResult())
+    $Stderr = $Decoder.GetString($StderrTask.GetAwaiter().GetResult())
     if ($Process.ExitCode -ne 0) {
-      throw "Pinned installer exited $($Process.ExitCode): $Stderr"
+      throw "Pinned installer exited $($Process.ExitCode); unvalidated output was discarded."
     }
 
     $Document = [Text.Json.JsonDocument]::Parse($Stdout)
@@ -408,7 +440,10 @@ function Invoke-OwnerPinnedInstaller {
   }
   finally {
     if ($null -ne $Document) { $Document.Dispose() }
-    if ($null -ne $Process) { $Process.Dispose() }
+    if ($null -ne $Process) {
+      if (-not $Process.HasExited) { $Process.Kill($true); [void]$Process.WaitForExit(5000) }
+      $Process.Dispose()
+    }
     if ($null -ne $Lease) { $Lease.Dispose() }
   }
 }
@@ -483,7 +518,39 @@ Export-ScheduledTask -TaskName 'SASHIMI BOY Host Orchestrator'
 ```
 
 The exported definition should show `InteractiveToken`, `HighestAvailable`,
-`PT15M`, `StartWhenAvailable`, `WakeToRun`, and `IgnoreNew`.
+`PT15M`, `StartWhenAvailable`, `WakeToRun`, and `IgnoreNew`, with
+`Task/Settings/Enabled=false`. Run the installed orchestrator manually for the
+DryRun and #20 / PR #47 pilot while the task remains disabled. Only after the
+real functional smoke and Developer → Review → Reviewer → Verification pilot
+pass, the Owner enables the reviewed task:
+
+```powershell
+Enable-ScheduledTask -TaskName 'SASHIMI BOY Host Orchestrator'
+Get-ScheduledTask -TaskName 'SASHIMI BOY Host Orchestrator' |
+  Select-Object TaskName, State
+```
+
+Use the exact `ConfigPath` from the reviewed installed bundle for each manual
+pilot invocation:
+
+```powershell
+$InstalledConfigPath = ($Install.ResultJson | ConvertFrom-Json).ConfigPath
+$Bundle = Split-Path -Parent $InstalledConfigPath
+& 'C:\Program Files\PowerShell\7\pwsh.exe' -NoLogo -NoProfile -NonInteractive `
+  -File (Join-Path $Bundle 'Invoke-SashimiHostOrchestrator.ps1') `
+  -ConfigPath $InstalledConfigPath -Once -IssueNumber 20 -DryRun
+```
+
+After the reviewed installation and real functional check, omit `-DryRun` for
+each separate one-Issue pilot run. `-IssueNumber` requires `-Once`, narrows the
+eligible queue to that exact issue, and returns NoWork when it is ineligible;
+it never selects a different issue instead. A production DryRun reads GitHub
+without mutating it. The fixture harness still prohibits live queue previews.
+
+The PR body must use `Closes #<issue>` so the Project's exact `Linked pull
+requests` field is populated. A plain `Refs #<issue>` mention is insufficient.
+Read back the field before scheduling; missing or multiple linked open PRs
+make an In Progress/Review issue ineligible.
 
 ## Run lifecycle
 
@@ -657,6 +724,13 @@ Unity raw validation state has a closed cleanup allowlist. Any unexpected file,
 directory, or reparse point fails validation and is preserved outside the
 publishable `Artifacts` tree for investigation; the Host does not delete,
 publish, or silently normalize it.
+
+The orchestrator also checks the complete run artifact boundary before its
+final public result. Failure moves the unvalidated tree into a private
+`State/.unpublished-artifacts-*` quarantine and retains only a newly sealed
+failed RunResult in public Artifacts. State/FinalResult also records failure;
+an earlier success cannot survive that rejection. Unconfirmed containment
+remains a failure, and the private evidence is preserved for inspection.
 
 Public Unity artifacts have a separate closed-tree rule. If their exact
 manifest, stable hash/length, encoding, per-file quota, total quota, or

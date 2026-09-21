@@ -1759,7 +1759,7 @@ namespace SashimiBoyAutomation
 
         public static KillOnCloseProcessResult Run(string executable, string[] arguments, string workingDirectory,
             string standardInput, IDictionary<string,string> environment, int timeoutSeconds, string cancellationMarkerPath,
-            Action<int,string,bool> updateLedger)
+            Action<int,string,bool> updateLedger, Action captureGuard)
         {
             KillOnCloseProcessResult result = new KillOnCloseProcessResult();
             Stopwatch stopwatch = Stopwatch.StartNew();
@@ -1829,8 +1829,15 @@ namespace SashimiBoyAutomation
                 if (ResumeThread(process.hThread) == RESUME_FAILED) throw Error("ResumeThread");
                 CloseNativeHandle(ref process.hThread);
                 bool mainExited = false;
+                long lastCaptureCheck = -250;
                 while (!mainExited)
                 {
+                    if (captureGuard != null && stopwatch.ElapsedMilliseconds - lastCaptureCheck >= 250)
+                    {
+                        try { captureGuard(); }
+                        catch { result.FailureCode = "FILE_CAPTURE_BOUNDARY_FAILED"; break; }
+                        lastCaptureCheck = stopwatch.ElapsedMilliseconds;
+                    }
                     UInt32 wait = WaitForSingleObject(process.hProcess, 50);
                     if (wait == WAIT_OBJECT_0) { mainExited = true; break; }
                     if (wait == WAIT_FAILED) throw Error("WaitForSingleObject");
@@ -1856,6 +1863,11 @@ namespace SashimiBoyAutomation
                 jobClosed = true;
                 UInt32 mainConfirmation = WaitForSingleObject(process.hProcess, TERMINATION_CONFIRM_MILLISECONDS);
                 result.TerminationConfirmed = mainConfirmation == WAIT_OBJECT_0 && result.RemainingDescendantProcessIds.Length == 0;
+                if (captureGuard != null)
+                {
+                    try { captureGuard(); }
+                    catch { result.FailureCode = "FILE_CAPTURE_BOUNDARY_FAILED"; }
+                }
                 bool outputTasksCompleted = false;
                 try { outputTasksCompleted = Task.WaitAll(new Task[] { stdoutTask, stderrTask }, PIPE_DRAIN_MILLISECONDS); }
                 catch (AggregateException) { outputTasksCompleted = stdoutTask.IsCompleted && stderrTask.IsCompleted; }
@@ -2093,6 +2105,18 @@ function Set-SashimiFixedGitProcessEnvironment {
     }
 }
 
+function Test-SashimiProcessSecret {
+    param([string]$Text,[string[]]$SensitiveValues=@())
+    # Host results legitimately include their own workspace paths. Audit the
+    # original content for credentials without treating such path metadata as
+    # a file disclosure. Codex keeps its stricter source/profile policy.
+    if ($Text -match '(?i)\b(?:github_pat_|gh[pousr]_)[A-Za-z0-9_]{8,}|\bBearer\s+[A-Za-z0-9._~+/=-]+|\b(?:Proxy-)?Authorization\s*:\s*Basic\s+[A-Za-z0-9+/=]{8,}|-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----|://[^\s/@:]+:[^\s/@]+@') { return $true }
+    foreach ($value in $SensitiveValues) {
+        if ($value.Length -ge 8 -and $value.Length -le 4096 -and $Text.Contains($value,[StringComparison]::Ordinal)) { return $true }
+    }
+    return $false
+}
+
 function Invoke-SashimiHostProcess {
     [CmdletBinding()]
     param(
@@ -2108,6 +2132,7 @@ function Invoke-SashimiHostProcess {
         [string]$OwnedProcessRecordPath,
         [string]$CancellationMarkerPath,
         [string]$CodexWorkspacePath,
+        [string[]]$CaptureRoots = @(),
         [switch]$ClearEnvironment,
         [switch]$PreserveRawOutputInMemory,
         [switch]$RequireKillOnCloseJob,
@@ -2118,8 +2143,20 @@ function Invoke-SashimiHostProcess {
     if ($PreserveRawOutputInMemory -and ($Kind -cne 'Codex' -or -not [string]::IsNullOrWhiteSpace($InvocationRecordPath))) {
         throw 'Unredacted in-memory output is allowed only for Codex without an invocation-record path.'
     }
-    if ($RequireKillOnCloseJob -and $Kind -notin @('Unity','Codex')) {
-        throw 'The kill-on-close suspended process boundary is supported only for Unity and Codex.'
+    # All Host children need the same pre-resume ownership and kernel tree
+    # lifetime, including Git credential/LFS helpers and PowerShell adapters.
+    # A parent exiting cannot turn its later descendants into unowned work.
+    $RequireKillOnCloseJob = $true
+    if ([string]::IsNullOrWhiteSpace($OwnedProcessRecordPath) -and
+        -not [string]::IsNullOrWhiteSpace($CancellationMarkerPath)) {
+        $candidateRun = Split-Path -Parent $CancellationMarkerPath
+        if (Test-Path -LiteralPath (Join-Path $candidateRun $script:SashimiRunMarkerName) -PathType Leaf) {
+            Assert-SashimiRunIdentity -RunId (Split-Path -Leaf $candidateRun)
+            Assert-SashimiNoReparsePoint -Path $candidateRun
+            $owner = Read-SashimiJsonFile (Join-Path $candidateRun $script:SashimiRunMarkerName)
+            if ($owner.SchemaVersion -ne 1 -or $owner.RunId -cne (Split-Path -Leaf $candidateRun)) { throw 'Run marker mismatch.' }
+            $OwnedProcessRecordPath = Join-Path $candidateRun 'State\OwnedHostPids.json'
+        }
     }
     if ($Kind -ceq 'Codex') {
         if (-not $ClearEnvironment) { throw 'Codex process launch requires a cleared inherited environment.' }
@@ -2167,6 +2204,9 @@ function Invoke-SashimiHostProcess {
     if ($ClearEnvironment) { $startInfo.Environment.Clear() }
     if (-not [string]::IsNullOrWhiteSpace($WorkingDirectory)) {
         $startInfo.WorkingDirectory = ConvertTo-SashimiPath -Path $WorkingDirectory
+    }
+    else {
+        $startInfo.WorkingDirectory = ConvertTo-SashimiPath -Path (Get-Location).ProviderPath
     }
     foreach ($argument in @($ArgumentList)) { [void]$startInfo.ArgumentList.Add([string]$argument) }
     $sensitiveOutputValues = @()
@@ -2233,6 +2273,10 @@ function Invoke-SashimiHostProcess {
                         -ProcessId $childPid -StartTimeUtc $createdUtc
                 }
             }
+            $captureGuard = $null
+            if ($CaptureRoots.Count -gt 0) {
+                $captureGuard = [Action]{ Assert-SashimiCaptureQuota -Roots $CaptureRoots }
+            }
             $native = [SashimiBoyAutomation.KillOnCloseProcess]::Run(
                 [string]$FilePath,
                 [string[]]@($ArgumentList),
@@ -2241,9 +2285,14 @@ function Invoke-SashimiHostProcess {
                 [Collections.Generic.IDictionary[string,string]]$startInfo.Environment,
                 [int]$TimeoutSeconds,
                 [string]$CancellationMarkerPath,
-                $ledgerCallback)
+                $ledgerCallback, $captureGuard)
         }
-        catch { $nativeException = $_.Exception }
+        catch {
+            # Policy/identity rejection precedes process creation. Preserve
+            # that exception contract and never write a post-launch record.
+            if ($null -eq $launchLease) { throw }
+            $nativeException = $_.Exception
+        }
         finally {
             if ($null -ne $launchLease) { try { $launchLease.Stream.Dispose() } catch { } }
         }
@@ -2262,6 +2311,15 @@ function Invoke-SashimiHostProcess {
         }
         else {
             "The bounded suspended process boundary failed closed: $nativeFailure"
+        }
+        if ($Kind -cne 'Codex' -and
+            (Test-SashimiProcessSecret -Text ($stdout + "`n" + $stderr) -SensitiveValues $sensitiveOutputValues)) {
+            # Audit original decoded bytes before redaction or retention. Never
+            # turn disclosure into a successful process by replacing its text.
+            $nativeFailure = 'SENSITIVE_PROCESS_OUTPUT'
+            $native.ExitCode = 127
+            $stdout = ''
+            $stderr = 'Host process output was rejected before retention: sensitive content.'
         }
         $terminationConfirmed = [bool]$native.TerminationConfirmed
         $remainingDescendants = @($native.RemainingDescendantProcessIds | ForEach-Object { [int]$_ })
@@ -2491,6 +2549,109 @@ function Exit-SashimiHostMutex {
     finally { $Lease.Mutex.Dispose() }
 }
 
+function Assert-SashimiCaptureQuota {
+    param([Parameter(Mandatory)][string[]]$Roots)
+    [long]$bytes = 0
+    $entries = 0
+    $pending = [Collections.Generic.Stack[string]]::new()
+    foreach ($root in $Roots) {
+        if ([string]::IsNullOrWhiteSpace($root)) { throw 'Capture root is empty.' }
+        Assert-SashimiNoReparsePoint -Path $root
+        if (Test-Path -LiteralPath $root) { $pending.Push($root) }
+    }
+    while ($pending.Count -gt 0) {
+        foreach ($entry in Get-ChildItem -LiteralPath $pending.Pop() -Force -ErrorAction Stop) {
+            $entries++
+            if ($entries -gt 512 -or ($entry.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+                throw 'Capture tree exceeded its entry boundary.'
+            }
+            if ($entry.PSIsContainer) { $pending.Push($entry.FullName); continue }
+            $limit = if ($entry.Extension -ieq '.log') { 8MB } elseif ($entry.Extension -ieq '.png') { 25MB } else { 16MB }
+            $bytes += $entry.Length
+            if ($entry.Length -gt $limit -or $bytes -gt 160MB) { throw 'Capture byte quota exceeded.' }
+        }
+    }
+}
+
+function Get-SashimiArtifactManifest {
+    param([Parameter(Mandatory)][string]$Root)
+    Assert-SashimiCaptureQuota -Roots @($Root)
+    $records = [Collections.Generic.List[object]]::new()
+    $pending = [Collections.Generic.Stack[string]]::new(); $pending.Push($Root)
+    while ($pending.Count -gt 0) {
+        foreach ($entry in Get-ChildItem -LiteralPath $pending.Pop() -Force -ErrorAction Stop) {
+            Assert-SashimiNoReparsePoint -Path $entry.FullName
+            if ($entry.PSIsContainer) {
+                $records.Add([pscustomobject]@{ Path=[IO.Path]::GetRelativePath($Root,$entry.FullName).Replace('\','/') + '/'; Length=[long]0; Sha256='' })
+                $pending.Push($entry.FullName); continue
+            }
+            $stream = [IO.FileStream]::new($entry.FullName,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::Read)
+            try {
+                if ($stream.Length -ne $entry.Length -or $stream.Length -gt 25MB) { throw 'Artifact changed during audit.' }
+                $bytes = [byte[]]::new([int]$stream.Length); $stream.ReadExactly($bytes,0,$bytes.Length)
+                if ($entry.Extension -ine '.png') {
+                    $text = [Text.UTF8Encoding]::new($false,$true).GetString($bytes)
+                    if (Test-SashimiProcessSecret -Text $text) { throw 'Artifact contains sensitive output.' }
+                }
+                else {
+                    if ($bytes.Length -lt 8 -or [Convert]::ToHexString($bytes,0,8) -cne '89504E470D0A1A0A') { throw 'Artifact is not a PNG.' }
+                    if (Test-SashimiProcessSecret -Text ([Text.Encoding]::Latin1.GetString($bytes))) { throw 'PNG contains sensitive output.' }
+                }
+                $records.Add([pscustomobject]@{ Path=[IO.Path]::GetRelativePath($Root,$entry.FullName).Replace('\','/');
+                    Length=[long]$bytes.Length; Sha256=[Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($bytes)).ToLowerInvariant() })
+            }
+            finally { $stream.Dispose() }
+        }
+    }
+    return @($records.ToArray() | Sort-Object Path -CaseSensitive)
+}
+
+function Write-SashimiArtifactSeal {
+    param([Parameter(Mandatory)][string]$Root,[Parameter(Mandatory)][string]$SealPath)
+    $first = @(Get-SashimiArtifactManifest -Root $Root)
+    $second = @(Get-SashimiArtifactManifest -Root $Root)
+    if ((ConvertTo-SashimiJson $first) -cne (ConvertTo-SashimiJson $second)) { throw 'Artifact tree changed while sealing.' }
+    Write-SashimiUtf8File -Path $SealPath -Content (ConvertTo-SashimiJson ([ordered]@{SchemaVersion=1;Files=$first}))
+}
+
+function Assert-SashimiArtifactSeal {
+    param([Parameter(Mandatory)][string]$Root,[Parameter(Mandatory)][string]$SealPath)
+    Assert-SashimiNoReparsePoint -Path $SealPath
+    if ((Get-Item -LiteralPath $SealPath).Length -gt 1MB) { throw 'Artifact seal exceeds its quota.' }
+    $seal = Read-SashimiJsonFile $SealPath
+    if ($seal.SchemaVersion -ne 1 -or $seal.Files -isnot [array]) { throw 'Invalid artifact seal.' }
+    $actual = @(Get-SashimiArtifactManifest -Root $Root)
+    if ((ConvertTo-SashimiJson @($seal.Files)) -cne (ConvertTo-SashimiJson $actual)) { throw 'Artifact set or content changed after validation.' }
+}
+
+function Assert-SashimiRunArtifactBoundary {
+    param([Parameter(Mandatory)][string]$RunPath,[switch]$RequireFinalSeal)
+    $root = Join-Path $RunPath 'Artifacts'
+    Assert-SashimiCaptureQuota -Roots @($root)
+    if ($RequireFinalSeal) {
+        Assert-SashimiArtifactSeal -Root $root -SealPath (Join-Path $RunPath 'State/Artifacts.seal.json')
+        return
+    }
+    $allowed = @('DraftPullRequest.md','HandoffCompletion.md','Failure.md','DeliveryResumeHandoff.md',
+        'ReviewDecision.json','ReviewFinding.md','ReviewFixHandoff.md','OwnerVerificationChecklist.md','ReviewerFailure.md','RunResult.json')
+    foreach ($entry in Get-ChildItem -LiteralPath $root -Force) {
+        if ($entry.PSIsContainer) {
+            if ($entry.Name -cnotin @('Unity','Codex')) { throw 'Unexpected run artifact directory.' }
+            Assert-SashimiArtifactSeal -Root $entry.FullName -SealPath (Join-Path $RunPath ('State/' + $entry.Name + '.seal.json'))
+        }
+        elseif ($entry.Name -cnotin $allowed) { throw 'Unexpected run artifact file.' }
+    }
+    [void](Get-SashimiArtifactManifest -Root $root)
+}
+
+function Write-SashimiStageArtifactSeal {
+    param([string]$RunPath,[ValidateSet('Unity','Codex')][string]$Scope)
+    $root = Join-Path $RunPath ('Artifacts/' + $Scope)
+    if (Test-Path -LiteralPath $root -PathType Container) {
+        Write-SashimiArtifactSeal -Root $root -SealPath (Join-Path $RunPath ('State/' + $Scope + '.seal.json'))
+    }
+}
+
 function Assert-SashimiRunIdentity {
     [CmdletBinding()]
     param([Parameter(Mandatory = $true)][string]$RunId)
@@ -2539,12 +2700,28 @@ function Get-SashimiOwnedRun {
     return [pscustomobject]@{ RunId = $runId; RunPath = $path; Marker = $marker; MarkerPath = $markerPath }
 }
 
+function Assert-SashimiRunProcessLedgersCleared {
+    param([Parameter(Mandatory)][string]$RunPath)
+    foreach ($name in @('OwnedHostPids.json','OwnedUnityPids.json','OwnedCodexPids.json')) {
+        $path = Join-Path $RunPath (Join-Path 'State' $name)
+        if (-not (Test-Path -LiteralPath $path)) { continue }
+        Assert-SashimiNoReparsePoint -Path $path
+        $ledger = Read-SashimiJsonFile $path
+        if ([int](Get-SashimiPropertyValue $ledger 'SchemaVersion' 0) -ne 1 -or
+            $null -eq $ledger.PSObject.Properties['Processes'] -or
+            @($ledger.Processes).Count -ne 0) {
+            throw 'Run process termination is unconfirmed; preserve the workspace and its ledger.'
+        }
+    }
+}
+
 function Remove-SashimiRunRepository {
     [CmdletBinding()]
     param([Parameter(Mandatory = $true)][string]$RunPath, [Parameter(Mandatory = $true)][string]$RunRoot, [switch]$DryRun)
 
     try {
         $owned = Get-SashimiOwnedRun -RunPath $RunPath -RunRoot $RunRoot
+        Assert-SashimiRunProcessLedgersCleared -RunPath $owned.RunPath
         $repositoryPath = Join-Path $owned.RunPath 'Repository'
         Assert-SashimiNoReparsePoint -Path $repositoryPath -Recurse
         if (-not $DryRun -and (Test-Path -LiteralPath $repositoryPath)) {
@@ -2574,6 +2751,8 @@ function Invoke-SashimiRetention {
         if ($directory.LastWriteTimeUtc -ge $cutoff) { continue }
         try {
             $owned = Get-SashimiOwnedRun -RunPath $directory.FullName -RunRoot $root
+            Assert-SashimiRunProcessLedgersCleared -RunPath $owned.RunPath
+            Assert-SashimiRunArtifactBoundary -RunPath $owned.RunPath -RequireFinalSeal
             $liveOwnedProcesses = New-Object 'System.Collections.Generic.List[int]'
             foreach ($ledgerName in @('OwnedHostPids.json','OwnedUnityPids.json')) {
                 $ledgerPath = Join-Path $owned.RunPath (Join-Path 'State' $ledgerName)

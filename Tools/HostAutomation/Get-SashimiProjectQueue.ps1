@@ -7,6 +7,7 @@ param(
     [Parameter(DontShow = $true)][string]$GraphQLFixturePath,
     [string]$OutputPath,
     [string]$CancellationMarkerPath,
+    [ValidateRange(0,2147483647)][int]$IssueNumber = 0,
     [switch]$DryRun
 )
 
@@ -150,7 +151,7 @@ function Get-FixtureQueueData {
 }
 
 function Get-LiveProjectFields {
-    $query = 'query HostProjectFields($login:String!,$number:Int!,$cursor:String){user(login:$login){projectV2(number:$number){id fields(first:100,after:$cursor){totalCount nodes{__typename ... on ProjectV2Field{id name dataType} ... on ProjectV2IterationField{id name} ... on ProjectV2SingleSelectField{id name options{id name}} ... on ProjectV2RepositoryField{id name}} pageInfo{hasNextPage endCursor}}}}}'
+    $query = 'query HostProjectFields($login:String!,$number:Int!,$cursor:String){user(login:$login){projectV2(number:$number){id fields(first:100,after:$cursor){totalCount nodes{__typename ... on ProjectV2Field{id name dataType} ... on ProjectV2IterationField{id name} ... on ProjectV2SingleSelectField{id name options{id name}}} pageInfo{hasNextPage endCursor}}}}}'
     $nodes = New-Object 'System.Collections.Generic.List[object]'; $cursor = ''; $seen = @{}; $expected = -1
     while ($true) {
         $vars = @{ login = [string]$script:queueConfig.ProjectOwner; number = [int]$script:queueConfig.ProjectNumber }
@@ -459,14 +460,14 @@ try {
     }
     elseif ($FixturePath) { $queueData = Get-FixtureQueueData -Path $FixturePath; $dataSource = 'Fixture' }
     else {
-        if ($DryRun) { throw 'Live queue access is disabled in -DryRun; provide -FixturePath for a no-mutation plan.' }
+        if ($DryRun -and (Test-SashimiHarnessMode)) { throw 'Fixture DryRun requires explicit fixture input; live queue access is prohibited in the harness.' }
         $queueData = Get-LiveQueueData; $dataSource = 'Live'
     }
     Assert-QueuePayloadContainsNoSensitiveContent -QueueData $queueData
     $authorized = @($script:queueConfig.Security.AuthorizedPrAuthors | ForEach-Object { [string]$_ })
     if ($authorized.Count -lt 1 -or @($authorized | Where-Object { [string]::IsNullOrWhiteSpace($_) }).Count -gt 0) { throw 'Security.AuthorizedPrAuthors must be non-empty.' }
     $candidates = @($queueData.Items | ForEach-Object { New-QueueCandidate -Item $_ -AuthorizedAuthors $authorized })
-    $eligible = @($candidates | Where-Object Eligible | Sort-Object `
+    $eligible = @($candidates | Where-Object { $_.Eligible -and ($IssueNumber -eq 0 -or [int]$_.Item.IssueNumber -eq $IssueNumber) } | Sort-Object `
         @{ Expression = { [int]$_.ClassRank }; Ascending = $true },
         @{ Expression = { [array]::IndexOf(@('P0', 'P1', 'P2', 'P3'), [string]$_.Item.Priority) }; Ascending = $true },
         @{ Expression = { [datetime]$_.Item.UpdatedAt }; Ascending = $true },
@@ -475,7 +476,7 @@ try {
     if ($eligible.Count -eq 0) {
         $output = [ordered]@{
             SchemaVersion = 1; Tool = 'Get-SashimiProjectQueue'; Success = $true; Selected = $false; Role = 'None'; Mode = 'None'
-            Reason = 'QueueEmpty'; DataSource = $dataSource; Encoding = 'UTF-8'; ProjectPageCount = [int]$queueData.PageCount
+            Reason = $(if($IssueNumber -gt 0){'RequestedIssueNotEligible'}else{'QueueEmpty'}); DataSource = $dataSource; Encoding = 'UTF-8'; ProjectPageCount = [int]$queueData.PageCount
             CandidateCount = 0; DispatchCount = 0; ExcludedCandidates = $excluded; MutationAttempted = $false
         }
     }

@@ -546,6 +546,22 @@ public static class SashimiHostFakeTool
             query.IndexOf("mutation", StringComparison.OrdinalIgnoreCase) >= 0;
         WriteAudit("gh", args, mutation);
 
+        // The real ProjectV2FieldConfiguration union has no repository-field
+        // type. Validate inline fragment types instead of accepting an
+        // invalid query solely because its operation name matches a fixture.
+        string[] fragmentTypes = new[] { "ProjectV2Field", "ProjectV2IterationField",
+            "ProjectV2MultiSelectField", "ProjectV2SingleSelectField", "ProjectV2Item",
+            "ProjectV2ItemFieldSingleSelectValue", "ProjectV2ItemFieldPullRequestValue", "Issue" };
+        foreach (System.Text.RegularExpressions.Match fragment in
+            System.Text.RegularExpressions.Regex.Matches(query, @"\.\.\.\s+on\s+([A-Za-z0-9_]+)"))
+        {
+            if (!fragmentTypes.Contains(fragment.Groups[1].Value, StringComparer.Ordinal))
+            {
+                Console.Error.WriteLine("gh: No such type in the reviewed ProjectV2 fixture schema");
+                return 1;
+            }
+        }
+
         string scenario = Env("SASHIMI_FAKE_GH_SCENARIO");
         if (args.Length >= 2 && args[0] == "api" && args[1] == "user")
         {
@@ -928,6 +944,31 @@ public static class SashimiFakeCodex
         }
         if (Has(args, "login") && Has(args, "status")) { Console.WriteLine("Logged in"); return 0; }
         if (!Has(args, "exec")) { Console.Error.WriteLine("unexpected fake Codex invocation"); return 92; }
+
+        string processModePath = Sibling(".process-mode");
+        if (File.Exists(processModePath))
+        {
+            string mode = File.ReadAllText(processModePath).Trim();
+            if (Has(args, "--grandchild")) {
+                System.Threading.Thread.Sleep(2000);
+                File.WriteAllText(Sibling(".escaped"), "grandchild escaped"); return 0;
+            }
+            if (Has(args, "--descendant")) {
+                System.Threading.Thread.Sleep(200);
+                var grandchild = Process.Start(new ProcessStartInfo { FileName=ExePath(), Arguments="exec --grandchild", UseShellExecute=false, CreateNoWindow=true });
+                if (grandchild != null) grandchild.Dispose();
+                File.WriteAllText(Sibling(".descendant-ready"), "later generation started");
+                System.Threading.Thread.Sleep(2000);
+                File.WriteAllText(Sibling(".escaped"), "escaped"); return 0;
+            }
+            var child = Process.Start(new ProcessStartInfo { FileName=ExePath(), Arguments="exec --descendant", UseShellExecute=false, CreateNoWindow=true });
+            if (child != null) child.Dispose();
+            var ready = Stopwatch.StartNew();
+            while (!File.Exists(Sibling(".descendant-ready")) && ready.ElapsedMilliseconds < 3000) System.Threading.Thread.Sleep(5);
+            if (mode == "cancel") File.WriteAllText(File.ReadAllText(Sibling(".cancel-path")),"cancel");
+            if (mode == "timeout" || mode == "cancel") System.Threading.Thread.Sleep(15000);
+            return 0;
+        }
 
         Console.In.ReadToEnd();
         string smokeFixture = Path.Combine(Directory.GetCurrentDirectory(), "functional-smoke.fixture.json");
@@ -1734,6 +1775,7 @@ try {
             'Invoke-SashimiHostOrchestrator.ps1',
             'Get-SashimiProjectQueue.ps1',
             'Invoke-SashimiCodexExec.ps1',
+            'Invoke-SashimiSourceServer.ps1',
             'Invoke-SashimiDeveloperRun.ps1',
             'Invoke-SashimiReviewerRun.ps1',
             'Invoke-SashimiUnityValidation.ps1',
@@ -3958,7 +4000,7 @@ wire_api = "responses"
                 'The outer orchestrator accepted forbidden profile output from real fake Codex.'
             $outerResult = ConvertFrom-LastHostJson $orchestrator.StdOut
             Assert-HostTest (-not [bool]$outerResult.Success -and [string]$outerResult.State -ceq 'Failed' -and
-                [string]$outerResult.Error -ceq 'HostOrchestratorFailed') `
+                [string]$outerResult.Error -ceq 'ArtifactBoundaryFailed') `
                 'Forbidden Codex output did not produce a terminal content-free orchestrator failure.'
             Assert-HostTest ([string]$outerResult.RunId -cmatch '^\d{8}T\d{6}Z-[0-9a-f]{32}$') `
                 'The failed orchestrator omitted the exact run identity needed to inspect its retained sinks.'
@@ -3968,7 +4010,12 @@ wire_api = "responses"
             [void](Get-SashimiOwnedRun -RunPath $runPath -RunRoot $runRoot)
             $finalResultPath = Join-Path $runPath 'State\FinalResult.json'
             $runResultPath = Join-Path $runPath 'Artifacts\RunResult.json'
-            $reviewerFailurePath = Join-Path $runPath 'Artifacts\ReviewerFailure.md'
+            # The failed adapter has no validated stage seal. The public
+            # boundary quarantines that tree, including its safe failure
+            # summary, before retaining only the terminal failure result.
+            $quarantine = @(Get-ChildItem -LiteralPath (Join-Path $runPath 'State') -Directory -Filter '.unpublished-artifacts-*')
+            Assert-HostTest ($quarantine.Count -eq 1) 'Unvalidated failed-stage artifacts were not quarantined.'
+            $reviewerFailurePath = Join-Path $quarantine[0].FullName 'ReviewerFailure.md'
             foreach ($requiredPath in @($finalResultPath,$runResultPath,$reviewerFailurePath)) {
                 Assert-HostTest (Test-Path -LiteralPath $requiredPath -PathType Leaf) `
                     "Terminal outer-sink regression did not retain expected content-free file: $requiredPath"
@@ -3977,7 +4024,7 @@ wire_api = "responses"
             $retainedRun = Read-SashimiJsonFile $runResultPath
             foreach ($retained in @($retainedFinal,$retainedRun)) {
                 Assert-HostTest (-not [bool]$retained.Success -and [string]$retained.State -ceq 'Failed' -and
-                    [string]$retained.Error -ceq 'HostOrchestratorFailed') `
+                    [string]$retained.Error -ceq 'ArtifactBoundaryFailed') `
                     'A retained outer result did not preserve the terminal content-free failure contract.'
             }
 
@@ -4023,13 +4070,13 @@ wire_api = "responses"
         $poisoned = [ordered]@{
             GIT_DIR='fixture-poison'; GIT_WORK_TREE='fixture-poison'; GIT_INDEX_FILE='fixture-poison'
             GIT_OBJECT_DIRECTORY='fixture-poison'; GIT_EXEC_PATH='fixture-poison'; GIT_CONFIG_COUNT='1'
-            GIT_CONFIG_KEY_0='core.hooksPath'; GIT_CONFIG_VALUE_0='fixture-poison'; GIT_ASKPASS='fixture-poison'
+            GIT_CONFIG_KEY_0='core.hooksPath'; GIT_CONFIG_VALUE_0='fixture-poison'; GIT_ASKPASS='fixture-git-askpass-2917'
             GIT_SSH_COMMAND='fixture-poison'; GIT_EDITOR='fixture-poison'; GIT_PAGER='fixture-poison'
             GIT_EXTERNAL_DIFF='fixture-poison'; GIT_LFS_SKIP_SMUDGE='0'; GIT_TERMINAL_PROMPT='1'; GIT_OPTIONAL_LOCKS='1'
-            GCM_INTERACTIVE='Always'; SSH_ASKPASS='fixture-poison'; HTTPS_PROXY='http://fixture.invalid:1'
-            GH_HOST='fixture.invalid'; GH_CONFIG_DIR='fixture-poison'; GH_ENTERPRISE_TOKEN='fixture-poison'
+            GCM_INTERACTIVE='Always'; SSH_ASKPASS='fixture-ssh-askpass-3721'; HTTPS_PROXY='http://fixture.invalid:1'
+            GH_HOST='fixture.invalid'; GH_CONFIG_DIR='fixture-poison'; GH_ENTERPRISE_TOKEN='fixture-enterprise-credential-7392'
             GH_DEBUG='api'; GH_PAGER='fixture-poison'; GH_EDITOR='fixture-poison'; GH_BROWSER='fixture-poison'
-            GH_PROMPT_DISABLED='0'; GH_FORCE_TTY='always'; GITHUB_TOKEN='fixture-poison'
+            GH_PROMPT_DISABLED='0'; GH_FORCE_TTY='always'; GITHUB_TOKEN='fixture-github-credential-8294'
         }
         $previous = @{}
         foreach ($entry in $poisoned.GetEnumerator()) {
@@ -4231,12 +4278,12 @@ wire_api = "responses"
         try {
             $direct = Invoke-SashimiHostProcess -FilePath $script:fakeTools.Git `
                 -ArgumentList @('-c','core.hooksPath=NUL','status','--porcelain=v1') -Kind Git -TimeoutSeconds 30
-            Assert-HostTest (-not $direct.Succeeded -and $direct.ExitCode -eq 91) 'Secret-emitting fake Git did not return its expected failure.'
+            Assert-HostTest (-not $direct.Succeeded -and $direct.ExitCode -eq 127) 'Secret-emitting fake Git was not rejected before output retention.'
             Assert-HostTest ($direct.StdOut -notmatch [regex]::Escape($openAiFixtureValue) -and
                 $direct.StdErr -notmatch [regex]::Escape($awsFixtureValue)) `
                 'Common returned an exact sensitive inherited-environment value in Git output.'
-            Assert-HostTest ($direct.StdOut -match '\[REDACTED_SECRET\]' -and $direct.StdErr -match '\[REDACTED_SECRET\]') `
-                'Common did not exact-value redact both Git stdout and stderr.'
+            Assert-HostTest ($direct.StdOut -ceq '' -and $direct.StdErr -ceq 'Host process output was rejected before retention: sensitive content.') `
+                'Common did not return a content-free failure after exact-value auditing of Git stdout and stderr.'
 
             $pinnedSha = '9' * 40
             $bundle = New-HostResumeFixtureBundle -Mode ReviewFix -IssueNumber 5296 -PinnedSha $pinnedSha -DeliverySha $pinnedSha -StaleSha ('8' * 40)
@@ -5755,6 +5802,8 @@ wire_api = "responses"
         Assert-HostTest (@($json.BundleFiles | Where-Object { [string]$_.RelativePath -ceq 'ExecutableIdentity.json' }).Count -eq 1) `
             'ExecutableIdentity.json is not covered exactly once by the content-addressed bundle manifest.'
         $xml = [string]$json.TaskXml
+        [xml]$taskDocument = $xml
+        Assert-HostTest ([string]$taskDocument.Task.Settings.Enabled -ceq 'false' -and -not $json.TaskEnabled) 'Installer enabled scheduling before the Owner pilot gate.'
         foreach ($fragment in @('<LogonType>InteractiveToken</LogonType>', '<RunLevel>HighestAvailable</RunLevel>', '<Interval>PT15M</Interval>', '<StartWhenAvailable>true</StartWhenAvailable>', '<WakeToRun>true</WakeToRun>', '<MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>')) {
             Assert-HostTest ($xml.Contains($fragment)) "Task XML is missing $fragment."
         }
@@ -6173,6 +6222,8 @@ function Unregister-ScheduledTask {
         Assert-HostTest (-not (Test-Path -LiteralPath $schedulerQuerySentinel)) 'Uninstaller DryRun queried Task Scheduler despite its no-access contract.'
         Assert-HostTest (-not (Test-Path -LiteralPath $schedulerMutationSentinel)) 'Uninstaller DryRun called the instrumented Unregister-ScheduledTask boundary.'
     }
+
+    . (Join-Path $PSScriptRoot 'CompletionFixtures.ps1')
 
     Invoke-HostTestCase 'PendingCommandAndNaturalLanguageRemainInert' {
         $sentinel = Join-Path $script:temporaryRoot 'pending-command-executed.txt'

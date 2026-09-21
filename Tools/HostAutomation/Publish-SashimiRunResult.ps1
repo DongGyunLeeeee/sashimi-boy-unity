@@ -62,6 +62,12 @@ function Invoke-PublishGh {
             throw "Cancellation was requested before $Operation; no mutation was attempted."
         }
         Assert-PublishMutationBoundary
+        if ($CancellationMarkerPath) {
+            $artifactRun = Split-Path -Parent $CancellationMarkerPath
+            if (Test-Path -LiteralPath (Join-Path $artifactRun $script:SashimiRunMarkerName) -PathType Leaf) {
+                Assert-SashimiRunArtifactBoundary -RunPath $artifactRun
+            }
+        }
         $commands.Add($commandRecord)
         $script:mutationAttempted = $true
     }
@@ -513,7 +519,7 @@ function Get-ProjectContract {
             Options = Get-SashimiPropertyValue $script:publishFixture 'StatusOptions' ([pscustomobject]@{ Backlog='backlog'; Ready='ready'; 'In Progress'='in-progress'; Review='review'; Verification='verification'; Done='done' })
         }
     }
-    $query = 'query HostPublishContract($login:String!,$number:Int!,$itemId:ID!){user(login:$login){projectV2(number:$number){id fields(first:100){totalCount pageInfo{hasNextPage endCursor} nodes{__typename ... on ProjectV2Field{id name dataType} ... on ProjectV2IterationField{id name} ... on ProjectV2SingleSelectField{id name options{id name}} ... on ProjectV2RepositoryField{id name}}}}} node(id:$itemId){... on ProjectV2Item{id project{id} content{... on Issue{number state updatedAt body repository{nameWithOwner}}} statusValue:fieldValueByName(name:"Status"){... on ProjectV2ItemFieldSingleSelectValue{name}} linkedValue:fieldValueByName(name:"Linked pull requests"){... on ProjectV2ItemFieldPullRequestValue{pullRequests(first:100){totalCount pageInfo{hasNextPage endCursor} nodes{number state}}}}}}}'
+    $query = 'query HostPublishContract($login:String!,$number:Int!,$itemId:ID!){user(login:$login){projectV2(number:$number){id fields(first:100){totalCount pageInfo{hasNextPage endCursor} nodes{__typename ... on ProjectV2Field{id name dataType} ... on ProjectV2IterationField{id name} ... on ProjectV2SingleSelectField{id name options{id name}}}}}} node(id:$itemId){... on ProjectV2Item{id project{id} content{... on Issue{number state updatedAt body repository{nameWithOwner}}} statusValue:fieldValueByName(name:"Status"){... on ProjectV2ItemFieldSingleSelectValue{name}} linkedValue:fieldValueByName(name:"Linked pull requests"){... on ProjectV2ItemFieldPullRequestValue{pullRequests(first:100){totalCount pageInfo{hasNextPage endCursor} nodes{number state}}}}}}}'
     $result = Invoke-PublishGh -Operation 'Project status contract query' -Arguments @('api','graphql','-f',"login=$($script:publishConfig.ProjectOwner)",'-F',"number=$($script:publishConfig.ProjectNumber)",'-f',"itemId=$ProjectItemId",'-f',"query=$query")
     $json = ConvertFrom-PublishJson $result.StdOut 'Project status contract query'
     $project = $json.data.user.projectV2; $node = $json.data.node

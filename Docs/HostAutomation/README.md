@@ -28,7 +28,8 @@ The fixed service scope is:
 For the distinction between a confirmed defect, a human check, and a runner
 failure, read [Review decisions](REVIEW_DECISIONS.md). Installation readiness
 and executed evidence are recorded in the
-[current repair report](REVIEW_REPAIR_20260917.md) and
+[current completion report](COMPLETION_20260921.md), the
+[earlier review-loop repair report](REVIEW_REPAIR_20260917.md), and
 [PR #53 remediation matrix](REVIEW_53_REMEDIATION.md). This draft is not an
 installation approval.
 
@@ -51,8 +52,11 @@ The Host and Codex have deliberately different authority.
 
 Developer Codex runs use `workspace-write`, approval policy `never`, an
 unelevated Windows sandbox, disabled workspace-write network access, and an
-explicitly disabled shell/command-execution capability. Source changes may be
-reported only through the structured file-change capability; any
+explicitly disabled shell/command-execution capability. The protected bundle
+provides the `sashimi_source` stdio MCP server for paginated repository listing,
+source reads, SHA-256-checked writes, and unique literal replacements. Reviewer
+gets only the listing and reading tools. There is no command tool in this
+server. Any
 `command_execution` event is a terminal policy violation.
 Reviewer Codex runs are read-only. The Host, outside the Codex sandbox, owns
 the bounded GitHub and Git network operations. The adapter performs one

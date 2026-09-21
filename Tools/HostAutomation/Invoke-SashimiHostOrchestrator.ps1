@@ -9,6 +9,8 @@ param(
     [string]$UnityFixturePath,
     [string]$PublishFixturePath,
     [string]$MutexName,
+    [switch]$Once,
+    [ValidateRange(0,2147483647)][int]$IssueNumber = 0,
     [Parameter(DontShow = $true)][switch]$UnelevatedChild,
     [switch]$DryRun
 )
@@ -25,6 +27,7 @@ $script:RequiredBundleFiles = @(
     'Get-SashimiProjectQueue.ps1',
     'HostAutomation.Common.ps1',
     'Invoke-SashimiCodexExec.ps1',
+    'Invoke-SashimiSourceServer.ps1',
     'Invoke-SashimiDeveloperRun.ps1',
     'Invoke-SashimiHostOrchestrator.ps1',
     'Invoke-SashimiReviewerRun.ps1',
@@ -701,6 +704,21 @@ namespace SashimiBoyAutomation
             finally { if (token != IntPtr.Zero) CloseHandle(token); }
         }
 
+        private static async Task<byte[]> ReadBoundedAsync(Stream stream, int maximumBytes)
+        {
+            using (var capture = new MemoryStream())
+            {
+                var buffer = new byte[8192];
+                while (true)
+                {
+                    int count = await stream.ReadAsync(buffer, 0, buffer.Length).ConfigureAwait(false);
+                    if (count == 0) return capture.ToArray();
+                    if (capture.Length + count > maximumBytes) throw new InvalidDataException("HOST_OUTPUT_LIMIT");
+                    capture.Write(buffer, 0, count);
+                }
+            }
+        }
+
         public static LinkedTokenProcessResult RunUnelevated(string executable, string commandLine, string workingDirectory)
         {
             IntPtr currentToken = IntPtr.Zero;
@@ -760,15 +778,21 @@ namespace SashimiBoyAutomation
                 stderrHandle = new SafeFileHandle(stderrRead, true); stderrRead = IntPtr.Zero;
                 stdoutStream = new FileStream(stdoutHandle, FileAccess.Read);
                 stderrStream = new FileStream(stderrHandle, FileAccess.Read);
-                stdoutReader = new StreamReader(stdoutStream, new UTF8Encoding(false), true);
-                stderrReader = new StreamReader(stderrStream, new UTF8Encoding(false), true);
-                Task<string> stdoutTask = stdoutReader.ReadToEndAsync();
-                Task<string> stderrTask = stderrReader.ReadToEndAsync();
+                Task<byte[]> stdoutTask = ReadBoundedAsync(stdoutStream, 16 * 1024 * 1024);
+                Task<byte[]> stderrTask = ReadBoundedAsync(stderrStream, 1024 * 1024);
 
                 if (ResumeThread(process.hThread) == RESUME_FAILED) throw Error("ResumeThread");
                 CloseNativeHandle(ref process.hThread);
 
-                UInt32 waitResult = WaitForSingleObject(process.hProcess, LINKED_CHILD_TIMEOUT_MS);
+                var deadline = System.Diagnostics.Stopwatch.StartNew();
+                UInt32 waitResult;
+                do
+                {
+                    waitResult = WaitForSingleObject(process.hProcess, 50);
+                    if (stdoutTask.IsFaulted || stderrTask.IsFaulted)
+                        throw new InvalidDataException("HOST_OUTPUT_CAPTURE_FAILED");
+                }
+                while (waitResult == WAIT_TIMEOUT && deadline.ElapsedMilliseconds < LINKED_CHILD_TIMEOUT_MS);
                 if (waitResult == WAIT_TIMEOUT)
                 {
                     terminationAttempted = true;
@@ -788,8 +812,8 @@ namespace SashimiBoyAutomation
                 CloseNativeHandle(ref job);
                 if (!Task.WaitAll(new Task[] { stdoutTask, stderrTask }, PIPE_DRAIN_TIMEOUT_MS))
                     throw new InvalidOperationException("The unelevated host child output channels did not close after termination.");
-                string stdout = stdoutTask.GetAwaiter().GetResult();
-                string stderr = stderrTask.GetAwaiter().GetResult();
+                string stdout = new UTF8Encoding(false, true).GetString(stdoutTask.GetAwaiter().GetResult());
+                string stderr = new UTF8Encoding(false, true).GetString(stderrTask.GetAwaiter().GetResult());
                 UInt32 nativeExitCode;
                 if (!GetExitCodeProcess(process.hProcess, out nativeExitCode)) throw Error("GetExitCodeProcess");
                 return new LinkedTokenProcessResult { ExitCode = unchecked((int)nativeExitCode), StandardOutput = stdout, StandardError = stderr };
@@ -843,6 +867,8 @@ function Invoke-OrchestratorUnelevated {
     $arguments=[Collections.Generic.List[string]]::new()
     foreach ($value in @('-NoLogo','-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',$PSCommandPath,'-ConfigPath',$ConfigPath,'-IntegrityManifestPath',$IntegrityManifestPath,'-UnelevatedChild')) { $arguments.Add((ConvertTo-OrchestratorNativeArgument ([string]$value))) }
     if (-not [string]::IsNullOrWhiteSpace($MutexName)) { $arguments.Add((ConvertTo-OrchestratorNativeArgument '-MutexName')); $arguments.Add((ConvertTo-OrchestratorNativeArgument $MutexName)) }
+    if ($Once) { $arguments.Add((ConvertTo-OrchestratorNativeArgument '-Once')) }
+    if ($IssueNumber -gt 0) { $arguments.Add((ConvertTo-OrchestratorNativeArgument '-IssueNumber')); $arguments.Add((ConvertTo-OrchestratorNativeArgument ([string]$IssueNumber))) }
     $commandLine=(ConvertTo-OrchestratorNativeArgument $executable)+' '+[string]::Join(' ',$arguments)
     Initialize-OrchestratorTokenNative
     # The protected identity is rehashed at the last external-launch boundary;
@@ -933,6 +959,47 @@ function Invoke-OrchestratorScript {
     return $json
 }
 
+function Complete-OrchestratorArtifactOutput {
+    param([object]$Workspace,[object]$Value)
+    $pathsVerified = $false
+    try {
+        Assert-SashimiRunIdentity -RunId (Split-Path -Leaf $Workspace.RunPath)
+        Assert-SashimiNoReparsePoint -Path $Workspace.RunPath
+        if (-not (Test-SashimiPathEqual -Left $Workspace.ArtifactsPath -Right (Join-Path $Workspace.RunPath 'Artifacts')) -or
+            -not (Test-SashimiPathEqual -Left $Workspace.StatePath -Right (Join-Path $Workspace.RunPath 'State'))) { throw 'Run output paths differ from their owned root.' }
+        $markerPath = Join-Path $Workspace.RunPath $script:SashimiRunMarkerName
+        Assert-SashimiNoReparsePoint -Path $markerPath
+        $marker = Read-SashimiJsonFile $markerPath
+        if ($marker.SchemaVersion -ne 1 -or $marker.RunId -cne (Split-Path -Leaf $Workspace.RunPath)) { throw 'Run output marker mismatch.' }
+        Assert-SashimiNoReparsePoint -Path $Workspace.StatePath
+        $pathsVerified = $true
+        Assert-SashimiRunArtifactBoundary -RunPath $Workspace.RunPath
+        Write-SashimiUtf8File -Path (Join-Path $Workspace.ArtifactsPath 'RunResult.json') -Content (ConvertTo-SashimiJson $Value)
+        Write-SashimiArtifactSeal -Root $Workspace.ArtifactsPath -SealPath (Join-Path $Workspace.StatePath 'Artifacts.seal.json')
+        Write-SashimiUtf8File -Path (Join-Path $Workspace.StatePath 'FinalResult.json') -Content (ConvertTo-SashimiJson $Value)
+    }
+    catch {
+        $Value.Success=$false; $Value.ExitCode=1; $Value.State='Failed'; $Value.Error='ArtifactBoundaryFailed'
+        if ($pathsVerified) {
+            try {
+                Assert-SashimiNoReparsePoint -Path $Workspace.ArtifactsPath
+                $quarantine = Join-Path $Workspace.StatePath ('.unpublished-artifacts-' + [Guid]::NewGuid().ToString('N'))
+                if (-not (Test-SashimiPathWithin -Path $quarantine -Root $Workspace.StatePath)) { throw 'Invalid quarantine root.' }
+                # Same-volume rename, without enumerating or following unsafe
+                # descendants. Unvalidated bytes remain outside public Artifacts.
+                [IO.Directory]::Move($Workspace.ArtifactsPath,$quarantine)
+                [void][IO.Directory]::CreateDirectory($Workspace.ArtifactsPath)
+                Write-SashimiUtf8File -Path (Join-Path $Workspace.ArtifactsPath 'RunResult.json') -Content (ConvertTo-SashimiJson $Value)
+                Write-SashimiArtifactSeal -Root $Workspace.ArtifactsPath -SealPath (Join-Path $Workspace.StatePath 'Artifacts.seal.json')
+            }
+            catch { $Value.Error='ArtifactContainmentUnconfirmed' }
+            try { Write-SashimiUtf8File -Path (Join-Path $Workspace.StatePath 'FinalResult.json') -Content (ConvertTo-SashimiJson $Value) }
+            catch { $Value.Error='ArtifactContainmentUnconfirmed' }
+        }
+    }
+    return $Value
+}
+
 function Set-OrchestratorState {
     param([string]$Name, [string]$Detail = '')
     $script:state = $Name
@@ -964,14 +1031,16 @@ function Stop-OrchestratorOwnedProcesses {
                 if ($ownedPid -lt 1 -or [string]::IsNullOrWhiteSpace($ownedStart)) { $remaining.Add(-1); continue }
                 $process = Get-Process -Id $ownedPid -ErrorAction SilentlyContinue
                 if ($null -eq $process) {
-                    Update-SashimiOwnedProcessLedger -Path $recordPath -Action Remove -ProcessId $ownedPid -StartTimeUtc $ownedStart
+                    # A vanished root PID is not proof that its whole job was
+                    # drained. Only the owning job boundary clears the ledger.
+                    $remaining.Add($ownedPid)
                     continue
                 }
                 if ($process.StartTime.ToUniversalTime().ToString('o') -cne $ownedStart) { $remaining.Add($ownedPid); continue }
                 try {
                     if (Stop-SashimiOwnedProcessTree -Process $process) {
-                        Update-SashimiOwnedProcessLedger -Path $recordPath -Action Remove -ProcessId $ownedPid -StartTimeUtc $ownedStart
                         $stopped.Add($ownedPid)
+                        $remaining.Add($ownedPid)
                     }
                     else { $remaining.Add($ownedPid) }
                 }
@@ -990,6 +1059,8 @@ try {
     }
     $script:integrityResult = Assert-OrchestratorRuntimeIntegrity -ConfigurationPath $ConfigPath -ManifestPath $IntegrityManifestPath
     $currentProcessElevated=Test-OrchestratorTokenElevated
+    if ($IssueNumber -gt 0 -and -not $Once) { throw 'An explicit IssueNumber requires -Once; no other issue will be selected.' }
+    if ($DryRun -and -not $QueueFixturePath -and $currentProcessElevated) { throw 'Run live read-only preview from a non-elevated PowerShell session.' }
     if ($script:integrityResult.Verified -and -not $DryRun) {
         $script:privilegeBoundaryResult=[pscustomobject]@{ Required=$true; Verified=(-not $currentProcessElevated); CurrentProcessElevated=$currentProcessElevated; Relaunched=[bool]$UnelevatedChild; Reason=if ($currentProcessElevated) { 'ElevatedParentMustRelaunch' } else { 'UnelevatedTokenVerified' } }
         $fixtureArguments=@($QueueFixturePath,$CodexFixturePath,$UnityFixturePath,$PublishFixturePath)
@@ -1048,9 +1119,11 @@ try {
     }
     else {
         if ($DryRun) {
-            if (-not $QueueFixturePath) { throw 'Orchestrator -DryRun requires -QueueFixturePath; live queue access is forbidden.' }
-            $queueArgs = @('-ConfigPath',$ConfigPath,'-FixturePath',$QueueFixturePath,'-DryRun')
-            $selection = Invoke-OrchestratorScript -Stage 'Read fixture ProjectV2 queue' -ScriptPath (Join-Path $PSScriptRoot 'Get-SashimiProjectQueue.ps1') -Arguments $queueArgs -TimeoutSeconds ([int]$script:orchestratorConfig.Timeouts.GitHubSeconds)
+            if (-not $QueueFixturePath -and (Test-SashimiHarnessMode)) { throw 'Orchestrator fixture DryRun requires -QueueFixturePath.' }
+            $queueArgs = @('-ConfigPath',$ConfigPath,'-DryRun')
+            if ($QueueFixturePath) { $queueArgs += @('-FixturePath',$QueueFixturePath) }
+            if ($IssueNumber -gt 0) { $queueArgs += @('-IssueNumber',[string]$IssueNumber) }
+            $selection = Invoke-OrchestratorScript -Stage 'Read ProjectV2 queue for preview' -ScriptPath (Join-Path $PSScriptRoot 'Get-SashimiProjectQueue.ps1') -Arguments $queueArgs -TimeoutSeconds ([int]$script:orchestratorConfig.Timeouts.GitHubSeconds)
             if ([int]$selection.DispatchCount -gt 1) { throw 'Queue attempted to dispatch more than one Issue.' }
             if ([bool]$selection.Selected) {
                 $runnerName = if ([string]$selection.Role -ceq 'Reviewer') { 'Invoke-SashimiReviewerRun.ps1' } else { 'Invoke-SashimiDeveloperRun.ps1' }
@@ -1077,6 +1150,7 @@ try {
             Set-OrchestratorState 'QueueLookup'
             $queueOutput = Join-Path $workspace.StatePath 'Selection.json'
             $queueArgs = @('-ConfigPath',$ConfigPath,'-OutputPath',$queueOutput,'-CancellationMarkerPath',$script:cancellationMarkerPath)
+            if ($IssueNumber -gt 0) { $queueArgs += @('-IssueNumber',[string]$IssueNumber) }
             $selection = Invoke-SashimiWithRetry -MaximumAttempts ([int]$script:orchestratorConfig.Retry.MaximumAttempts) -CooldownSeconds ([int]$script:orchestratorConfig.Retry.CooldownSeconds) -Operation {
                 Invoke-OrchestratorScript -Stage 'Read live ProjectV2 queue' -ScriptPath (Join-Path $PSScriptRoot 'Get-SashimiProjectQueue.ps1') -Arguments $queueArgs -TimeoutSeconds ([int]$script:orchestratorConfig.Timeouts.GitHubSeconds)
             } -ShouldRetry { param($value,$record) return ($null -ne $record) } -CancellationMarkerPath $script:cancellationMarkerPath
@@ -1092,7 +1166,7 @@ try {
                 if ($CodexFixturePath) { $runnerArgs += @('-CodexFixturePath',$CodexFixturePath) }
                 if ($UnityFixturePath) { $runnerArgs += @('-UnityFixturePath',$UnityFixturePath) }
                 if ($PublishFixturePath) { $runnerArgs += @('-PublishFixturePath',$PublishFixturePath) }
-                $runnerTimeout = [int]$script:orchestratorConfig.Timeouts.CodexSeconds + (3 * [int]$script:orchestratorConfig.Timeouts.UnityStageSeconds) + (2 * [int]$script:orchestratorConfig.Timeouts.GeneratorSeconds) + 1800
+                $runnerTimeout = [int]$script:orchestratorConfig.Timeouts.CodexSeconds + (4 * [int]$script:orchestratorConfig.Timeouts.UnityStageSeconds) + (2 * [int]$script:orchestratorConfig.Timeouts.GeneratorSeconds) + 1800
                 $runnerResult = Invoke-OrchestratorScript -Stage "Execute $($selection.Role) run" -ScriptPath (Join-Path $PSScriptRoot $runnerName) -Arguments $runnerArgs -TimeoutSeconds $runnerTimeout
                 Set-OrchestratorState 'ValidatedAndPublished'
                 Set-OrchestratorState 'Succeeded'; $success = $true
@@ -1153,14 +1227,8 @@ $output = [ordered]@{
 }
 $safeOutput = if ($script:commonLoaded) { Protect-SashimiData -Value $output } else { $output }
 if ($null -ne $workspace -and -not $DryRun) {
-    try {
-        Write-SashimiUtf8File -Path (Join-Path $workspace.StatePath 'FinalResult.json') -Content (ConvertTo-OrchestratorJson $safeOutput -Pretty)
-        Write-SashimiUtf8File -Path (Join-Path $workspace.ArtifactsPath 'RunResult.json') -Content (ConvertTo-OrchestratorJson $safeOutput -Pretty)
-    }
-    catch {
-        $safeOutput.Success = $false; $safeOutput.ExitCode = 1; $safeOutput.Error = Protect-OrchestratorDiagnostic ("Final result persistence failed: $($_.Exception.Message)")
-        $exitCode = 1
-    }
+    $safeOutput = Complete-OrchestratorArtifactOutput -Workspace $workspace -Value $safeOutput
+    $exitCode = [int]$safeOutput.ExitCode
 }
 if ($null -ne $lease) { Exit-SashimiHostMutex -Lease $lease }
 [Console]::Out.WriteLine((ConvertTo-OrchestratorJson $safeOutput))

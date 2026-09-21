@@ -58,6 +58,7 @@ $script:RequiredBundleFiles = @(
     'Invoke-SashimiHostOrchestrator.ps1',
     'Get-SashimiProjectQueue.ps1',
     'Invoke-SashimiCodexExec.ps1',
+    'Invoke-SashimiSourceServer.ps1',
     'Invoke-SashimiDeveloperRun.ps1',
     'Invoke-SashimiReviewerRun.ps1',
     'Invoke-SashimiUnityValidation.ps1',
@@ -1406,7 +1407,7 @@ function New-SashimiScheduledTaskXml {
   <Principals><Principal id="Author"><UserId>$escapedUser</UserId><LogonType>InteractiveToken</LogonType><RunLevel>HighestAvailable</RunLevel></Principal></Principals>
   <Settings>
     <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy><DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries><StopIfGoingOnBatteries>false</StopIfGoingOnBatteries><AllowHardTerminate>true</AllowHardTerminate><StartWhenAvailable>true</StartWhenAvailable><RunOnlyIfNetworkAvailable>false</RunOnlyIfNetworkAvailable>
-    <IdleSettings><StopOnIdleEnd>false</StopOnIdleEnd><RestartOnIdle>false</RestartOnIdle></IdleSettings><AllowStartOnDemand>true</AllowStartOnDemand><Enabled>true</Enabled><Hidden>false</Hidden><RunOnlyIfIdle>false</RunOnlyIfIdle><WakeToRun>true</WakeToRun><ExecutionTimeLimit>PT12H</ExecutionTimeLimit><Priority>7</Priority>
+    <IdleSettings><StopOnIdleEnd>false</StopOnIdleEnd><RestartOnIdle>false</RestartOnIdle></IdleSettings><AllowStartOnDemand>true</AllowStartOnDemand><Enabled>false</Enabled><Hidden>false</Hidden><RunOnlyIfIdle>false</RunOnlyIfIdle><WakeToRun>true</WakeToRun><ExecutionTimeLimit>PT12H</ExecutionTimeLimit><Priority>7</Priority>
   </Settings>
   <Actions Context="Author"><Exec><Command>$escapedExecutable</Command><Arguments>$escapedArguments</Arguments><WorkingDirectory>$escapedWorkingDirectory</WorkingDirectory></Exec></Actions>
 </Task>
@@ -1414,7 +1415,7 @@ function New-SashimiScheduledTaskXml {
 }
 
 $result = [ordered]@{
-    Tool='Install-SashimiHostAutomation'; Success=$false; ExitCode=1; DryRun=[bool]$DryRun; Changed=$false; Staged=$false
+    Tool='Install-SashimiHostAutomation'; Success=$false; ExitCode=1; DryRun=[bool]$DryRun; Changed=$false; Staged=$false; TaskEnabled=$false
     TaskName=$script:TaskName; UserId=$null; LogonType='InteractiveToken'; RunLevel='HighestAvailable'; MultipleInstances='IgnoreNew'; RepetitionInterval='PT15M'
     PowerShellPath=$script:PowerShellPath; MinimumPowerShellVersion=$script:MinimumPowerShellVersion.ToString(); DetectedPowerShellVersion=$null
     InstallRoot=$script:InstallRoot; BundleId=$null; ExpectedBundleId=$ExpectedBundleId; BundleAuthorizationRequired=$null; BundleAuthorizationMatched=$false
