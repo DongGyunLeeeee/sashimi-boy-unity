@@ -1,0 +1,248 @@
+# Loaded only by the marker-owned self-contained fixture harness.
+Invoke-HostTestCase 'CompletionGraphQLFixtureRejectsNonexistentFieldType' {
+    $process = Invoke-SashimiHostProcess -FilePath $script:fakeTools.GitHub -Kind GitHub -ArgumentList @(
+        'api','graphql','-f','query=query HostProjectFields{node{id ... on ProjectV2RepositoryField{id name}}}'
+    ) -Environment @{SASHIMI_FAKE_TOOL_LOG=$script:fakeToolLogPath} -TimeoutSeconds 10
+    Assert-HostTest (-not $process.Succeeded -and $process.ExitCode -eq 1 -and $process.StdErr -match 'No such type') "The GitHub fixture did not reject an impossible fragment at its schema boundary: exit=$($process.ExitCode); error=$($process.StdErr)."
+}
+
+Invoke-HostTestCase 'CompletionPilotPinsOneEligibleIssueWithoutFallback' {
+    $fixture = New-HostQueueFixtureFile -Name 'pinned-pilot' -Items @(
+        (New-HostQueueItem -IssueNumber 5211 -Status Review -Priority P0),
+        (New-HostQueueItem -IssueNumber 5212 -Status Ready -Priority P1),
+        (New-HostQueueItem -IssueNumber 5213 -Status Verification -Priority P0)
+    )
+    foreach ($number in @(5212,5213,5214)) {
+        $process = Invoke-HostTestScript (Join-Path $hostRoot 'Invoke-SashimiHostOrchestrator.ps1') @{
+            ConfigPath=$script:configPath;QueueFixturePath=$fixture;DryRun=$true;Once=$true;IssueNumber=$number;
+            MutexName=('Global\SashimiBoyPinnedPilot-' + $script:testRunId)
+        }
+        Assert-HostTest $process.Succeeded "Pinned preview failed: $($process.StdOut)"
+        $result = ConvertFrom-LastHostJson $process.StdOut
+        if ($number -eq 5212) {
+            Assert-HostTest ($result.Selection.Selected -and $result.Selection.IssueNumber -eq $number -and $result.Selection.DispatchCount -eq 1) 'Pinned preview selected the higher-priority unrelated Review issue.'
+        }
+        else { Assert-HostTest (-not $result.Selection.Selected -and $result.State -ceq 'NoWork') 'Ineligible or absent pinned issue fell through to another issue.' }
+    }
+}
+
+Invoke-HostTestCase 'CompletionArtifactFailureCannotRetainSuccessfulPublicResult' {
+    $function = Get-HostTestFunctionScriptBlock (Join-Path $hostRoot 'Invoke-SashimiHostOrchestrator.ps1') 'Complete-OrchestratorArtifactOutput'
+    Set-Item Function:Complete-OrchestratorArtifactOutput -Value $function
+    $run = New-SashimiRunWorkspace -RunRoot (Join-Path $script:temporaryRoot 'final-artifact-runs')
+    Write-HostTestFile (Join-Path $run.ArtifactsPath 'unexpected.txt') 'unvalidated'
+    Write-HostTestFile (Join-Path $run.ArtifactsPath 'RunResult.json') '{"Success":true}'
+    Write-HostTestFile (Join-Path $run.StatePath 'FinalResult.json') '{"Success":true}'
+    $output = Complete-OrchestratorArtifactOutput -Workspace $run -Value ([ordered]@{Success=$true;ExitCode=0;State='Succeeded';Error=''})
+    Assert-HostTest (-not $output.Success -and $output.ExitCode -eq 1 -and $output.Error -ceq 'ArtifactBoundaryFailed') 'Artifact boundary failure did not fail the run.'
+    foreach ($path in @((Join-Path $run.ArtifactsPath 'RunResult.json'),(Join-Path $run.StatePath 'FinalResult.json'))) {
+        Assert-HostTest (-not (Read-SashimiJsonFile $path).Success) 'A retained final result still claims success.'
+    }
+    Assert-HostTest (-not (Test-Path -LiteralPath (Join-Path $run.ArtifactsPath 'unexpected.txt'))) 'Unvalidated bytes remain in public Artifacts.'
+    Assert-HostTest (@(Get-ChildItem -LiteralPath $run.StatePath -Directory -Filter '.unpublished-artifacts-*').Count -eq 1) 'Failed evidence was discarded instead of quarantined.'
+    Assert-SashimiRunArtifactBoundary -RunPath $run.RunPath -RequireFinalSeal
+}
+
+Invoke-HostTestCase 'CompletionSourceToolsReadWriteAndRejectUnauthorizedAccess' {
+    $root = Join-Path $script:temporaryRoot 'source-tool-fixture'
+    Write-HostTestFile (Join-Path $root 'Example.txt') "value=1`n"
+    Write-HostTestFile (Join-Path $root 'Example.txt.meta') "guid: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa`n"
+    Write-HostTestFile (Join-Path $root 'Docs/Automation/SPEC_VERSION') '1.0.4'
+    $hash = (Get-FileHash (Join-Path $root 'Example.txt')).Hash.ToLowerInvariant()
+    $metaHash = (Get-FileHash (Join-Path $root 'Example.txt.meta')).Hash.ToLowerInvariant()
+    $calls = @(
+        @{name='read_file';arguments=@{path='Example.txt';startLine=1;lineCount=10}},
+        @{name='write_file';arguments=@{path='Example.txt';expectedSha256=$hash;content="value=2`n"}},
+        @{name='write_file';arguments=@{path='Example.txt';expectedSha256=$hash;content='stale'}},
+        @{name='write_file';arguments=@{path='Example.txt.meta';expectedSha256=$metaHash;content="guid: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb`n"}},
+        @{name='write_file';arguments=@{path='Nested/New.cs';expectedSha256='missing';content='// created'}},
+        @{name='list_files';arguments=@{prefix='Nested/';offset=0}}
+    )
+    foreach ($path in @('../outside.txt','.git/config','C:/outside.txt','Assets/../outside.txt','Art/Source/source.cs','Packages/manifest.json','Assets/Scene.unity')) {
+        $calls += @{name='write_file';arguments=@{path=$path;expectedSha256='missing';content='forbidden'}}
+    }
+    $id=0; $input = (($calls | ForEach-Object { $id++; @{jsonrpc='2.0';id=$id;method='tools/call';params=$_} | ConvertTo-Json -Depth 8 -Compress }) -join "`n") + "`n"
+    $process = Invoke-SashimiHostProcess -FilePath $PowerShellPath -WorkingDirectory $root -TimeoutSeconds 30 `
+        -ArgumentList @('-NoProfile','-NonInteractive','-File',(Join-Path $hostRoot 'Invoke-SashimiSourceServer.ps1'),'-RepositoryPath',$root,'-Role','Developer') -StandardInput $input
+    Assert-HostTest $process.Succeeded "Source server failed: $($process.StdErr)"
+    $rows = @($process.StdOut.Trim() -split '\r?\n' | ForEach-Object { $_ | ConvertFrom-Json -Depth 16 })
+    Assert-HostTest ($rows.Count -eq $calls.Count) 'Source response count differs from request count.'
+    foreach ($index in @(0,1,4,5)) { Assert-HostTest (-not $rows[$index].result.isError) "Allowed source request $index failed: $($rows[$index].result.content.text)" }
+    foreach ($index in @(2,3) + @(6..($rows.Count-1))) { Assert-HostTest $rows[$index].result.isError "Forbidden source request $index succeeded." }
+    Assert-HostTest ([IO.File]::ReadAllText((Join-Path $root 'Example.txt')) -ceq "value=2`n") 'Exact source edit did not survive negative requests.'
+    Assert-HostTest ((Get-FileHash (Join-Path $root 'Example.txt.meta')).Hash.ToLowerInvariant() -ceq $metaHash) 'Meta GUID was changed.'
+    $review = Invoke-SashimiHostProcess -FilePath $PowerShellPath -WorkingDirectory $root -TimeoutSeconds 30 `
+        -ArgumentList @('-NoProfile','-NonInteractive','-File',(Join-Path $hostRoot 'Invoke-SashimiSourceServer.ps1'),'-RepositoryPath',$root,'-Role','Reviewer') -StandardInput $input
+    Assert-HostTest $review.Succeeded 'Reviewer source server failed.'
+    $reviewRows = @($review.StdOut.Trim() -split '\r?\n' | ForEach-Object { $_ | ConvertFrom-Json -Depth 16 })
+    Assert-HostTest (-not $reviewRows[0].result.isError -and $reviewRows[1].result.isError) 'Reviewer source access was not read only.'
+    $current = (Get-FileHash (Join-Path $root 'Example.txt')).Hash.ToLowerInvariant()
+    $extra = @(
+        @{name='read_file';arguments=@{path='Docs/Automation/SPEC_VERSION';startLine=1;lineCount=1}},
+        @{name='replace_text';arguments=@{path='Example.txt';expectedSha256=$current;oldText='value=2';newText='value=3'}},
+        @{name='read_file';arguments=@{path='Example.txt';startLine='1';lineCount=1}}
+    )
+    $id=0; $input=(($extra | ForEach-Object { $id++; @{jsonrpc='2.0';id=$id;method='tools/call';params=$_} | ConvertTo-Json -Depth 8 -Compress }) -join "`n")+"`n"
+    $patch = Invoke-SashimiHostProcess -FilePath $PowerShellPath -WorkingDirectory $root -TimeoutSeconds 30 `
+        -ArgumentList @('-NoProfile','-NonInteractive','-File',(Join-Path $hostRoot 'Invoke-SashimiSourceServer.ps1'),'-RepositoryPath',$root,'-Role','Developer') -StandardInput $input
+    Assert-HostTest $patch.Succeeded 'Source replacement server failed.'
+    $patchRows=@($patch.StdOut.Trim() -split '\r?\n' | ForEach-Object { $_ | ConvertFrom-Json -Depth 16 })
+    Assert-HostTest (-not $patchRows[0].result.isError -and -not $patchRows[1].result.isError -and $patchRows[2].result.isError) 'SPEC_VERSION, replacement, or strict argument contract failed.'
+    Assert-HostTest ([IO.File]::ReadAllText((Join-Path $root 'Example.txt')) -ceq "value=3`n") 'Literal source replacement was not exact.'
+    $outside = Join-Path $script:temporaryRoot 'source-tool-outside'
+    Write-HostTestFile (Join-Path $outside 'private.txt') 'outside source root'
+    [void](New-Item -ItemType HardLink -Path (Join-Path $root 'Linked.txt') -Target (Join-Path $outside 'private.txt'))
+    [void](New-Item -ItemType Junction -Path (Join-Path $root 'Alias') -Target $outside)
+    $id=0; $input=((@('Linked.txt','Alias/private.txt') | ForEach-Object {
+        $id++; @{jsonrpc='2.0';id=$id;method='tools/call';params=@{name='read_file';arguments=@{path=$_;startLine=1;lineCount=1}}} | ConvertTo-Json -Depth 8 -Compress
+    }) -join "`n")+"`n"
+    try {
+        $linked = Invoke-SashimiHostProcess -FilePath $PowerShellPath -WorkingDirectory $root -TimeoutSeconds 30 `
+            -ArgumentList @('-NoProfile','-NonInteractive','-File',(Join-Path $hostRoot 'Invoke-SashimiSourceServer.ps1'),'-RepositoryPath',$root,'-Role','Developer') -StandardInput $input
+        Assert-HostTest $linked.Succeeded 'Source link refusal server failed.'
+        $linkRows=@($linked.StdOut.Trim() -split '\r?\n' | ForEach-Object { $_ | ConvertFrom-Json -Depth 16 })
+        Assert-HostTest ($linkRows.Count -eq 2 -and $linkRows[0].result.isError -and $linkRows[1].result.isError) 'Hard link or junction escaped the scoped file boundary.'
+        Assert-HostTest ($linked.StdOut -notmatch 'outside source root') 'Link target content was disclosed.'
+    }
+    finally {
+        # Remove only the junction entry; never recurse into its target.
+        [IO.Directory]::Delete((Join-Path $root 'Alias'))
+    }
+}
+
+Invoke-HostTestCase 'CompletionCodexTimeoutCancellationAndDescendantsUseOwnedJob' {
+    $root = Join-Path $script:temporaryRoot 'codex-lifecycle'
+    [void][IO.Directory]::CreateDirectory($root)
+    $fake = (New-HostFakeCodexAdapter $root).Path
+    $workspace = Join-Path $root 'Workspace'; [void][IO.Directory]::CreateDirectory($workspace)
+    $policy = Get-SashimiCodexEnvironmentPolicy
+    $ledger = Join-Path $root 'ledger.json'; $cancel = Join-Path $root 'cancel.requested'
+    foreach ($mode in @('timeout','cancel','exit')) {
+        Write-HostTestFile ([IO.Path]::ChangeExtension($fake,'.process-mode')) $mode
+        Write-HostTestFile ([IO.Path]::ChangeExtension($fake,'.cancel-path')) $cancel
+        if (Test-Path -LiteralPath $cancel) { Remove-Item -LiteralPath $cancel }
+        $ready = [IO.Path]::ChangeExtension($fake,'.descendant-ready')
+        if (Test-Path -LiteralPath $ready) { Remove-Item -LiteralPath $ready }
+        Write-HostTestFile $ledger '{"SchemaVersion":1,"Processes":[],"ProcessIds":[]}'
+        $process = Invoke-SashimiHostProcess -FilePath $fake -Kind Codex -WorkingDirectory $workspace -CodexWorkspacePath $workspace `
+            -ArgumentList @('--disable','shell_tool','--disable','unified_exec','exec','--ignore-user-config','--strict-config') `
+            -ClearEnvironment -Environment $policy.Overrides -RemoveEnvironmentVariables $policy.RemoveNames `
+            -OwnedProcessRecordPath $ledger -CancellationMarkerPath $cancel -TimeoutSeconds $(if($mode -ceq 'timeout'){1}else{10}) `
+            -StandardInput $(if($mode -ceq 'timeout'){'x' * 2MB}else{''}) -PreserveRawOutputInMemory
+        Assert-HostTest ($process.KillOnCloseJobAssigned -and $process.TerminationConfirmed) "Unconfirmed Codex lifecycle: $mode"
+        Assert-HostTest (Test-Path -LiteralPath $ready) "Codex fixture never started its later descendant: $mode"
+        Assert-HostTest (@((Read-SashimiJsonFile $ledger).Processes).Count -eq 0) 'Confirmed Codex job left a stale ledger.'
+        if ($mode -ceq 'timeout') { Assert-HostTest $process.TimedOut 'Blocked Codex stdin escaped timeout.' }
+        if ($mode -ceq 'cancel') { Assert-HostTest $process.Cancelled 'Codex ignored cancellation.' }
+        if ($mode -ceq 'exit') { Assert-HostTest $process.Succeeded 'A clean Codex parent exit did not complete successfully after job closure.' }
+    }
+    Start-Sleep -Milliseconds 2300
+    Assert-HostTest (-not (Test-Path -LiteralPath ([IO.Path]::ChangeExtension($fake,'.escaped')))) 'Codex descendant escaped its owning job.'
+}
+
+Invoke-HostTestCase 'CompletionUnknownProcessLedgerPreventsCleanupAndRetention' {
+    $runRoot = Join-Path $script:temporaryRoot 'unconfirmed-runs'
+    $run = New-SashimiRunWorkspace -RunRoot $runRoot
+    Write-HostTestFile (Join-Path $run.RepositoryPath 'source.txt') 'preserve'
+    Write-HostTestFile (Join-Path $run.StatePath 'OwnedHostPids.json') '{"SchemaVersion":1,"Processes":[{"Id":999999,"StartTimeUtc":"2026-01-01T00:00:00Z"}]}'
+    $cleanup = Remove-SashimiRunRepository -RunPath $run.RunPath -RunRoot $runRoot
+    Assert-HostTest (-not $cleanup.Success -and $cleanup.Preserved) 'Missing root PID was treated as proven descendant termination.'
+    (Get-Item -LiteralPath $run.RunPath).LastWriteTimeUtc = [DateTime]::UtcNow.AddDays(-30)
+    $retention = @(Invoke-SashimiRetention -RunRoot $runRoot -RetentionDays 14)
+    Assert-HostTest ($retention.Count -eq 1 -and $retention[0].Preserved) 'Retention removed an unconfirmed process ledger.'
+}
+
+Invoke-HostTestCase 'CompletionGeneratorUsesIndependentInputsAndCompleteDeltas' {
+    $production = Join-Path $hostRoot 'Invoke-SashimiUnityValidation.ps1'
+    foreach ($name in @('Get-SashimiGeneratorSourceManifest','New-SashimiGeneratorBaseline','Get-SashimiGeneratorDelta')) {
+        Set-Item -Path ('Function:' + $name) -Value (Get-HostTestFunctionScriptBlock $production $name)
+    }
+    $generator = Join-Path $script:temporaryRoot 'fixture-generator.ps1'
+    Write-HostTestFile $generator @'
+param([string]$Project,[string]$Mode)
+$output = Join-Path $Project 'output.txt'
+if ($Mode -eq 'random-if-missing') {
+    if (-not (Test-Path -LiteralPath $output)) { [IO.File]::WriteAllText($output,[Guid]::NewGuid().ToString('N')) }
+} else { [IO.File]::WriteAllText($output,([IO.File]::ReadAllText((Join-Path $Project 'input.txt'))).ToUpperInvariant()) }
+'@
+    foreach ($mode in @('random-if-missing','deterministic')) {
+        $root = Join-Path $script:temporaryRoot ('generator-' + $mode)
+        Write-HostTestFile (Join-Path $root 'Original/input.txt') 'fixed input'
+        $project = Join-Path $root 'Original'
+        $before = @(Get-SashimiGeneratorSourceManifest $project)
+        $baseline = New-SashimiGeneratorBaseline -ProjectRoot $project -StateRoot (Join-Path $root 'State') -ExpectedManifest $before
+        $one = Invoke-HostTestScript $generator @{Project=$project;Mode=$mode}
+        Assert-HostTest $one.Succeeded 'First executable generator failed.'
+        $first = @(Get-SashimiGeneratorSourceManifest $project)
+        $repeat = Invoke-HostTestScript $generator @{Project=$project;Mode=$mode}
+        Assert-HostTest ($repeat.Succeeded -and (ConvertTo-SashimiJson $first) -ceq (ConvertTo-SashimiJson @(Get-SashimiGeneratorSourceManifest $project))) 'Same-directory fixture does not reproduce the old false positive.'
+        $two = Invoke-HostTestScript $generator @{Project=$baseline.Repository;Mode=$mode}
+        Assert-HostTest $two.Succeeded 'Second executable generator failed.'
+        $delta1 = @(Get-SashimiGeneratorDelta -Before $before -After $first -AllowedPaths @('output.txt'))
+        $delta2 = @(Get-SashimiGeneratorDelta -Before $before -After @(Get-SashimiGeneratorSourceManifest $baseline.Repository) -AllowedPaths @('output.txt'))
+        $same = (ConvertTo-SashimiJson $delta1) -ceq (ConvertTo-SashimiJson $delta2)
+        Assert-HostTest ($same -eq ($mode -ceq 'deterministic')) 'Independent baseline comparison missed the random-if-missing counterexample.'
+        Write-HostTestFile (Join-Path $project 'undeclared.cs') '// unexpected'
+        Assert-HostThrows { Get-SashimiGeneratorDelta -Before $before -After @(Get-SashimiGeneratorSourceManifest $project) -AllowedPaths @('output.txt') } 'undeclared'
+    }
+}
+
+Invoke-HostTestCase 'CompletionInventoryRequiresAllAssetsAndConsistentActiveComponents' {
+    $production = Join-Path $hostRoot 'Invoke-SashimiUnityValidation.ps1'
+    foreach ($name in @('Read-SashimiBoundedStableUtf8File','Read-SashimiComponentInventory')) {
+        Set-Item -Path ('Function:' + $name) -Value (Get-HostTestFunctionScriptBlock $production $name)
+    }
+    $script:unityLogMaximumBytes = 8MB
+    $root = Join-Path $script:temporaryRoot 'inventory'
+    Write-HostTestFile (Join-Path $root 'Assets/Test.unity') 'scene'
+    Write-HostTestFile (Join-Path $root 'Assets/Unloaded.prefab') 'prefab'
+    $asset = @{path='Assets/Test.unity';kind='Scene';activeAudioListeners=1;activeEventSystems=0;missingScripts=0;missingReferences=0;components=@(@{path='Root[0]';type='AudioListener';active=$true},@{path='Inactive[1]';type='AudioListener';active=$false})}
+    $prefab = @{path='Assets/Unloaded.prefab';kind='Prefab';activeAudioListeners=0;activeEventSystems=0;missingScripts=0;missingReferences=0;components=@()}
+    $log = Join-Path $root 'inventory.log'
+    function Write-Inventory([object[]]$Assets) { Write-HostTestFile $log ('SASHIMI_COMPONENT_INVENTORY=' + (ConvertTo-SashimiJson @{schemaVersion=1;passed=$true;assets=$Assets;errors=@()})) }
+    Write-Inventory @($asset,$prefab)
+    [void](Read-SashimiComponentInventory -LogPath $log -ProjectRoot $root)
+    Write-Inventory @($asset)
+    Assert-HostThrows { Read-SashimiComponentInventory -LogPath $log -ProjectRoot $root } 'cover every'
+    $asset.components[1].active=$true; $asset.activeAudioListeners=2
+    Write-Inventory @($asset,$prefab)
+    Assert-HostThrows { Read-SashimiComponentInventory -LogPath $log -ProjectRoot $root } 'duplicate active'
+    $asset.activeAudioListeners=1
+    Write-Inventory @($asset,$prefab)
+    Assert-HostThrows { Read-SashimiComponentInventory -LogPath $log -ProjectRoot $root } 'counts do not match'
+    Write-HostTestFile $log 'no structured inventory'
+    Assert-HostThrows { Read-SashimiComponentInventory -LogPath $log -ProjectRoot $root } 'missing'
+}
+
+Invoke-HostTestCase 'CompletionCaptureQuotaKillsWriterAndArtifactSealRejectsChanges' {
+    $root = Join-Path $script:temporaryRoot 'capture-quota'; [void][IO.Directory]::CreateDirectory($root)
+    $writer = Join-Path $script:temporaryRoot 'quota-writer.ps1'
+    Write-HostTestFile $writer @'
+param([string]$Root)
+$stream=[IO.File]::OpenWrite((Join-Path $Root 'raw.log'))
+try { $stream.SetLength(9MB); $stream.Flush(); Start-Sleep -Seconds 20 } finally { $stream.Dispose() }
+'@
+    $process = Invoke-SashimiHostProcess -FilePath $PowerShellPath -WorkingDirectory $script:temporaryRoot -TimeoutSeconds 15 `
+        -CaptureRoots @($root) -ArgumentList @('-NoProfile','-NonInteractive','-File',$writer,'-Root',$root)
+    Assert-HostTest (-not $process.Succeeded -and $process.TerminationConfirmed -and -not $process.TimedOut) 'Oversized raw file did not terminate the owning process tree.'
+    Remove-Item -LiteralPath (Join-Path $root 'raw.log')
+    Write-HostTestFile (Join-Path $root 'result.json') '{"safe":true}'
+    $seal = Join-Path $script:temporaryRoot 'artifact.seal.json'
+    Write-SashimiArtifactSeal -Root $root -SealPath $seal
+    Assert-SashimiArtifactSeal -Root $root -SealPath $seal
+    [void][IO.Directory]::CreateDirectory((Join-Path $root 'unexpected'))
+    Assert-HostThrows { Assert-SashimiArtifactSeal -Root $root -SealPath $seal } 'changed after'
+    [IO.Directory]::Delete((Join-Path $root 'unexpected'))
+    Write-HostTestFile (Join-Path $root 'unexpected.txt') 'not in manifest'
+    Assert-HostThrows { Assert-SashimiArtifactSeal -Root $root -SealPath $seal } 'changed after'
+    Remove-Item -LiteralPath (Join-Path $root 'unexpected.txt')
+    Write-HostTestFile (Join-Path $root 'result.json') '{"safe":false}'
+    Assert-HostThrows { Assert-SashimiArtifactSeal -Root $root -SealPath $seal } 'changed after'
+}
+
+Invoke-HostTestCase 'CompletionNonCodexOutputIsAuditedBeforeRedaction' {
+    $writer = Join-Path $script:temporaryRoot 'sensitive-output.ps1'
+    Write-HostTestFile $writer "[Console]::Out.WriteLine('Bearer ' + ('z' * 40))"
+    $process = Invoke-HostTestScript $writer
+    Assert-HostTest (-not $process.Succeeded -and $process.StdOut -ceq '' -and $process.StdErr -notmatch ('z' * 40)) 'Sensitive original output was redacted into a successful retained result.'
+}
