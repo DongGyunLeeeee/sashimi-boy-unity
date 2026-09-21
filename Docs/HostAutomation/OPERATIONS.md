@@ -65,7 +65,8 @@ Review every value. The configuration contract includes:
   installed configuration references only that copy;
 - `GitAuthorName` and `GitAuthorEmail`, the fixed identity written only to each
   new run clone for Host-owned commits and synthetic merges;
-- `Security.AuthorizedPrAuthors`, the explicit PR-author allowlist;
+- `Security.AuthorizedPrAuthors`, the explicit incoming Issue- and PR-author
+  allowlist (the existing configuration key applies to both);
 - all immutable `Security.ProtectedPathPatterns` and required
   `Security.ArtifactExclusionPatterns` from `Config.example.json`;
 - Codex and Unity stage timeouts;
