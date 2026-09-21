@@ -264,6 +264,17 @@ no-user-config, strict-config, ignored-rules, no-shell, and no-unified-exec
 security prefix. Its zero exit proves that the global options parse in their
 production positions, and its bounded help text proves the required exec
 options. No root-level `--version` or unprotected help probe is launched.
+The reviewed Codex 0.153.2 help contains the documentation literal
+`~/.codex/config.toml`. Only the exact successful Host capability invocation,
+with no stdin, no stderr, no timeout/cancellation, and raw stdout SHA-256
+`e504bac5a6364566fbe408132dec7993639def9258ece34e8352f51f8d43687c`
+(3,957 UTF-8 bytes including the final LF), may classify that one literal as
+documentation. The original byte quotas, NUL, actual profile and inherited
+secret checks still apply; only path classification substitutes the fixed
+documentation placeholder. Neither retained output nor returned text is
+rewritten. Model output and all other command/results retain the strict audit.
+Changed help containing the literal fails closed and requires a new reviewed
+specimen/hash; do not normalize, trim, or automatically learn a new identity.
 An unsupported setting fails closed. Every probe and execution launch also
 uses the same hermetic environment and rejects repository-scoped `.codex`
 state before process creation. Any Codex `command_execution` event is a
