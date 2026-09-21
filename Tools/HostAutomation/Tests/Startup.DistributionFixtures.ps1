@@ -1,5 +1,5 @@
 # Invoke only from the marked installer harness after staging its real plan.
-param([string]$BundleRoot,[string]$HostRoot,[object]$Plan,[Security.Principal.SecurityIdentifier]$UserSid)
+param([string]$BundleRoot,[string]$HostRoot,[object]$Plan,[Security.Principal.SecurityIdentifier]$UserSid,[string]$SourceCodexPath)
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
@@ -84,7 +84,7 @@ Assert-InstallerCodexDistribution $Plan.CodexDistribution $UserSid
 # The normal app source uses a version alias. Both snapshots must come from its
 # one resolved target; protected installation remains free of junctions.
 $alias = Join-Path (Split-Path -Parent $BundleRoot) 'source-version-alias'
-$sourcePath = [string](Read-SashimiJsonFile $script:fakeConfigPath).CodexExecutable
+$sourcePath = $SourceCodexPath
 try {
     [void](New-Item -ItemType Junction -Path $alias -Target (Split-Path -Parent $sourcePath))
     $pair = Get-InstallerCodexSourceSnapshots (Join-Path $alias (Split-Path -Leaf $sourcePath))

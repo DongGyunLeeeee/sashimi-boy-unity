@@ -2425,7 +2425,7 @@ Assert-SashimiFixtureExecutableBoundary -FilePath 'C:\Program Files\Git\cmd\git.
         [void](Install-InstallerCodexDistribution $plan.CodexDistribution $sid)
         $bundleRoot = Join-Path $script:BundlesRoot $plan.BundleId
         [void](Install-InstallerBundle $plan $bundleRoot $sid)
-        & (Join-Path $PSScriptRoot 'Startup.DistributionFixtures.ps1') -BundleRoot $bundleRoot -HostRoot $hostRoot -Plan $plan -UserSid $sid
+        & (Join-Path $PSScriptRoot 'Startup.DistributionFixtures.ps1') -BundleRoot $bundleRoot -HostRoot $hostRoot -Plan $plan -UserSid $sid -SourceCodexPath $installerConfig.CodexExecutable
         $stagedText = [IO.File]::ReadAllText((Join-Path $bundleRoot 'Config.json'))
         Assert-HostTest ($stagedText -ceq ((ConvertTo-InstallerJson $plan.Config) + "`n") -and $stagedText -cne $sourceText) 'Staging copied raw config instead of canonical projection.'
         $stagedRuntime = Import-SashimiHostConfig (Join-Path $bundleRoot 'Config.json')
