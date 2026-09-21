@@ -314,6 +314,25 @@ function ConvertTo-SashimiExecutablePath {
     return $item.FullName
 }
 
+function Get-SashimiCodexDistributionHash {
+    param([Parameter(Mandatory)][object]$Executable)
+    $hostEntry = Get-SashimiPropertyValue $Executable 'CodeModeHost' $null
+    if ($null -eq $hostEntry -or [string]$hostEntry.FileName -cne 'codex-code-mode-host.exe') {
+        throw 'Codex executable identity must bind its code-mode host companion.'
+    }
+    foreach ($entry in @($Executable,$hostEntry)) {
+        if ([string]$entry.Sha256 -cnotmatch '^[0-9a-f]{64}$' -or [int64]$entry.Length -lt 1) {
+            throw 'Codex distribution requires two complete executable identities.'
+        }
+    }
+    $lines = @(
+        [string]::Join([char]0,@('codex.exe',[string]$Executable.Sha256,[string]$Executable.Length)),
+        [string]::Join([char]0,@('codex-code-mode-host.exe',[string]$hostEntry.Sha256,[string]$hostEntry.Length))
+    )
+    $bytes = [Text.UTF8Encoding]::new($false).GetBytes([string]::Join([char]10,$lines))
+    return ([Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($bytes))).ToLowerInvariant()
+}
+
 function Import-SashimiExecutableIdentity {
     [CmdletBinding()]
     param(
@@ -337,8 +356,8 @@ function Import-SashimiExecutableIdentity {
     }
     Assert-SashimiNoReparsePoint -Path $identityPath
     $identity = Read-SashimiJsonFile -Path $identityPath
-    if ([int](Get-SashimiPropertyValue $identity 'SchemaVersion' 0) -ne 1) {
-        throw 'Executable identity SchemaVersion must be 1.'
+    if ([int](Get-SashimiPropertyValue $identity 'SchemaVersion' 0) -ne 2) {
+        throw 'Executable identity SchemaVersion must be 2.'
     }
     $entries = @($identity.Executables)
     if ($entries.Count -ne $script:SashimiExecutableProperties.Count) {
@@ -360,12 +379,26 @@ function Import-SashimiExecutableIdentity {
         if ([int64]$item.Length -ne [int64]$entry.Length -or $currentHash -cne [string]$entry.Sha256) {
             throw "$name failed executable identity verification while importing Config.json."
         }
-        $verified.Add([pscustomobject][ordered]@{
+        $verifiedEntry = [ordered]@{
                 Name = $name
                 Path = $entryPath
                 Length = [int64]$entry.Length
                 Sha256 = [string]$entry.Sha256
-            })
+            }
+        if ($name -ceq 'CodexExecutable') {
+            [void](Get-SashimiCodexDistributionHash -Executable $entry)
+            $companion = $entry.CodeModeHost
+            $companionPath = Join-Path (Split-Path -Parent $entryPath) 'codex-code-mode-host.exe'
+            [void](ConvertTo-SashimiExecutablePath -Name CodexCodeModeHost -Path $companionPath -RequireFile)
+            Assert-SashimiNoReparsePoint -Path $companionPath
+            $companionFile = Get-Item -LiteralPath $companionPath -Force -ErrorAction Stop
+            if ($companionFile.Length -ne [int64]$companion.Length -or
+                (Get-FileHash -LiteralPath $companionPath -Algorithm SHA256).Hash.ToLowerInvariant() -cne [string]$companion.Sha256) {
+                throw 'Codex code-mode host failed executable identity verification while importing Config.json.'
+            }
+            $verifiedEntry.CodeModeHost = [pscustomobject]@{ FileName='codex-code-mode-host.exe'; Length=[int64]$companion.Length; Sha256=[string]$companion.Sha256 }
+        }
+        $verified.Add([pscustomobject]$verifiedEntry)
     }
     $script:SashimiBoundExecutableIdentities = $verified.ToArray()
     $script:SashimiExecutableIdentityActive = $true
@@ -465,12 +498,25 @@ function Assert-SashimiProtectedCodexExecutable {
     if (-not (Test-SashimiPathEqual -Left $protectedRoot -Right $expectedProtectedRoot)) {
         throw 'The protected Codex distribution root is not the exact child of the protected install root.'
     }
-    $expectedDistributionRoot = ConvertTo-SashimiPath -Path (Join-Path $protectedRoot ([string]$identityEntries[0].Sha256)) -AllowMissing -Lexical
+    $distributionHash = Get-SashimiCodexDistributionHash -Executable $identityEntries[0]
+    $expectedDistributionRoot = ConvertTo-SashimiPath -Path (Join-Path $protectedRoot $distributionHash) -AllowMissing -Lexical
     $expectedCodexPath = ConvertTo-SashimiPath -Path (Join-Path $expectedDistributionRoot 'codex.exe') -AllowMissing -Lexical
     if (-not (Test-SashimiPathEqual -Left $candidate -Right $expectedCodexPath)) {
         throw "CodexExecutable must be the exact content-addressed path '$expectedCodexPath'."
     }
     Assert-SashimiNoReparsePoint -Path $candidate
+    $companionPath = Join-Path $expectedDistributionRoot 'codex-code-mode-host.exe'
+    [void](ConvertTo-SashimiExecutablePath -Name CodexCodeModeHost -Path $companionPath -RequireFile)
+    Assert-SashimiNoReparsePoint -Path $companionPath
+    $companion = $identityEntries[0].CodeModeHost
+    if ((Get-Item -LiteralPath $companionPath -Force).Length -ne [int64]$companion.Length -or
+        (Get-FileHash -LiteralPath $companionPath -Algorithm SHA256).Hash.ToLowerInvariant() -cne [string]$companion.Sha256) {
+        throw 'Codex code-mode host changed after executable identity verification.'
+    }
+    $distributionItems = @(Get-ChildItem -LiteralPath $expectedDistributionRoot -Force -ErrorAction Stop)
+    if ($distributionItems.Count -ne 2 -or @($distributionItems | Where-Object {
+        $_.PSIsContainer -or @('codex.exe','codex-code-mode-host.exe') -cnotcontains $_.Name
+    }).Count -ne 0) { throw 'Protected Codex distribution must contain exactly its two bound executables.' }
 
     # Only Windows servicing identities may write the executable or a parent in
     # the protected distribution. Read/execute ACEs for ordinary users are
@@ -488,8 +534,9 @@ function Assert-SashimiProtectedCodexExecutable {
         [Security.AccessControl.FileSystemRights]::Delete -bor
         [Security.AccessControl.FileSystemRights]::ChangePermissions -bor
         [Security.AccessControl.FileSystemRights]::TakeOwnership
-    $cursor = $candidate
-    while ($true) {
+    foreach ($leaf in @($candidate,$companionPath)) {
+      $cursor = $leaf
+      while ($true) {
         if (-not (Test-Path -LiteralPath $cursor)) { throw "Protected Codex path disappeared: $cursor" }
         $ownerSid = Get-SashimiFileSystemOwnerSid -Path $cursor
         if ($trustedWriterSids -cnotcontains $ownerSid) {
@@ -513,8 +560,17 @@ function Assert-SashimiProtectedCodexExecutable {
             throw 'Protected Codex ancestor walk escaped its protected install root.'
         }
         $cursor = $parent
+      }
     }
     return $candidate
+}
+
+function Close-SashimiExecutableLaunchLease {
+    param([AllowNull()][object]$Lease)
+    if ($null -eq $Lease) { return }
+    foreach ($stream in @($Lease.Stream) + @(Get-SashimiPropertyValue $Lease 'CompanionStreams' @())) {
+        if ($null -ne $stream) { $stream.Dispose() }
+    }
 }
 
 function Open-SashimiExecutableLaunchLease {
@@ -532,6 +588,7 @@ function Open-SashimiExecutableLaunchLease {
     Assert-SashimiBoundExecutableIdentity -FilePath $candidate
 
     $stream = $null
+    $companionStreams = [Collections.Generic.List[IO.FileStream]]::new()
     try {
         # FileShare.Read lets the image loader read this exact file while
         # preventing ordinary write/delete replacement until Process.Start has
@@ -554,12 +611,26 @@ function Open-SashimiExecutableLaunchLease {
                 throw "$($entry.Name) changed immediately before process creation; launch refused."
             }
         }
+        if ($Kind -ceq 'Codex' -and $script:SashimiExecutableIdentityActive) {
+            $codexEntry = @($matches | Where-Object { [string]$_.Name -ceq 'CodexExecutable' })[0]
+            $companion = $codexEntry.CodeModeHost
+            $companionPath = Join-Path (Split-Path -Parent $candidate) 'codex-code-mode-host.exe'
+            $companionStream = [IO.File]::Open($companionPath,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::Read)
+            $companionStreams.Add($companionStream)
+            $hasher = [Security.Cryptography.SHA256]::Create()
+            try { $companionHash = ([Convert]::ToHexString($hasher.ComputeHash($companionStream))).ToLowerInvariant() }
+            finally { $hasher.Dispose() }
+            if ($companionStream.Length -ne [int64]$companion.Length -or $companionHash -cne [string]$companion.Sha256) {
+                throw 'Codex code-mode host changed immediately before process creation; launch refused.'
+            }
+        }
         Assert-SashimiNoReparsePoint -Path $candidate
         if ($Kind -ceq 'Codex') { [void](Assert-SashimiProtectedCodexExecutable -FilePath $candidate) }
-        return [pscustomobject][ordered]@{ Path = $candidate; Stream = $stream }
+        return [pscustomobject][ordered]@{ Path = $candidate; Stream = $stream; CompanionStreams=$companionStreams.ToArray() }
     }
     catch {
         if ($null -ne $stream) { $stream.Dispose() }
+        foreach ($companionStream in $companionStreams) { $companionStream.Dispose() }
         throw
     }
 }
@@ -2315,7 +2386,7 @@ function Invoke-SashimiHostProcess {
             $nativeException = $_.Exception
         }
         finally {
-            if ($null -ne $launchLease) { try { $launchLease.Stream.Dispose() } catch { } }
+            if ($null -ne $launchLease) { try { Close-SashimiExecutableLaunchLease $launchLease } catch { } }
         }
         if ($null -ne $nativeException) {
             $native = [pscustomobject][ordered]@{
@@ -2408,7 +2479,7 @@ function Invoke-SashimiHostProcess {
         $launchLease = Open-SashimiExecutableLaunchLease -FilePath $FilePath -Kind $Kind -ArgumentList $ArgumentList -WorkingDirectory $startInfo.WorkingDirectory
         $started = [bool]$process.Start()
         if (-not $started) { throw "Unable to start process: $commandText" }
-        $launchLease.Stream.Dispose()
+        Close-SashimiExecutableLaunchLease $launchLease
         $launchLease = $null
         $pidValue = $process.Id
         if (-not [string]::IsNullOrWhiteSpace($OwnedProcessRecordPath)) {
@@ -2493,7 +2564,7 @@ function Invoke-SashimiHostProcess {
     finally {
         $stopwatch.Stop()
         if ($null -ne $launchLease) {
-            try { $launchLease.Stream.Dispose() } catch { }
+            try { Close-SashimiExecutableLaunchLease $launchLease } catch { }
         }
         if ($terminationConfirmed -and -not [string]::IsNullOrWhiteSpace($OwnedProcessRecordPath) -and
             $null -ne $pidValue -and -not [string]::IsNullOrWhiteSpace($processStartTimeUtc)) {

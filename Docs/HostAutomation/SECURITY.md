@@ -32,9 +32,10 @@ manifest before it trusts the staged configuration or starts work.
 
 The manifest also covers `ExecutableIdentity.json`. That generated file binds
 the absolute canonical path, byte length, and SHA-256 of Git, Git LFS, GitHub
-CLI, Codex, PowerShell, and Unity. Bare names, PATH resolution,
+CLI, Codex, PowerShell, and Unity. Schema version 2 adds the fixed filename,
+length, and SHA-256 of Codex's `codex-code-mode-host.exe` companion. Bare names, PATH resolution,
 missing/non-file targets, and reparse-point executable targets are rejected.
-The protected entry point rehashes all six binaries before loading Common or
+The protected entry point rehashes all six tools and the Codex companion before loading Common or
 configuration; Common matches the installed config to those identities and
 rehashes the exact bound path immediately before every launch. A PATH shadow or
 changed length or hash fails before the process can cross the mutation boundary.
@@ -42,16 +43,26 @@ The installed Codex identity is not the task-user-writable installation source:
 the installer copies those reviewed bytes into a hash-keyed Program Files
 distribution. Runtime validation rejects a Codex executable or any distribution
 ancestor with a reparse point. The only accepted shape is exactly
-`CodexDistributions\<bound-lowercase-sha256>\codex.exe`. The executable and
+`CodexDistributions\<distribution-sha256>\codex.exe`, with exactly one sibling,
+`codex-code-mode-host.exe`. The distribution identifier covers both fixed
+filenames, hashes, and lengths; the manifest length is their sum. Both executables and
 every ancestor through the protected `SashimiBoyAutomation` install root must
 be owned by Administrators, SYSTEM, or TrustedInstaller and must have no allow
 ACE granting the task user, Users, Authenticated Users, Everyone, or another
 untrusted principal write, modify, delete, change-permissions, take-ownership,
 or full-control rights. Immediately
-before launch the Host opens the exact file without write/delete sharing,
-rehashes that handle, holds it through process creation, and verifies identity
+before launch the Host opens both exact files without write/delete sharing,
+rehashes their handles, holds them until the owned job finishes, and verifies identity
 again. This prevents task-user replacement; local Administrator/SYSTEM
 compromise remains explicitly outside the same-admin threat boundary.
+
+The install source may use the Codex app's version-directory junction. The
+installer resolves that source alias once, rejects further reparse traversal,
+holds both source files against writes/deletion, and captures both immutable
+snapshots from that same directory. Neither source alias nor source bytes become
+runtime authority. A changed companion changes the distribution and bundle IDs
+and therefore requires a new matching Owner-approved preview. Legacy one-file
+distributions remain untouched and cannot satisfy schema version 2.
 
 The task's `HighestAvailable` parent is an integrity bootstrap only. Before
 loading `HostAutomation.Common.ps1`, parsing `Config.json`, or invoking any

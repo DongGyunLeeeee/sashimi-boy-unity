@@ -806,7 +806,7 @@ function Invoke-CodexCapabilityProbe {
         finally { $hasher.Dispose() }
     }
     finally {
-        if ($null -ne $lease) { $lease.Stream.Dispose() }
+        if ($null -ne $lease) { Close-SashimiExecutableLaunchLease $lease }
     }
     return [pscustomobject][ordered]@{
         Version = "sha256:$identityHash"

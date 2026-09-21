@@ -145,7 +145,7 @@ First review the installer DryRun output. It must describe exactly:
   `Config.json`, and generated `ExecutableIdentity.json`, including file
   lengths and SHA-256 hashes;
 - six executable identities binding each configured tool's canonical path,
-  length, and SHA-256;
+  length, and SHA-256, with a nested identity for `codex-code-mode-host.exe`;
 - a non-inheriting ACL owned by Administrators, with Administrators and SYSTEM
   full control and the `02031` task identity read and execute only;
 - `-NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass`, the staged
@@ -160,8 +160,19 @@ staging directories, verifies their closed file sets and ACLs, and makes them
 visible only by atomic rename. The protected entry point rechecks every
 executable before it loads Common or configuration; Common rechecks a bound
 executable immediately before each launch. Codex additionally requires a
-no-reparse, non-user-writable Program Files ancestry and is held under a
-no-write/no-delete-sharing lease through process creation.
+no-reparse, non-user-writable Program Files ancestry. Both Codex binaries are held
+under no-write/no-delete-sharing leases until the owned process job finishes.
+
+Codex installation requires both `codex.exe` and `codex-code-mode-host.exe` in
+the source directory. The app's source `bin` junction is resolved once before
+both files are captured. The generated `ExecutableIdentity.json` uses schema
+version 2; the source `Config.json` schema and its six configured tool paths are
+unchanged. `CodexDistributionSha256` now identifies the two-file distribution,
+not either executable's individual hash. It is SHA-256 of two UTF-8 lines, main
+then companion, each `filename<NUL>lowercase-sha256<NUL>decimal-length`, joined
+with one LF and no final LF. `HostIntegrity.json.CodexDistribution.Length` is the
+sum of both lengths. An existing one-file distribution is preserved, while the
+new pair receives a distinct directory and the new task stays disabled.
 
 An identical complete bundle is verified and reused without rewriting its files
 or ACLs. An incomplete, altered, unmarked, or noncanonical destination fails

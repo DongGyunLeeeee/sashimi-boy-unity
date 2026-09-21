@@ -148,10 +148,11 @@ runners and are removed after the adapter returns; if one remains after an
 abnormal failure, treat it as sensitive run state rather than a publishable
 artifact.
 
-The installer hashes the eight required runtime scripts, its own bootstrap,
+The installer hashes the nine required runtime scripts, its own bootstrap,
 the canonical allowlisted configuration projection, and a generated
-`ExecutableIdentity.json`. It also copies the reviewed Codex source binary to a
-SHA-256-keyed distribution below Program Files. A non-DryRun installation is
+`ExecutableIdentity.json`. It copies both reviewed Codex source binaries,
+`codex.exe` and `codex-code-mode-host.exe`, to a distribution below Program Files
+whose SHA-256 identifier binds both filenames, hashes, and lengths. A non-DryRun installation is
 authorized only when its recomputed complete identity equals the explicit
 Owner-supplied `ExpectedBundleId` from the immediately preceding DryRun. The
 elevated invocation must also supply the independently retained exact
@@ -186,12 +187,13 @@ still-elevated child, missing manifest, or invalid child result fails closed;
 the elevated parent never invokes Git, GitHub CLI, Codex, or Unity.
 Before loading Common or configuration, both parent and child also rehash all
 six exact executable paths against the protected identity. Codex additionally
-must be exactly `CodexDistributions\<bound-sha256>\codex.exe`; every path
-ancestor is checked for reparse traversal, and the executable plus each
+must be exactly `CodexDistributions\<distribution-sha256>\codex.exe` with its
+bound code-mode host as the only sibling; every path
+ancestor is checked for reparse traversal, and both executables plus each
 ancestor through the protected `SashimiBoyAutomation` install root is checked
 for both a trusted servicing owner and absence of untrusted write-like ACLs.
-Common opens a read lease that denies write/delete sharing, hashes that open file, and
-keeps the lease through process creation. A PATH shadow, task-user path swap,
+Common opens read leases that deny write/delete sharing, hashes both open files, and
+keeps the leases until the owned process job finishes. A PATH shadow, task-user path swap,
 or binary replacement therefore fails closed. An actor already holding local
 administrator or SYSTEM authority remains outside this same-admin boundary.
 Installer and uninstaller startup also bind the running process and `PSHOME` to
