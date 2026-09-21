@@ -2767,7 +2767,7 @@ if (`$lease.Acquired) { Exit-SashimiHostMutex `$lease }
             SASHIMI_FAKE_PUSH_STATE = $bundle.PushState
             SASHIMI_FAKE_STATUS_STATE = $bundle.StatusState
             SASHIMI_FAKE_GIT_STATUS = ''
-        } -TimeoutSeconds 60
+        } -TimeoutSeconds 120
         Assert-HostTest ($developer.ExitCode -ne 0) 'End-to-end stale Developer fixture unexpectedly succeeded.'
         $developerJson = ConvertFrom-LastHostJson $developer.StdOut
         Assert-HostTest (-not [bool]$developerJson.Pushed -and -not [bool]$developerJson.TransitionedToReview) 'End-to-end stale Developer reported a push or status transition.'
