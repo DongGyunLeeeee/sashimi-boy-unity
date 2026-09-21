@@ -225,6 +225,12 @@ arbitrary task editing, network isolation or installation. The internal
 `-FixtureExecution` switch requires the test harness and cannot authorize a
 real model. `-DryRun` overrides execution switches.
 
+The capability check recognizes one reviewed Codex 0.153.2 help response by its
+complete untrimmed UTF-8 hash, solely to classify its documented symbolic config
+path. See [the capability boundary](SECURITY.md). A CLI update that changes this
+help must be reviewed again; never accept a new hash from a failed run or bypass
+the original-output audit to make the functional smoke pass.
+
 The adapter accepts `-OwnedProcessRecordPath`; scheduled role runners pass their
 existing `State/OwnedHostPids.json`. A standalone adapter defaults to
 `OwnedCodexPids.json` beside its artifact directory. Probes and execution register

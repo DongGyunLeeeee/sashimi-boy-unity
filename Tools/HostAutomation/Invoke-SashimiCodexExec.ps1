@@ -373,7 +373,8 @@ function Assert-CodexOriginalProcessOutputSafe {
     [CmdletBinding()]
     param(
         [AllowNull()][string]$StdOut,
-        [AllowNull()][string]$StdErr
+        [AllowNull()][string]$StdErr,
+        [switch]$ReviewedCapabilityHelp
     )
 
     if ($null -eq $StdOut) { $StdOut = '' }
@@ -388,6 +389,26 @@ function Assert-CodexOriginalProcessOutputSafe {
     $combined = $StdOut + "`n" + $StdErr
     if ($combined.IndexOf([char]0) -ge 0) {
         throw (New-CodexContentFreeDiagnostic -Code 'CODEX_ORIGINAL_OUTPUT_NUL')
+    }
+    $recognizableText = $combined
+    if ($ReviewedCapabilityHelp) {
+        # Exact, independently inspected Codex 0.153.2 help, including its final
+        # LF. This exception is never available to model output or failed probes.
+        if ($StdErr.Length -ne 0 -or
+            (Get-AdapterTextSha256 $StdOut) -cne 'e504bac5a6364566fbe408132dec7993639def9258ece34e8352f51f8d43687c') {
+            throw (New-CodexContentFreeDiagnostic -Code 'CODEX_CAPABILITY_HELP_IDENTITY_MISMATCH')
+        }
+        foreach ($secret in @($script:sensitiveEnvironmentValues)) {
+            if (-not [string]::IsNullOrEmpty($secret) -and $secret.Length -ge 8 -and $secret.Length -le 4096 -and
+                $combined.IndexOf($secret, [StringComparison]::Ordinal) -ge 0) {
+                throw (New-CodexContentFreeDiagnostic -Code 'CODEX_ORIGINAL_OUTPUT_FORBIDDEN_CONTENT' `
+                    -UntrustedText ([ordered]@{ output=$combined }))
+            }
+        }
+        # Only classification uses this fixed documentation placeholder. Quotas,
+        # NUL, actual profile spellings and inherited secrets use original bytes.
+        # Neither the raw output nor the returned capability text is rewritten.
+        $recognizableText = $combined.Replace('~/.codex/config.toml', '[DOCUMENTED_CODEX_CONFIG_PATH]')
     }
     $profile = [Environment]::GetFolderPath([Environment+SpecialFolder]::UserProfile)
     if (-not [string]::IsNullOrWhiteSpace($profile)) {
@@ -411,7 +432,7 @@ function Assert-CodexOriginalProcessOutputSafe {
     }
     if ($combined -match '(?i)(?:[A-Z]:[\\/]|\\\\)[^\r\n"'']*(?:[\\/])(?:\.ssh|\.aws|\.azure|\.kube|\.codex|AppData|LocalLow|Save|Saves|SaveData)(?:[\\/]|$)' -or
         $combined -match '(?i)(?:^|[\\/])(?:auth\.json|credentials(?:\.json)?|\.netrc|_netrc|id_rsa|id_ed25519)(?:$|[\\/])' -or
-        (Test-SashimiRecognizableSensitiveText -Text $combined -SensitiveValues @($script:sensitiveEnvironmentValues))) {
+        (Test-SashimiRecognizableSensitiveText -Text $recognizableText -SensitiveValues @($script:sensitiveEnvironmentValues))) {
         throw (New-CodexContentFreeDiagnostic -Code 'CODEX_ORIGINAL_OUTPUT_FORBIDDEN_CONTENT' `
             -UntrustedText ([ordered]@{ output=$combined }))
     }
@@ -529,7 +550,8 @@ function Invoke-AdapterProcess {
         [Parameter(Mandatory = $true)][int]$TimeoutSeconds,
         [AllowNull()][string]$StandardInputText,
         [AllowNull()][string]$CancellationMarkerPath,
-        [switch]$RequireStandardInput
+        [switch]$RequireStandardInput,
+        [switch]$CapabilityHelpProbe
     )
 
     Assert-AdapterCommand -FilePath $FilePath -ArgumentList $ArgumentList
@@ -625,7 +647,21 @@ function Invoke-AdapterProcess {
         $null -eq $processResult.PSObject.Properties['UnredactedStdErr']) {
         throw 'Host process omitted the required original in-memory Codex output.'
     }
-    Assert-CodexOriginalProcessOutputSafe -StdOut $rawStdOut -StdErr $rawStdErr
+    $reviewedHelp = $false
+    if ($CapabilityHelpProbe -and -not $RequireStandardInput -and
+        -not $PSBoundParameters.ContainsKey('StandardInputText') -and
+        [int]$processResult.ExitCode -eq 0 -and -not [bool]$processResult.TimedOut -and
+        -not [bool](Get-AdapterProperty $processResult @('Cancelled','Canceled') $false) -and
+        $rawStdErr.Length -eq 0) {
+        $expectedHelpArguments = @(Get-CodexSecureHelpArguments)
+        $sameArguments = $ArgumentList.Count -eq $expectedHelpArguments.Count
+        for ($index = 0; $sameArguments -and $index -lt $ArgumentList.Count; $index++) {
+            $sameArguments = $ArgumentList[$index] -ceq $expectedHelpArguments[$index]
+        }
+        $reviewedHelp = $sameArguments -and
+            (Get-AdapterTextSha256 $rawStdOut) -ceq 'e504bac5a6364566fbe408132dec7993639def9258ece34e8352f51f8d43687c'
+    }
+    Assert-CodexOriginalProcessOutputSafe -StdOut $rawStdOut -StdErr $rawStdErr -ReviewedCapabilityHelp:$reviewedHelp
     return [pscustomobject][ordered]@{
         ExitCode = [int](Get-AdapterProperty -Object $processResult -Names @('ExitCode','NativeExitCode') -DefaultValue 127)
         StdOut = $rawStdOut
@@ -726,6 +762,14 @@ function Assert-CodexCapabilityProbeResult {
             }))
 }
 
+function Get-CodexSecureHelpArguments {
+    return @(
+        '--disable', 'shell_tool', '--disable', 'unified_exec',
+        '--ask-for-approval', 'never', 'exec', '--ignore-rules',
+        '--ignore-user-config', '--strict-config', '--help'
+    )
+}
+
 function Invoke-CodexCapabilityProbe {
     param(
         [Parameter(Mandatory = $true)][string]$CodexPath,
@@ -740,19 +784,11 @@ function Invoke-CodexCapabilityProbe {
     # positions; the returned exec help proves the required exec options.
     $execHelp = Get-NormalizedProcessResult -Result (Invoke-AdapterProcess `
         -FilePath $CodexPath `
-        -ArgumentList @(
-            '--disable', 'shell_tool',
-            '--disable', 'unified_exec',
-            '--ask-for-approval', 'never',
-            'exec',
-            '--ignore-rules',
-            '--ignore-user-config',
-            '--strict-config',
-            '--help'
-        ) `
+        -ArgumentList @(Get-CodexSecureHelpArguments) `
         -WorkingDirectory $WorkingDirectory `
         -TimeoutSeconds 30 `
-        -CancellationMarkerPath $CancellationMarkerPath)
+        -CancellationMarkerPath $CancellationMarkerPath `
+        -CapabilityHelpProbe)
 
     Assert-CodexCapabilityProbeResult -Probe $execHelp -ProbeKind SecureExecHelp
     Assert-CodexCapabilityText -ExecHelp $execHelp.StdOut

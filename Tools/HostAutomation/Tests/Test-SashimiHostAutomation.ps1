@@ -949,6 +949,14 @@ public static class SashimiFakeCodex
         }
         if (Has(args, "exec") && Has(args, "--help"))
         {
+            if (File.Exists(Sibling(".exec-help.txt")))
+            {
+                Console.Write(File.ReadAllText(Sibling(".exec-help.txt"), new UTF8Encoding(false)));
+                if (File.Exists(Sibling(".exec-help.stderr.txt")))
+                    Console.Error.Write(File.ReadAllText(Sibling(".exec-help.stderr.txt"), new UTF8Encoding(false)));
+                return File.Exists(Sibling(".exec-help.exit.txt"))
+                    ? Int32.Parse(File.ReadAllText(Sibling(".exec-help.exit.txt")).Trim()) : 0;
+            }
             Console.WriteLine("--ephemeral --json --color --cd -C --sandbox workspace-write read-only --ignore-user-config --strict-config --output-schema --disable --ignore-rules -c"); return 0;
         }
         if (Has(args, "login") && Has(args, "status")) { Console.WriteLine("Logged in"); return 0; }
@@ -3826,6 +3834,16 @@ wire_api = "responses"
         Assert-HostTest (-not (Test-Path -LiteralPath $script:fakeCodex.EndpointSentinel)) 'A poisoned endpoint/trust value reached fake Codex.'
         Assert-HostTest (-not (Test-Path -LiteralPath $script:fakeCodex.ShellSentinel)) 'The fake Codex observed an enabled or ambient shell policy.'
         Assert-HostTest (-not (Test-Path -LiteralPath $script:fakeCodex.CommandSentinel)) 'The fake Codex observed an enabled malicious command transport.'
+    }
+
+    Invoke-HostTestCase 'CodexReviewedHelpExceptionRequiresExactBytesAndProbeContext' {
+        . (Join-Path $PSScriptRoot 'Capability.HelpFixtures.ps1')
+        Invoke-HostCapabilityHelpContextRegression
+    }
+
+    Invoke-HostTestCase 'CodexReviewedHelpTraversesNativeAdapterAndRejectsContamination' {
+        . (Join-Path $PSScriptRoot 'Capability.HelpFixtures.ps1')
+        Invoke-HostCapabilityHelpNativeRegression
     }
 
     Invoke-HostTestCase 'CodexRawOutputIsAuditedBeforeRedactionAndNeverPromoted' {
