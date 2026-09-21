@@ -33,7 +33,10 @@ namespace SashimiBoy.Tests
                     gameObject,
                     "SashimiBoy.AudioClock");
                 RuntimeReflection.SetField(clock, "audioSource", source);
-                RuntimeReflection.SetField(clock, "scheduledLeadTime", 0.02d);
+                // A DSP buffer step can exceed 20 ms even between adjacent
+                // assertions. Keep this transport test before its scheduled
+                // deadline, as in the dedicated scheduled-stop regression.
+                RuntimeReflection.SetField(clock, "scheduledLeadTime", 0.25d);
 
                 Assert.That(Command(clock, "Play"), Is.True);
                 Assert.That(StateName(clock), Is.EqualTo("Scheduled"));

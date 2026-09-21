@@ -355,6 +355,22 @@ cancellation, and removal procedures.
 
 ## State authority
 
+The Host reads each Issue's author from GitHub and applies the configured
+`Security.AuthorizedPrAuthors` allowlist to both Issues and PRs. Missing,
+deleted, or unlisted Issue authors are ineligible in every queue mode. The
+publication contract repeats this check from fresh GitHub data, including
+immediately before a comment, PR, or Project mutation.
+
+Before the read-only Reviewer starts, the Host pins the synthetic merge commit
+and supplies the complete Git changed-path list and text patch against the
+exact pinned main commit. This includes removed lines and deleted files;
+renames are represented as deletion plus addition, and binary entries are
+explicitly identified for any required human asset checks. The source MCP
+continues to expose only the current tree and no shell or Git commands.
+A missing, inconsistent, sensitive, or oversized diff stops review without a
+PASS or status transition. The diff JSON limit is 1 MiB; the complete prompt,
+including Issue and conversation, is limited to 2 MiB. Neither is truncated.
+
 The Host enforces the repository state machine; it does not expand it:
 
 - Developer New Work: remains `Ready` through untrusted execution and exact

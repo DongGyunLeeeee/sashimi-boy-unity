@@ -508,6 +508,15 @@ public static class SashimiHostFakeTool
             }
             Console.Write(status);
         }
+        if (Has(args, "diff") && Has(args, "--no-renames"))
+        {
+            if (Has(args, "--name-status")) Console.Write(Env("SASHIMI_FAKE_GIT_REVIEW_PATHS"));
+            if (Has(args, "--patch"))
+            {
+                string patchPath = Env("SASHIMI_FAKE_GIT_REVIEW_PATCH_FILE");
+                Console.Write(String.IsNullOrWhiteSpace(patchPath) ? Env("SASHIMI_FAKE_GIT_REVIEW_PATCH") : File.ReadAllText(patchPath, new UTF8Encoding(false)));
+            }
+        }
         if (Has(args, "symbolic-ref"))
         {
             string branch = Env("SASHIMI_FAKE_GIT_BRANCH");
@@ -970,7 +979,7 @@ public static class SashimiFakeCodex
             return 0;
         }
 
-        Console.In.ReadToEnd();
+        File.WriteAllText(Sibling(".input.txt"), Console.In.ReadToEnd(), new UTF8Encoding(false));
         string smokeFixture = Path.Combine(Directory.GetCurrentDirectory(), "functional-smoke.fixture.json");
         if (File.Exists(smokeFixture))
         {
@@ -1010,6 +1019,7 @@ public static class SashimiFakeCodex
         Path = $assemblyPath
         AuditPath = [IO.Path]::ChangeExtension($assemblyPath, '.audit.log')
         ResultPath = [IO.Path]::ChangeExtension($assemblyPath, '.result.json')
+        InputPath = [IO.Path]::ChangeExtension($assemblyPath, '.input.txt')
         MaliciousJsonlPath = [IO.Path]::ChangeExtension($assemblyPath, '.malicious-jsonl')
         EndpointSentinel = [IO.Path]::ChangeExtension($assemblyPath, '.endpoint.sentinel')
         ShellSentinel = [IO.Path]::ChangeExtension($assemblyPath, '.shell.sentinel')
@@ -1218,6 +1228,7 @@ function New-HostLiveQueueScenario {
             content = [ordered]@{
                 __typename = 'Issue'; number = $Number; title = $Title; body = $Body; updatedAt = $UpdatedAt
                 url = "https://example.invalid/issues/$Number"; state = 'OPEN'
+                author = [ordered]@{ login = 'DongGyunLeeeee' }
                 repository = [ordered]@{ nameWithOwner = 'DongGyunLeeeee/sashimi-boy-unity' }
                 labels = [ordered]@{ totalCount = 0; nodes = @(); pageInfo = [ordered]@{ hasNextPage = $false; endCursor = $null } }
             }
@@ -1311,6 +1322,7 @@ function New-HostDeveloperGhScenario {
                 id = "fixture-item-$IssueNumber"; project = [ordered]@{ id = 'PVT_fixture' }
                 content = [ordered]@{
                     number = $IssueNumber; state = 'OPEN'; updatedAt = '2026-01-01T00:00:00Z'; body = 'Fixture acceptance criteria.'
+                    author = [ordered]@{ login = 'DongGyunLeeeee' }
                     repository = [ordered]@{ nameWithOwner = 'DongGyunLeeeee/sashimi-boy-unity' }
                 }
                 statusValue = [ordered]@{ name = 'In Progress' }
@@ -1416,6 +1428,7 @@ function New-HostQueueItem {
         IssueBody = $Body
         IssueUrl = "https://example.invalid/issues/$IssueNumber"
         IssueState = 'OPEN'
+        IssueAuthorLogin = 'DongGyunLeeeee'
         IssueRepository = 'DongGyunLeeeee/sashimi-boy-unity'
         Labels = @()
         PullRequests = $pullRequests
@@ -2073,6 +2086,7 @@ Assert-SashimiFixtureExecutableBoundary -FilePath 'C:\Program Files\Git\cmd\git.
         Write-HostTestFile $bodyPath "Fixture evidence $exactSecret`n$basicSecret`n"
         $publishFixturePath = Join-Path $script:temporaryRoot 'sensitive-publication.json'
         $publishFixture = [ordered]@{
+            IssueAuthorLogin = 'DongGyunLeeeee';
             SchemaVersion=1; AuthenticatedLogin='DongGyunLeeeee'; CurrentStatus='In Progress'; OpenPullRequestCount=0
             IssueUpdatedAt='2026-09-05T00:00:00Z'; IssueBodySha256=('3' * 64); LiveConversationRecords=@()
         }
@@ -2643,6 +2657,19 @@ if (`$lease.Acquired) { Exit-SashimiHostMutex `$lease }
         Assert-HostTest (@($ledger.Processes).Count -eq 0) 'A confirmed-terminated process remained in the owned PID ledger.'
     }
 
+    Invoke-HostTestCase 'NativePreAssignmentFailureTerminatesSuspendedChildAndClearsLedger' {
+        foreach ($boundary in @('Assignment','Ledger','Termination')) {
+            $evidencePath = Join-Path $script:temporaryRoot "pre-assignment-$boundary.json"
+            Write-HostTestFile $evidencePath '{}'
+            $native = Invoke-HostTestScript -ScriptPath (Join-Path $PSScriptRoot 'Native.PreAssignmentFixture.ps1') -Parameters @{
+                RepositoryRoot=$RepositoryRoot; ChildExecutable=$script:fakeCodex.Path
+                EvidencePath=$evidencePath; FailureBoundary=$boundary
+            }
+            $result = ConvertFrom-LastHostJson $native.StdOut
+            Assert-HostTest ($native.ExitCode -eq 0 -and $result.Success) "$boundary failure left an owned child or lost ledger identity: $($native.StdOut) $($native.StdErr)"
+        }
+    }
+
     Invoke-HostTestCase 'ForkBaseAndUnauthorizedAuthorAreRejected' {
         $sha = 'a' * 40
         $trusted = [pscustomobject]@{
@@ -2686,6 +2713,7 @@ if (`$lease.Acquired) { Exit-SashimiHostMutex `$lease }
         $pinnedSha = 'a' * 40
         $fixturePath = Join-Path $script:temporaryRoot 'stale-publish.json'
         $fixture = [ordered]@{
+            IssueAuthorLogin = 'DongGyunLeeeee';
             SchemaVersion = 1
             LivePullRequest = [ordered]@{
                 Number = 6252; State = 'OPEN'; IsDraft = $true; BaseRefName = 'main'
@@ -2739,7 +2767,7 @@ if (`$lease.Acquired) { Exit-SashimiHostMutex `$lease }
             SASHIMI_FAKE_PUSH_STATE = $bundle.PushState
             SASHIMI_FAKE_STATUS_STATE = $bundle.StatusState
             SASHIMI_FAKE_GIT_STATUS = ''
-        } -TimeoutSeconds 60
+        } -TimeoutSeconds 120
         Assert-HostTest ($developer.ExitCode -ne 0) 'End-to-end stale Developer fixture unexpectedly succeeded.'
         $developerJson = ConvertFrom-LastHostJson $developer.StdOut
         Assert-HostTest (-not [bool]$developerJson.Pushed -and -not [bool]$developerJson.TransitionedToReview) 'End-to-end stale Developer reported a push or status transition.'
@@ -2844,6 +2872,7 @@ if (`$lease.Acquired) { Exit-SashimiHostMutex `$lease }
         })
         $newWorkPublishFixturePath = Join-Path $script:temporaryRoot 'newwork-conversation-stale.publish.json'
         Write-HostTestFile $newWorkPublishFixturePath (([ordered]@{
+            IssueAuthorLogin = 'DongGyunLeeeee';
             SchemaVersion=1; CurrentStatus='Ready'; OpenPullRequestCount=0
             IssueUpdatedAt='2026-01-01T00:00:00Z'; IssueBodySha256=(Get-SashimiTextSha256 -Text 'Fixture acceptance criteria.')
             LiveConversationRecords=$issueOnlyLive
@@ -2864,6 +2893,7 @@ if (`$lease.Acquired) { Exit-SashimiHostMutex `$lease }
         Write-HostTestFile $bundle.SelectionPath (($bundle.Selection | ConvertTo-Json -Depth 64) + "`n")
 
         $publishFixture = [ordered]@{
+            IssueAuthorLogin = 'DongGyunLeeeee';
             SchemaVersion=1; CurrentStatus='In Progress'; OpenPullRequestCount=1
             OpenPullRequestNumbers=@([int]$bundle.Selection.PullRequestNumber)
             IssueUpdatedAt=[string]$bundle.Selection.IssueUpdatedAt; IssueBodySha256=[string]$bundle.Selection.IssueBodySha256
@@ -2918,6 +2948,7 @@ if (`$lease.Acquired) { Exit-SashimiHostMutex `$lease }
         $bodySha = Get-SashimiTextSha256 -Text 'Pinned fixture body.'
         $fixturePath = Join-Path $script:temporaryRoot 'stale-newwork-remote-branch.publish.json'
         $fixture = [ordered]@{
+            IssueAuthorLogin = 'DongGyunLeeeee';
             SchemaVersion = 1
             CurrentStatus = 'In Progress'
             OpenPullRequestCount = 0
@@ -2951,6 +2982,7 @@ if (`$lease.Acquired) { Exit-SashimiHostMutex `$lease }
 
         $lateFixturePath = Join-Path $script:temporaryRoot 'late-stale-newwork-remote-branch.publish.json'
         $lateFixture = [ordered]@{
+            IssueAuthorLogin = 'DongGyunLeeeee';
             SchemaVersion = 1
             CurrentStatus = 'In Progress'
             OpenPullRequestCount = 0
@@ -2981,6 +3013,7 @@ if (`$lease.Acquired) { Exit-SashimiHostMutex `$lease }
         $bodyPath=Join-Path $run.ArtifactsPath 'Review.md'
         Write-HostTestFile $bodyPath 'Confirmed review finding.'
         $baseFixture=[ordered]@{
+            IssueAuthorLogin = 'DongGyunLeeeee';
             SchemaVersion=1; CurrentStatus='Review'; OpenPullRequestCount=1; OpenPullRequestNumbers=@($pr)
             IssueUpdatedAt='2026-09-17T00:00:00Z'; IssueBodySha256=$bodySha; LiveMainSha=$main
             LiveConversationSha256=$conversationSha
@@ -2997,6 +3030,7 @@ if (`$lease.Acquired) { Exit-SashimiHostMutex `$lease }
             IssueBody=@{IssueBodySha256=('2' * 64)}; UpdatedAt=@{IssueUpdatedAt='2026-09-17T01:00:00Z'}
             Conversation=@{LiveConversationSha256=('3' * 64)}; Project=@{ProjectId='different-project'}
             Field=@{StatusFieldId='different-field'}
+            IssueAuthor=@{IssueAuthorLogin='untrusted-outsider'}; MissingIssueAuthor=@{IssueAuthorLogin=''}
         }
         foreach ($name in @('HeadSha','HeadRef','ContentSha256','HeadRepository','State','IsDraft')) {
             $prCopy=($baseFixture.LivePullRequest | ConvertTo-Json | ConvertFrom-Json -AsHashtable)
@@ -3035,6 +3069,7 @@ if (`$lease.Acquired) { Exit-SashimiHostMutex `$lease }
     Invoke-HostTestCase 'UnauthorizedAuthenticatedActorCausesNoGitHubMutation' {
         $fixturePath = Join-Path $script:temporaryRoot 'unauthorized-publisher-actor.json'
         $fixture = [ordered]@{
+            IssueAuthorLogin = 'DongGyunLeeeee';
             SchemaVersion=1
             AuthenticatedLogin='untrusted-fixture-actor'
             CurrentStatus='In Progress'
@@ -3595,6 +3630,7 @@ if (`$lease.Acquired) { Exit-SashimiHostMutex `$lease }
         )
         $reviewerPublishPath = Join-Path $script:temporaryRoot 'reviewer-content-free-failure.publish.json'
         $reviewerPublish = [ordered]@{
+            IssueAuthorLogin = 'DongGyunLeeeee';
             SchemaVersion = 1; CurrentStatus = 'Review'; OpenPullRequestCount = 1
             OpenPullRequestNumbers = @($reviewerPr); IssueUpdatedAt = [string]$reviewerSelection.IssueUpdatedAt
             IssueBodySha256 = [string]$reviewerSelection.IssueBodySha256; LiveConversationRecords = @()
@@ -3967,6 +4003,7 @@ wire_api = "responses"
 
             $publishFixturePath = Join-Path $script:temporaryRoot ('outer-sink-publish-' + [Guid]::NewGuid().ToString('N') + '.json')
             $publishFixture = [ordered]@{
+                IssueAuthorLogin = 'DongGyunLeeeee';
                 SchemaVersion=1; AuthenticatedLogin='DongGyunLeeeee'; CurrentStatus='Review'
                 OpenPullRequestCount=1; OpenPullRequestNumbers=@($pullRequestNumber)
                 IssueUpdatedAt=$issueUpdatedAt; IssueBodySha256=(Get-SashimiTextSha256 -Text $issueBody)
@@ -4355,6 +4392,7 @@ wire_api = "responses"
             Write-HostTestFile $executionFixturePath (($executionFixture | ConvertTo-Json -Depth 64) + "`n")
 
             $publishFixture = [ordered]@{
+                IssueAuthorLogin = 'DongGyunLeeeee';
                 SchemaVersion = 1
                 CurrentStatus = 'In Progress'
                 OpenPullRequestCount = 1
@@ -5107,6 +5145,7 @@ wire_api = "responses"
         Write-HostTestFile $executionFixturePath (($executionFixture | ConvertTo-Json -Depth 64) + "`n")
         $publishFixturePath = Join-Path $script:temporaryRoot 'newwork-git-control-timing.publish.json'
         $publishFixture = [ordered]@{
+            IssueAuthorLogin = 'DongGyunLeeeee';
             SchemaVersion=1; AuthenticatedLogin='DongGyunLeeeee'; AuthenticatedLoginImmediatelyBeforeMutation='DongGyunLeeeee'
             CurrentStatus='Ready'; OpenPullRequestCount=0; OpenPullRequestNumbers=@()
             IssueUpdatedAt='2026-01-01T00:00:00Z'; IssueBodySha256=(Get-SashimiTextSha256 -Text $body)
@@ -5238,6 +5277,21 @@ wire_api = "responses"
         }
     }
 
+    Invoke-HostTestCase 'RolloutIssueAuthorTrustAcrossEveryQueueMode' {
+        . (Join-Path $PSScriptRoot 'Rollout.ReadinessFixtures.ps1')
+        Invoke-HostRolloutQueueAuthorRegression
+    }
+
+    Invoke-HostTestCase 'RolloutLiveIssueAuthorContractFailsClosed' {
+        . (Join-Path $PSScriptRoot 'Rollout.ReadinessFixtures.ps1')
+        Invoke-HostRolloutLiveAuthorRegression
+    }
+
+    Invoke-HostTestCase 'RolloutReviewerReceivesCompletePinnedDiffAndRejectsIncompleteInput' {
+        . (Join-Path $PSScriptRoot 'Rollout.ReadinessFixtures.ps1')
+        Invoke-HostRolloutReviewerDiffRegression
+    }
+
     Invoke-HostTestCase 'ReviewerDecisionControlsRealRunnerTransitions' {
         . (Join-Path $PSScriptRoot 'Reviewer.DecisionFixtures.ps1')
         Invoke-HostReviewerDecisionRegression
@@ -5310,6 +5364,7 @@ wire_api = "responses"
         $unityFixture = New-HostUnityFixtureFile -Name 'reviewer-post-unity-drift'
         $publishFixturePath = Join-Path $script:temporaryRoot 'reviewer-post-unity-drift.publish.json'
         $publishFixture = [ordered]@{
+            IssueAuthorLogin = 'DongGyunLeeeee';
             SchemaVersion = 1; CurrentStatus = 'Review'; OpenPullRequestCount = 1
             OpenPullRequestNumbers = @($pr); IssueUpdatedAt = [string]$selection.IssueUpdatedAt
             IssueBodySha256 = [string]$selection.IssueBodySha256; LiveConversationRecords = @()

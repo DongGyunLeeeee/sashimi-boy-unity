@@ -138,7 +138,7 @@ function Assert-PublishAuthenticatedActor {
     param([switch]$ImmediatelyBeforeMutation)
 
     # ProjectOwner is an exact, immutable repository contract validated by
-    # Import-SashimiHostConfig. AuthorizedPrAuthors controls incoming PR trust;
+    # Import-SashimiHostConfig. AuthorizedPrAuthors controls incoming Issue/PR trust;
     # it must not implicitly grant an account authority to mutate this Project.
     $authorizedLogin = [string]$script:publishConfig.ProjectOwner
     if ($null -ne $script:publishFixture) {
@@ -502,6 +502,10 @@ function Assert-PublishProjectSchema {
 
 function Get-ProjectContract {
     if ($null -ne $script:publishFixture) {
+        $issueAuthor = [string](Get-SashimiPropertyValue $script:publishFixture 'IssueAuthorLogin' '')
+        if ([string]::IsNullOrWhiteSpace($issueAuthor) -or @($script:publishConfig.Security.AuthorizedPrAuthors) -cnotcontains $issueAuthor) {
+            throw 'Issue author is missing or unauthorized; no publication is allowed.'
+        }
         $fixtureFields = Get-SashimiPropertyValue $script:publishFixture 'Fields' @(
             [pscustomobject]@{ name='Status'; options=@('Backlog','Ready','In Progress','Review','Verification','Done') },
             [pscustomobject]@{ name='Priority'; options=@('P0','P1','P2','P3') },
@@ -516,16 +520,21 @@ function Get-ProjectContract {
             OpenPullRequestNumbers = @((Get-SashimiPropertyValue $script:publishFixture 'OpenPullRequestNumbers' $(if ([int](Get-SashimiPropertyValue $script:publishFixture 'OpenPullRequestCount' 0) -eq 1 -and $PullRequestNumber -gt 0) { @($PullRequestNumber) } else { @() })) | ForEach-Object { [int]$_ })
             IssueUpdatedAt = [string](Get-SashimiPropertyValue $script:publishFixture 'IssueUpdatedAt' $PinnedIssueUpdatedAt)
             IssueBodySha256 = [string](Get-SashimiPropertyValue $script:publishFixture 'IssueBodySha256' $PinnedIssueBodySha256)
+            IssueAuthorLogin = $issueAuthor
             Options = Get-SashimiPropertyValue $script:publishFixture 'StatusOptions' ([pscustomobject]@{ Backlog='backlog'; Ready='ready'; 'In Progress'='in-progress'; Review='review'; Verification='verification'; Done='done' })
         }
     }
-    $query = 'query HostPublishContract($login:String!,$number:Int!,$itemId:ID!){user(login:$login){projectV2(number:$number){id fields(first:100){totalCount pageInfo{hasNextPage endCursor} nodes{__typename ... on ProjectV2Field{id name dataType} ... on ProjectV2IterationField{id name} ... on ProjectV2SingleSelectField{id name options{id name}}}}}} node(id:$itemId){... on ProjectV2Item{id project{id} content{... on Issue{number state updatedAt body repository{nameWithOwner}}} statusValue:fieldValueByName(name:"Status"){... on ProjectV2ItemFieldSingleSelectValue{name}} linkedValue:fieldValueByName(name:"Linked pull requests"){... on ProjectV2ItemFieldPullRequestValue{pullRequests(first:100){totalCount pageInfo{hasNextPage endCursor} nodes{number state}}}}}}}'
+    $query = 'query HostPublishContract($login:String!,$number:Int!,$itemId:ID!){user(login:$login){projectV2(number:$number){id fields(first:100){totalCount pageInfo{hasNextPage endCursor} nodes{__typename ... on ProjectV2Field{id name dataType} ... on ProjectV2IterationField{id name} ... on ProjectV2SingleSelectField{id name options{id name}}}}}} node(id:$itemId){... on ProjectV2Item{id project{id} content{... on Issue{number state updatedAt body author{login} repository{nameWithOwner}}} statusValue:fieldValueByName(name:"Status"){... on ProjectV2ItemFieldSingleSelectValue{name}} linkedValue:fieldValueByName(name:"Linked pull requests"){... on ProjectV2ItemFieldPullRequestValue{pullRequests(first:100){totalCount pageInfo{hasNextPage endCursor} nodes{number state}}}}}}}'
     $result = Invoke-PublishGh -Operation 'Project status contract query' -Arguments @('api','graphql','-f',"login=$($script:publishConfig.ProjectOwner)",'-F',"number=$($script:publishConfig.ProjectNumber)",'-f',"itemId=$ProjectItemId",'-f',"query=$query")
     $json = ConvertFrom-PublishJson $result.StdOut 'Project status contract query'
     $project = $json.data.user.projectV2; $node = $json.data.node
     if ($null -eq $project -or $null -eq $node -or [string]$node.project.id -cne [string]$project.id -or [int]$node.content.number -ne $IssueNumber -or
         [string]$node.content.state -cne 'OPEN' -or [string]$node.content.repository.nameWithOwner -cne [string]$script:publishConfig.Repository) {
         throw 'Project item identity changed or does not match the pinned Issue.'
+    }
+    $issueAuthor = [string](Get-SashimiPropertyValue (Get-SashimiPropertyValue $node.content 'author' $null) 'login' '')
+    if ([string]::IsNullOrWhiteSpace($issueAuthor) -or @($script:publishConfig.Security.AuthorizedPrAuthors) -cnotcontains $issueAuthor) {
+        throw 'Issue author is missing or unauthorized; no publication is allowed.'
     }
     if ([bool]$project.fields.pageInfo.hasNextPage -or [int]$project.fields.totalCount -ne @($project.fields.nodes).Count) { throw 'Project field pagination exceeds the fail-closed publish query.' }
     Assert-PublishProjectSchema -Fields @($project.fields.nodes)
@@ -542,6 +551,7 @@ function Get-ProjectContract {
         ProjectId = [string]$project.id; StatusFieldId = [string]$statusField.id; CurrentStatus = [string]$node.statusValue.name
         OpenPullRequestCount = $openCount; OpenPullRequestNumbers=$openNumbers; Options = [pscustomobject]$options; IssueUpdatedAt = [string]$node.content.updatedAt
         IssueBodySha256 = Get-SashimiTextSha256 -Text ([string]$node.content.body)
+        IssueAuthorLogin = $issueAuthor
     }
 }
 

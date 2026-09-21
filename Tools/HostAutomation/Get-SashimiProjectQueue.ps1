@@ -211,12 +211,13 @@ function Convert-LiveProjectItem {
         ProjectItemId = [string]$Node.id; UpdatedAt = [string]$Node.updatedAt; Status = $status; Priority = $priority
         IssueNumber = [int]$content.number; IssueTitle = [string]$content.title; IssueBody = [string]$content.body; IssueUpdatedAt = [string]$content.updatedAt
         IssueUrl = [string]$content.url; IssueState = [string]$content.state; IssueRepository = [string]$content.repository.nameWithOwner
+        IssueAuthorLogin = [string](Get-SashimiPropertyValue (Get-SashimiPropertyValue $content 'author' $null) 'login' '')
         Labels = @($labelsConnection.nodes | ForEach-Object { [string]$_.name }); PullRequests = $pullRequests.ToArray(); Comments = @(); Reviews = @()
     }
 }
 
 function Get-LiveProjectItems {
-    $query = 'query HostProjectItems($login:String!,$number:Int!,$cursor:String){user(login:$login){projectV2(number:$number){id items(first:50,after:$cursor){totalCount pageInfo{hasNextPage endCursor} nodes{id updatedAt content{__typename ... on Issue{number title body updatedAt url state repository{nameWithOwner} labels(first:100){totalCount nodes{name} pageInfo{hasNextPage endCursor}}}} statusValue:fieldValueByName(name:"Status"){... on ProjectV2ItemFieldSingleSelectValue{name}} priorityValue:fieldValueByName(name:"Priority"){... on ProjectV2ItemFieldSingleSelectValue{name}} linkedValue:fieldValueByName(name:"Linked pull requests"){... on ProjectV2ItemFieldPullRequestValue{pullRequests(first:100){totalCount pageInfo{hasNextPage endCursor} nodes{number title body url state isDraft baseRefName headRefName headRefOid author{login} baseRepository{nameWithOwner} headRepository{nameWithOwner}}}}}}}}}}'
+    $query = 'query HostProjectItems($login:String!,$number:Int!,$cursor:String){user(login:$login){projectV2(number:$number){id items(first:50,after:$cursor){totalCount pageInfo{hasNextPage endCursor} nodes{id updatedAt content{__typename ... on Issue{number title body updatedAt url state author{login} repository{nameWithOwner} labels(first:100){totalCount nodes{name} pageInfo{hasNextPage endCursor}}}} statusValue:fieldValueByName(name:"Status"){... on ProjectV2ItemFieldSingleSelectValue{name}} priorityValue:fieldValueByName(name:"Priority"){... on ProjectV2ItemFieldSingleSelectValue{name}} linkedValue:fieldValueByName(name:"Linked pull requests"){... on ProjectV2ItemFieldPullRequestValue{pullRequests(first:100){totalCount pageInfo{hasNextPage endCursor} nodes{number title body url state isDraft baseRefName headRefName headRefOid author{login} baseRepository{nameWithOwner} headRepository{nameWithOwner}}}}}}}}}}'
     $items = New-Object 'System.Collections.Generic.List[object]'; $seen = @{}; $cursors = @{}; $cursor = ''; $expected = -1; $pageCount = 0
     while ($true) {
         $vars = @{ login = [string]$script:queueConfig.ProjectOwner; number = [int]$script:queueConfig.ProjectNumber }
@@ -411,6 +412,10 @@ function New-QueueCandidate {
     if ($number -lt 1 -or [string](Get-SashimiPropertyValue $Item 'IssueState' '') -cne 'OPEN' -or [string](Get-SashimiPropertyValue $Item 'IssueRepository' '') -cne [string]$script:queueConfig.Repository) {
         $base.Reason = 'IssueIdentityOrStateMismatch'; return [pscustomobject]$base
     }
+    $issueAuthor = [string](Get-SashimiPropertyValue $Item 'IssueAuthorLogin' '')
+    if ([string]::IsNullOrWhiteSpace($issueAuthor) -or $AuthorizedAuthors -cnotcontains $issueAuthor) {
+        $base.Reason = 'UnauthorizedIssueAuthor'; return [pscustomobject]$base
+    }
     $priority = [string](Get-SashimiPropertyValue $Item 'Priority' '')
     if (@('P0', 'P1', 'P2', 'P3') -cnotcontains $priority) { $base.Reason = 'InvalidPriority'; return [pscustomobject]$base }
     try { [void][datetime]::Parse([string]$Item.UpdatedAt, [Globalization.CultureInfo]::InvariantCulture, [Globalization.DateTimeStyles]::AssumeUniversal) } catch { $base.Reason = 'InvalidUpdatedAt'; return [pscustomobject]$base }
@@ -513,6 +518,7 @@ try {
             DataSource = $dataSource; Encoding = 'UTF-8'; ProjectPageCount = [int]$queueData.PageCount; CandidateCount = $eligible.Count; DispatchCount = 1
             ProjectItemId = [string]$item.ProjectItemId; Status = [string]$item.Status; Priority = [string]$item.Priority; UpdatedAt = [string]$item.UpdatedAt
             IssueNumber = [int]$item.IssueNumber; IssueTitle = Protect-SashimiText ([string]$item.IssueTitle); IssueBody = Protect-SashimiText ([string]$item.IssueBody); IssueUrl = [string]$item.IssueUrl
+            IssueAuthorLogin = [string]$item.IssueAuthorLogin
             IssueUpdatedAt = [string](Get-SashimiPropertyValue $item 'IssueUpdatedAt' (Get-SashimiPropertyValue $item 'UpdatedAt' ''))
             IssueBodySha256 = Get-SashimiTextSha256 -Text ([string]$item.IssueBody)
             ConversationSha256 = $conversationSha256
