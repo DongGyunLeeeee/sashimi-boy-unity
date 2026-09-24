@@ -556,6 +556,7 @@ $InstalledConfigPath = ($Install.ResultJson | ConvertFrom-Json).ConfigPath
 $Bundle = Split-Path -Parent $InstalledConfigPath
 & 'C:\Program Files\PowerShell\7\pwsh.exe' -NoLogo -NoProfile -NonInteractive `
   -File (Join-Path $Bundle 'Invoke-SashimiHostOrchestrator.ps1') `
+  -IntegrityManifestPath (Join-Path $Bundle 'HostIntegrity.json') `
   -ConfigPath $InstalledConfigPath -Once -IssueNumber 20 -DryRun
 ```
 
