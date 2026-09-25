@@ -783,6 +783,12 @@ existing endpoint-pinned pull obtains missing content. The Host then verifies
 every working asset against its pinned OID and size and runs `git-lfs fsck`.
 Cache contents alone never establish that working files are ready.
 
+Native LFS materialization also refreshes Git index bookkeeping. Only at this
+initial Host boundary, before the Codex guard exists, Developer permits the
+index file's length/hash to change. Index entries, flags, staged tree, file
+existence/type and every other Git control remain exact. Later model, Unity
+and delivery boundaries retain strict comparison of all index bytes.
+
 Verified objects are stored after materialization and again from the exact
 Developer delivery commit, allowing the independent Reviewer to reuse new
 assets. `State/LfsCache.Initial.json` and `State/LfsCache.Delivery.json`

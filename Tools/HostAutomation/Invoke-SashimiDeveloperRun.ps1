@@ -744,23 +744,50 @@ function Get-GitOwnershipSnapshot {
     }
 }
 
+function ConvertTo-DeveloperLfsControlComparison {
+    param([AllowEmptyCollection()][object[]]$Records)
+    foreach ($record in $Records) {
+        $comparison=[ordered]@{}
+        foreach ($field in $record.PSObject.Properties) {
+            # Native LFS checkout refreshes index stat/cache bytes. Keep the
+            # file's identity, existence and kind, and every other control byte.
+            $comparison[$field.Name]=if ([string]$record.Path -ceq '.git/index' -and $field.Name -ceq 'Length') { 0L }
+                elseif ([string]$record.Path -ceq '.git/index' -and $field.Name -ceq 'Sha256') { '' }
+                else { $field.Value }
+        }
+        [pscustomobject]$comparison
+    }
+}
+
 function Assert-GitOwnershipUnchanged {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory = $true)][object]$Before,
-        [string]$Boundary = 'Git-control revalidation'
+        [string]$Boundary = 'Git-control revalidation',
+        [switch]$AllowHostLfsIndexRefresh
     )
 
+    # Only the initial trusted Host operation may refresh index bookkeeping.
+    # Once the model's guard is installed, all index bytes stay immutable.
+    if ($AllowHostLfsIndexRefresh -and
+        ($Boundary -cne 'immediately after Git LFS materialization' -or $null -ne $script:gitControlGuardSnapshot)) {
+        $script:gitControlSecurityFailure=$true
+        throw 'LFS index refresh is permitted only at the initial Host materialization boundary.'
+    }
     $after = Get-GitOwnershipSnapshot -Boundary $Boundary
     foreach ($property in $Before.PSObject.Properties) {
         $name = [string]$property.Name
-        # Unary-comma preserves an empty array as a single parameter value.
-        # Without it, PowerShell's argument enumeration serializes the baseline
-        # as no output and the recheck as JSON null, producing false drift.
-        $beforeJson = ConvertTo-SashimiJson -InputObject (, $property.Value)
+        $beforeValue=$property.Value
         $afterProperty = $after.PSObject.Properties[$name]
         $afterValue = $null
         if ($null -ne $afterProperty) { $afterValue = $afterProperty.Value }
+        if ($AllowHostLfsIndexRefresh -and $name -in @('ControlFiles','GitControlManifest')) {
+            $beforeValue=@(ConvertTo-DeveloperLfsControlComparison -Records $beforeValue)
+            $afterValue=@(ConvertTo-DeveloperLfsControlComparison -Records $afterValue)
+        }
+        # Unary-comma preserves empty arrays. Index flags/entries/staged tree,
+        # HEAD, refs, config, hooks and all other fields are still exact.
+        $beforeJson = ConvertTo-SashimiJson -InputObject (, $beforeValue)
         $afterJson = ConvertTo-SashimiJson -InputObject (, $afterValue)
         if (-not [string]::Equals($beforeJson,$afterJson,[StringComparison]::Ordinal)) {
             $script:gitControlSecurityFailure = $true
@@ -770,6 +797,8 @@ function Assert-GitOwnershipUnchanged {
     }
     return $after
 }
+
+
 
 function Assert-CurrentDeliveryPins {
     Assert-CurrentMainPin
@@ -936,7 +965,7 @@ try {
         Invoke-DeveloperGitLfs -Stage $stage -Arguments $arguments -WorkingDirectory $script:repositoryPath
     }
     if (-not $DryRun) { Write-SashimiUtf8File (Join-Path $normalizedRun 'State\LfsCache.Initial.json') (ConvertTo-SashimiJson $lfsCache) }
-    [void](Assert-GitOwnershipUnchanged -Before $preLfsPullGitControl -Boundary 'immediately after Git LFS pull')
+    [void](Assert-GitOwnershipUnchanged -Before $preLfsPullGitControl -Boundary 'immediately after Git LFS materialization' -AllowHostLfsIndexRefresh)
     Assert-NotCancelled
 
     $gitOwnershipBeforeCodex = Get-GitOwnershipSnapshot -Boundary 'immediately before Codex execution'

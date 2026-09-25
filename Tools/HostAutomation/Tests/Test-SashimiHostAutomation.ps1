@@ -4232,6 +4232,11 @@ wire_api = "responses"
         Invoke-HostLfsCacheRegression
     }
 
+    Invoke-HostTestCase 'LfsMaterializationRefreshPreservesSemanticGitGuards' {
+        . (Join-Path $PSScriptRoot 'Lfs.CacheFixtures.ps1')
+        Invoke-HostLfsIndexRefreshRegression
+    }
+
     Invoke-HostTestCase 'GitLfsInstallCannotWriteDisabledHooks' {
         $working = Join-Path $script:temporaryRoot 'lfs-install-hook-boundary'
         [void][IO.Directory]::CreateDirectory($working)

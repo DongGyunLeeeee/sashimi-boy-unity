@@ -138,3 +138,51 @@ function Invoke-HostLfsCacheRegression {
         }
     }
 }
+
+function Invoke-HostLfsIndexRefreshRegression {
+    $developerPath=Join-Path $hostRoot 'Invoke-SashimiDeveloperRun.ps1'
+    Set-Item Function:ConvertTo-DeveloperLfsControlComparison (Get-HostTestFunctionScriptBlock $developerPath 'ConvertTo-DeveloperLfsControlComparison')
+    Set-Item Function:Assert-GitOwnershipUnchanged (Get-HostTestFunctionScriptBlock $developerPath 'Assert-GitOwnershipUnchanged')
+    $script:gitControlGuardSnapshot=$null
+    $events=[Collections.Generic.List[object]]::new()
+    $before=[pscustomobject]@{
+        Head=('1'*40); RefsSha256='refs'; LocalConfigSha256='config';
+        IndexEntriesSha256='entries'; IndexFlagsSha256='flags'; StagedTreeSha256='tree'
+        ControlFiles=@(
+            [pscustomobject]@{Path='.git/index';Exists=$true;Length=393L;Sha256='old'},
+            [pscustomobject]@{Path='.git/config';Exists=$true;Length=308L;Sha256='config'})
+        GitControlManifest=@(
+            [pscustomobject]@{Kind='File';Path='.git/index';Length=393L;Sha256='old'},
+            [pscustomobject]@{Kind='File';Path='.git/config';Length=308L;Sha256='config'})
+    }
+    function New-IndexRefresh {
+        $copy=ConvertTo-SashimiJson $before | ConvertFrom-Json
+        $copy.ControlFiles[0].Length=374L; $copy.ControlFiles[0].Sha256='new'
+        $copy.GitControlManifest[0].Length=374L; $copy.GitControlManifest[0].Sha256='new'
+        $copy
+    }
+    function Get-GitOwnershipSnapshot { param($Boundary) $after }
+    $after=New-IndexRefresh
+    $boundary='immediately after Git LFS materialization'
+    $accepted=Assert-GitOwnershipUnchanged $before $boundary -AllowHostLfsIndexRefresh
+    Assert-HostTest ($accepted.ControlFiles[0].Sha256 -ceq 'new' -and $before.ControlFiles[0].Sha256 -ceq 'old') 'LFS exception mutated the evidence snapshots.'
+    Assert-HostThrows { Assert-GitOwnershipUnchanged $before $boundary } 'immutable field'
+    Assert-HostThrows { Assert-GitOwnershipUnchanged $before 'after Codex' -AllowHostLfsIndexRefresh } 'initial Host'
+    $script:gitControlGuardSnapshot=$before
+    Assert-HostThrows { Assert-GitOwnershipUnchanged $before $boundary -AllowHostLfsIndexRefresh } 'initial Host'
+    $script:gitControlGuardSnapshot=$null
+    foreach($case in @('Head','RefsSha256','LocalConfigSha256','IndexEntriesSha256','IndexFlagsSha256','StagedTreeSha256','config-bytes','index-absent','index-kind','duplicate-index','missing-index','index-path')){
+        $after=New-IndexRefresh
+        switch($case){
+            'config-bytes' {$after.GitControlManifest[1].Sha256='changed'}
+            'index-absent' {$after.ControlFiles[0].Exists=$false}
+            'index-kind' {$after.GitControlManifest[0].Kind='Directory'}
+            'duplicate-index' {$after.GitControlManifest+=($after.GitControlManifest[0]|Select-Object *)}
+            'missing-index' {$after.GitControlManifest=@($after.GitControlManifest[1])}
+            'index-path' {$after.GitControlManifest[0].Path='.git/other-index'}
+            default {$after.$case='changed'}
+        }
+        Assert-HostThrows { Assert-GitOwnershipUnchanged $before $boundary -AllowHostLfsIndexRefresh } 'immutable field'
+    }
+    $script:gitControlSecurityFailure=$false
+}
