@@ -2132,6 +2132,9 @@ function Set-SashimiFixedGitProcessEnvironment {
     $quotedGh = '"' + $gitHubCliPath.Replace('\','/') + '"'
     $fixedConfig = @(
         [pscustomobject]@{ Key='core.hooksPath'; Value='NUL' },
+        # Fresh run roots plus Unity asset names exceed MAX_PATH. Global Git
+        # config is intentionally disabled, so this must be Host-owned too.
+        [pscustomobject]@{ Key='core.longpaths'; Value='true' },
         [pscustomobject]@{ Key='core.fsmonitor'; Value='false' },
         [pscustomobject]@{ Key='core.attributesFile'; Value='NUL' },
         [pscustomobject]@{ Key='core.askPass'; Value='' },

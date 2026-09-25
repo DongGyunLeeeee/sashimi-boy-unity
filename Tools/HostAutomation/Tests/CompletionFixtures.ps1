@@ -110,6 +110,84 @@ Invoke-HostTestCase 'CompletionSourceToolsReadWriteAndRejectUnauthorizedAccess' 
     }
 }
 
+
+Invoke-HostTestCase 'SourceListingPrunesUnrelatedTreesAndPreservesLiteralPages' {
+    $root = Join-Path $script:temporaryRoot 'source-listing-pages'
+    $outside = Join-Path $script:temporaryRoot 'source-listing-outside'
+    Write-HostTestFile (Join-Path $outside 'private.txt') 'outside source root'
+    foreach ($number in 0..204) {
+        Write-HostTestFile (Join-Path $root ('Docs/Entry{0:D3}.txt' -f $number)) 'text'
+    }
+    Write-HostTestFile (Join-Path $root 'Docs.meta') 'folder metadata'
+    Write-HostTestFile (Join-Path $root 'DocsExtra/Other.txt') 'partial directory name'
+    Write-HostTestFile (Join-Path $root '.git/hidden.txt') 'excluded'
+    [void](New-Item -ItemType Junction -Path (Join-Path $root 'Unrelated') -Target $outside)
+    $calls = @(
+        @{name='list_files';arguments=@{prefix='Docs';offset=0}},
+        @{name='list_files';arguments=@{prefix='Docs';offset=200}},
+        @{name='list_files';arguments=@{prefix='dOcS/';offset=200}},
+        @{name='list_files';arguments=@{prefix='Docs/Entry20';offset=0}},
+        @{name='list_files';arguments=@{prefix='DoesNotExist';offset=0}},
+        @{name='list_files';arguments=@{prefix='../';offset=0}},
+        @{name='list_files';arguments=@{prefix='.git/';offset=0}},
+        @{name='list_files';arguments=@{prefix='Unrelated';offset=0}},
+        @{name='read_file';arguments=@{path='Docs/Entry204.txt';startLine=1;lineCount=1}},
+        @{name='write_file';arguments=@{path='Docs/New.txt';expectedSha256='missing';content='new'}},
+        @{name='list_files';arguments=@{prefix='Docs/';offset=200}}
+    )
+    $id=0
+    $input=(($calls | ForEach-Object {
+        $id++; @{jsonrpc='2.0';id=$id;method='tools/call';params=$_} | ConvertTo-Json -Depth 8 -Compress
+    }) -join [Environment]::NewLine)+[Environment]::NewLine
+    try {
+        $args=@{FilePath=$PowerShellPath;WorkingDirectory=$root;TimeoutSeconds=30;StandardInput=$input;
+            ArgumentList=@('-NoProfile','-NonInteractive','-File',(Join-Path $hostRoot 'Invoke-SashimiSourceServer.ps1'),'-RepositoryPath',$root,'-Role','Developer')}
+        $process=Invoke-SashimiHostProcess @args
+        Assert-HostTest $process.Succeeded "Paged source server failed: $($process.StdErr)"
+        $rows=@($process.StdOut.Trim() -split '\r?\n' | ForEach-Object { $_ | ConvertFrom-Json -Depth 16 })
+        Assert-HostTest ($rows.Count -eq $calls.Count) 'Source listing did not complete the following read/write requests.'
+        foreach($index in @(0..6)+@(8..10)){Assert-HostTest (-not $rows[$index].result.isError) "Request $index failed: $($rows[$index].result.content.text)"}
+        Assert-HostTest $rows[7].result.isError 'A requested junction was traversed.'
+        Assert-HostTest ($process.StdOut -notmatch 'outside source root|Unrelated/private.txt') 'Unrelated tree content was disclosed.'
+        $page0=$rows[0].result.content[0].text|ConvertFrom-Json
+        $page1=$rows[1].result.content[0].text|ConvertFrom-Json
+        $casePage=$rows[2].result.content[0].text|ConvertFrom-Json
+        $partial=$rows[3].result.content[0].text|ConvertFrom-Json
+        $expected=@(@('Docs.meta','DocsExtra/Other.txt')+@(0..204|ForEach-Object{'Docs/Entry{0:D3}.txt' -f $_})|Sort-Object -CaseSensitive)
+        $actual=@($page0.files)+@($page1.files)
+        Assert-HostTest ($page0.total -eq 207 -and $page0.nextOffset -eq 200 -and $page1.nextOffset -eq 207 -and
+            [string]::Join('|',$actual) -ceq [string]::Join('|',$expected)) 'Literal prefix, ordering, or pagination changed.'
+        Assert-HostTest ($casePage.total -eq 205 -and $casePage.files.Count -eq 5 -and $partial.total -eq 5) 'Case-insensitive or partial filename prefix changed.'
+        foreach($index in 4..6){$empty=$rows[$index].result.content[0].text|ConvertFrom-Json;Assert-HostTest ($empty.total -eq 0 -and $empty.files.Count -eq 0) 'Excluded or nonexistent prefix returned source paths.'}
+        $afterWrite=$rows[10].result.content[0].text|ConvertFrom-Json
+        Assert-HostTest ($afterWrite.total -eq 206 -and $afterWrite.files -ccontains 'Docs/New.txt') 'A later list used a stale source cache.'
+    }
+    finally {
+        # Delete the owned junction entry only, never its external target.
+        [IO.Directory]::Delete((Join-Path $root 'Unrelated'))
+    }
+}
+
+
+Invoke-HostTestCase 'DeveloperRejectsPartialCheckoutBeforeCodexOrUnity' {
+    $pinned='4'*40
+    $bundle=New-HostResumeFixtureBundle -Mode DeliveryResume -IssueNumber 5391 -PinnedSha $pinned -DeliverySha $pinned -StaleSha ('f'*40)
+    $fixturePath=Join-Path $script:temporaryRoot 'partial-checkout.developer.json'
+    $fixture=[ordered]@{SchemaVersion=1;FetchedHead=$pinned;MainSha=('1'*40);LocalHeads=@($pinned);
+        StageResults=[ordered]@{'Verify complete tracked checkout'=[ordered]@{ExitCode=0;StdOut=('Assets/Long/Incomplete.txt'+[char]0);StdErr=''}}}
+    Write-HostTestFile $fixturePath ($fixture|ConvertTo-Json -Depth 12)
+    $result=Invoke-HostTestScript -ScriptPath (Join-Path $hostRoot 'Invoke-SashimiDeveloperRun.ps1') -Parameters @{
+        ConfigPath=$script:fakeConfigPath;SelectionPath=$bundle.SelectionPath;RunPath=$bundle.Run.RunPath;
+        CodexFixturePath=$bundle.CodexFixture;UnityFixturePath=$bundle.UnityFixture;ExecutionFixturePath=$fixturePath
+    } -TimeoutSeconds 60
+    $json=ConvertFrom-LastHostJson $result.StdOut
+    Assert-HostTest (-not $result.Succeeded -and -not $json.Success -and $json.Error -match 'missing tracked files') 'A partial checkout reached delivery.'
+    Assert-HostTest (-not $json.Pushed -and -not $json.CreatedPullRequest -and -not $json.TransitionedToReview) 'Partial checkout changed delivery state.'
+    $later=@('Install Git LFS locally','Codex Developer structured edit','Host Unity and repository validation','Normal push exact existing PR branch','In Progress to Review')
+    Assert-HostTest (@($json.Commands|Where-Object{$_.Stage -cin $later}).Count -eq 0) 'Partial checkout reached a later processing stage.'
+    Assert-HostTest (-not (Test-Path -LiteralPath (Join-Path $bundle.Run.ArtifactsPath 'Codex'))) 'Codex ran before checkout completeness was established.'
+}
+
 Invoke-HostTestCase 'CompletionCodexTimeoutCancellationAndDescendantsUseOwnedJob' {
     $root = Join-Path $script:temporaryRoot 'codex-lifecycle'
     [void][IO.Directory]::CreateDirectory($root)

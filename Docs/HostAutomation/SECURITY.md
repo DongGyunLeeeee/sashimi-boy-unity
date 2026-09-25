@@ -308,6 +308,11 @@ while a file operation is in progress, and the final file handle must resolve
 to the exact expected path. Existing `.meta` GUIDs cannot change. Source art,
 Packages, ProjectSettings and serialized scene/prefab/asset writes are refused;
 approved generated assets use the Host's allowlisted generator.
+Listings preserve case-insensitive literal prefixes (including partial names)
+and sorted 200-file pages, but do not visit unrelated subtrees. Root and ancestor
+directory leases remain open throughout each matching subtree traversal.
+Each listing bounds inspected entries to 40,000, returned candidate files to
+20,000, and depth to 64. No path cache bypasses checks on later requests.
 Production edits must arrive through these source tools;
 Git, GitHub, Unity, compilation, tests, and publication remain Host work.
 The no-command capability and unelevated, network-disabled OS sandbox are
