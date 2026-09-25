@@ -345,6 +345,15 @@ when a documented investigation option explicitly preserves it.
 
 ## Role specifications
 
+Host Git processes explicitly enable Windows long paths even though inherited
+system/global Git configuration is disabled. Developer checks for missing
+tracked files after checkout/merge and stops before Codex if any are absent;
+a native Git exit code of zero does not prove a complete checkout.
+
+Source-tool listings prune paths outside the literal requested prefix. They
+retain directory handle leases while traversing matching subtrees; read/write
+path, handle, type, byte and role restrictions remain in force.
+
 The Windows Host installs Git LFS filters with `install --local --skip-repo`
 and keeps hooks disabled. Its fixed, optional local LFS object cache is defined
 in [Host operations](../HostAutomation/OPERATIONS.md#local-lfs-asset-cache).

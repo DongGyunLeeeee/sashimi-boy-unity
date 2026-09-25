@@ -68,8 +68,8 @@ function Open-SourceParentLeases {
 
 # This server exposes source data only. There is no command, URL, process,
 # arbitrary directory, deletion, rename, Git or credential operation.
-function Resolve-SourcePath {
-    param([string]$Path, [switch]$Write)
+function ConvertTo-SourceLexicalPath {
+    param([string]$Path, [switch]$Write, [switch]$Directory)
     if ([string]::IsNullOrWhiteSpace($Path) -or $Path.Length -gt 512 -or
         $Path -match '[\\:\x00-\x1f]' -or $Path.StartsWith('/') -or
         $Path -match '(^|/)(\.{1,2}|\.git|\.codex|\.agents|Library|Temp|Logs|UserSettings|obj|\.vs)(/|$)') {
@@ -80,7 +80,7 @@ function Resolve-SourcePath {
             $part -match '^(?i:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)') { throw 'SOURCE_PATH_REFUSED' }
     }
     $extension = [IO.Path]::GetExtension($Path).ToLowerInvariant()
-    if ([IO.Path]::GetFileName($Path) -cnotin @('SPEC_VERSION','.gitignore','.gitattributes') -and
+    if (-not $Directory -and [IO.Path]::GetFileName($Path) -cnotin @('SPEC_VERSION','.gitignore','.gitattributes') -and
         $extension -notin @('.cs','.ps1','.md','.json','.txt','.asmdef','.asmref','.meta','.shader','.hlsl','.uss','.uxml','.unity','.prefab','.asset')) {
         throw 'SOURCE_TYPE_REFUSED'
     }
@@ -88,7 +88,14 @@ function Resolve-SourcePath {
         $Path -match '(^|/)Art/Source(/|$)|^(Packages|ProjectSettings)/' -or
         $extension -in @('.unity','.prefab','.asset'))) { throw 'SOURCE_WRITE_REFUSED' }
     $full = [IO.Path]::GetFullPath((Join-Path $script:sourceRoot $Path))
-    if (-not (Test-SashimiPathWithin -Path $full -Root $script:sourceRoot)) { throw 'SOURCE_PATH_REFUSED' }
+    $rootPrefix = $script:sourceRoot.TrimEnd('\','/') + [IO.Path]::DirectorySeparatorChar
+    if (-not $full.StartsWith($rootPrefix,[StringComparison]::OrdinalIgnoreCase)) { throw 'SOURCE_PATH_REFUSED' }
+    return $full
+}
+
+function Resolve-SourcePath {
+    param([string]$Path, [switch]$Write)
+    $full = ConvertTo-SourceLexicalPath -Path $Path -Write:$Write
     Assert-SashimiNoReparsePoint -Path $full
     return $full
 }
@@ -114,19 +121,43 @@ function Read-SourceFile {
 }
 
 function Get-SourcePaths {
+    param([AllowEmptyString()][string]$Prefix)
     $paths = [Collections.Generic.List[string]]::new()
-    $stack = [Collections.Generic.Stack[string]]::new(); $stack.Push($script:sourceRoot)
-    while ($stack.Count -gt 0) {
-        foreach ($entry in Get-ChildItem -LiteralPath $stack.Pop() -Force) {
+    $budget = @{ Entries=0 }
+    function Add-SourceDirectoryPaths {
+        param([string]$Directory, [string]$RelativeDirectory, [int]$Depth)
+        if ($Depth -gt 64) { throw 'SOURCE_DIRECTORY_DEPTH_EXCEEDED' }
+        foreach ($entry in ([IO.DirectoryInfo]::new($Directory)).EnumerateFileSystemInfos()) {
+            $budget.Entries++
+            if ($budget.Entries -gt 40000) { throw 'SOURCE_ENTRY_COUNT_EXCEEDED' }
             if ($entry.Name -in @('.git','.codex','.agents','Library','Temp','Logs','UserSettings','obj','.vs')) { continue }
-            Assert-SashimiNoReparsePoint -Path $entry.FullName
-            if ($entry.PSIsContainer) { $stack.Push($entry.FullName); continue }
-            $relative = [IO.Path]::GetRelativePath($script:sourceRoot,$entry.FullName).Replace('\','/')
-            try { [void](Resolve-SourcePath $relative) } catch { continue }
+            $relative = if ($RelativeDirectory) { $RelativeDirectory + '/' + $entry.Name } else { $entry.Name }
+            $directoryEntry = ($entry.Attributes -band [IO.FileAttributes]::Directory) -ne 0
+            # Prefix is a literal string, including partial file/directory
+            # names. Prune only branches that cannot contain a matching path.
+            $matches = $relative.StartsWith($Prefix,[StringComparison]::OrdinalIgnoreCase)
+            if (-not $matches -and (-not $directoryEntry -or
+                -not $Prefix.StartsWith($relative + '/',[StringComparison]::OrdinalIgnoreCase))) { continue }
+            if (($entry.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { throw 'SOURCE_REPARSE_POINT_REFUSED' }
+            if ($directoryEntry) {
+                try { [void](ConvertTo-SourceLexicalPath $relative -Directory) } catch { continue }
+                # Keep every ancestor pinned against rename while descending.
+                # Validate the opened child's final path before enumeration.
+                $lease = [SashimiSourceLease]::Directory($entry.FullName)
+                try { Add-SourceDirectoryPaths $entry.FullName $relative ($Depth+1) }
+                finally { $lease.Dispose() }
+                continue
+            }
+            # The held directory leases and entry check above replace repeated
+            # ancestor walks only for listing. Reads/writes still use Resolve.
+            try { [void](ConvertTo-SourceLexicalPath $relative) } catch { continue }
             if ($paths.Count -ge 20000) { throw 'SOURCE_FILE_COUNT_EXCEEDED' }
             $paths.Add($relative)
         }
     }
+    $leases = Open-SourceParentLeases (Join-Path $script:sourceRoot '__source_listing__.txt')
+    try { Add-SourceDirectoryPaths $script:sourceRoot '' 0 }
+    finally { foreach ($lease in $leases) { $lease.Dispose() } }
     return @($paths.ToArray() | Sort-Object -CaseSensitive)
 }
 
@@ -164,7 +195,7 @@ function Invoke-SourceTool {
             if ($prefix.Length -gt 512) { throw 'SOURCE_PREFIX_REFUSED' }
             $offset = [int]$Arguments.offset
             if ($offset -lt 0 -or $offset -gt 20000) { throw 'SOURCE_OFFSET_REFUSED' }
-            $paths = @(Get-SourcePaths | Where-Object { $_.StartsWith($prefix,[StringComparison]::OrdinalIgnoreCase) })
+            $paths = @(Get-SourcePaths -Prefix $prefix)
             return @{ files=@($paths | Select-Object -Skip $offset -First 200); total=$paths.Count; nextOffset=[Math]::Min($offset+200,$paths.Count) }
         }
         'read_file' {

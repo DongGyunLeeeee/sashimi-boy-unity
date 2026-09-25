@@ -4187,7 +4187,7 @@ wire_api = "responses"
                 'Git LFS did not receive the immutable canonical fetch/push endpoint under its fixed remote name.'
             $expectedLfsEndpoint = 'https://github.com/DongGyunLeeeee/sashimi-boy-unity.git/info/lfs'
             foreach ($pair in @(
-                    'gc.auto=0', 'maintenance.auto=false',
+                    'core.longpaths=true', 'gc.auto=0', 'maintenance.auto=false',
                     "lfs.url=$expectedLfsEndpoint", "lfs.pushurl=$expectedLfsEndpoint",
                     "remote.origin.lfsurl=$expectedLfsEndpoint", "remote.origin.lfspushurl=$expectedLfsEndpoint",
                     "remote.sashimi-canonical.lfsurl=$expectedLfsEndpoint", "remote.sashimi-canonical.lfspushurl=$expectedLfsEndpoint",

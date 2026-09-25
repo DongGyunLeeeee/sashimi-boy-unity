@@ -954,6 +954,12 @@ try {
         [void](Invoke-DeveloperGit -Stage 'Create local-only resume branch' -Arguments @('-C',$script:repositoryPath,'switch','--create',$branch,$initialPinnedHead) -WorkingDirectory $normalizedRun)
         [void](Invoke-DeveloperGit -Stage 'Normal merge latest main' -Arguments @('-C',$script:repositoryPath,'merge','--no-ff','--no-edit',$script:pinnedMainSha) -WorkingDirectory $normalizedRun)
     }
+    # Git for Windows may return exit 0 after reporting checkout path errors.
+    # Reject an incomplete tracked tree before LFS work or model execution.
+    $missingCheckout = Invoke-DeveloperGit -Stage 'Verify complete tracked checkout' -Arguments @('-C',$script:repositoryPath,'ls-files','--deleted','-z') -WorkingDirectory $normalizedRun
+    if (-not $DryRun -and -not [string]::IsNullOrEmpty([string]$missingCheckout.StdOut)) {
+        throw 'Fresh integration checkout is missing tracked files; delivery stopped before Codex.'
+    }
     # Host pushes LFS objects explicitly; installing a pre-push hook conflicts
     # with the command-scope core.hooksPath=NUL boundary on Windows.
     [void](Invoke-DeveloperGitLfs -Stage 'Install Git LFS locally' -Arguments @('install','--local','--skip-repo') -WorkingDirectory $script:repositoryPath)
