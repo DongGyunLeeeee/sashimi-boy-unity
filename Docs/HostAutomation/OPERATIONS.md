@@ -758,6 +758,54 @@ into the run's State directory and deletes the quarantine without following
 reparse targets. If either rename or guarded deletion cannot be confirmed, the
 run remains failed and no artifact from that root is publishable.
 
+## Local LFS asset cache
+
+The Host reuses verified Git LFS bytes from the fixed directory
+`%LOCALAPPDATA%\SashimiBoyAutomation\LfsCache\objects`. This is separate from
+run retention and public artifacts. No additional config key or model
+permission is granted. Every run still creates a fresh standalone clone;
+Git config, refs, index, hooks and credentials are never shared.
+
+Both roles install local LFS filters with `--skip-repo` because hooks remain
+disabled with `core.hooksPath=NUL`. The Host retains explicit LFS push for
+the exact Developer delivery commit; this change does not enable hooks.
+
+Before Codex or Unity runs, the Host reads `git-lfs ls-files --json` at the
+exact integration commit. Cache paths come only from validated SHA-256 OIDs.
+Source size and SHA-256 are verified while holding a read handle; each copy
+uses a new temporary file, verifies the destination bytes, then atomically
+publishes it without overwriting existing objects. Reparse points fail closed.
+No hardlinks, shared Git object store or `lfs.storage` override is used.
+
+When every required object is locally available, `git-lfs checkout`
+materializes the skipped-smudge clone without an LFS pull. Otherwise the
+existing endpoint-pinned pull obtains missing content. The Host then verifies
+every working asset against its pinned OID and size and runs `git-lfs fsck`.
+Cache contents alone never establish that working files are ready.
+
+Verified objects are stored after materialization and again from the exact
+Developer delivery commit, allowing the independent Reviewer to reuse new
+assets. `State/LfsCache.Initial.json` and `State/LfsCache.Delivery.json`
+record commit pins, checkout/pull strategy, hit/miss counts and warnings.
+DryRun creates no cache or asset files.
+
+The cache has a 32 GiB / 10,000-file limit and skips objects above 5 GiB.
+Writers use a canonical-path mutex. Full/busy/unavailable cache storage is
+optional and records a warning or skip; valid local objects remain usable.
+Missing or corrupt cache objects are misses, not trusted content. Conflicting
+local object bytes are never silently replaced. The Host does not evict
+objects automatically; run retention and uninstall preserve the cache.
+Only a temporary file actually created by the current copy may be deleted.
+A failed temporary cleanup is reported without undoing a verified copy.
+
+A cache cannot supply assets that have never been downloaded. If a required
+object is absent and GitHub blocks LFS download (for example, exhausted
+bandwidth), preserve the failed run and leave Issue state unchanged. The
+Owner can restore access or seed from already-held content: use an owned run,
+the exact-commit LFS manifest, and `Sync-SashimiLfsObjectCache -Mode Store`.
+The same size/hash checks, write mutex and capacity limits apply to seeding;
+never copy an entire `.git` directory into the cache.
+
 ## Uninstall
 
 Preview removal while preserving all run artifacts:

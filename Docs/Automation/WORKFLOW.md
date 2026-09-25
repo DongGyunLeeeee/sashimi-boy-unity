@@ -345,6 +345,14 @@ when a documented investigation option explicitly preserves it.
 
 ## Role specifications
 
+The Windows Host installs Git LFS filters with `install --local --skip-repo`
+and keeps hooks disabled. Its fixed, optional local LFS object cache is defined
+in [Host operations](../HostAutomation/OPERATIONS.md#local-lfs-asset-cache).
+Each role still creates a standalone clone, pins its integration commit, and
+verifies materialized asset bytes. Cache availability is not an acceptance
+gate; missing objects use the existing canonical remote. Required asset
+download or integrity failures stop the run without changing Project state.
+
 - Developer: [`DEVELOPER.md`](DEVELOPER.md)
 - Reviewer: [`REVIEWER.md`](REVIEWER.md)
 - Automation UI bootstrap text: [`BOOTSTRAP.md`](BOOTSTRAP.md)
