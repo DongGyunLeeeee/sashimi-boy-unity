@@ -994,9 +994,11 @@ public static class SashimiFakeCodex
             string smokeRoot = Path.GetDirectoryName(Directory.GetCurrentDirectory());
             if (!Path.GetFileName(smokeRoot).StartsWith("SashimiBoyFunctionalSmoke-", StringComparison.Ordinal) ||
                 !File.Exists(Path.Combine(smokeRoot, ".functional-smoke-owner"))) return 94;
+            if (!File.Exists(Path.Combine(Directory.GetCurrentDirectory(), "AGENTS.md"))) return 95;
             string smokeResult = File.ReadAllText(smokeFixture, new UTF8Encoding(false));
             if (smokeResult.Contains("\"role\":\"Developer\""))
                 File.WriteAllText(Path.Combine(Directory.GetCurrentDirectory(), "Example.txt"), "value=2\n", new UTF8Encoding(false));
+            Console.WriteLine("{\"type\":\"item.completed\",\"item\":{\"id\":\"smoke-source\",\"type\":\"mcp_tool_call\",\"result\":{\"content\":[{\"type\":\"text\",\"text\":\"\"}],\"next\":\"checked\"}}}");
             Console.WriteLine("{\"type\":\"item.completed\",\"item\":{\"id\":\"smoke-result\",\"type\":\"agent_message\",\"text\":" + JsonString(smokeResult) + "}}");
             Console.WriteLine("{\"type\":\"turn.completed\"}");
             return 0;
@@ -3204,13 +3206,22 @@ if (`$lease.Acquired) { Exit-SashimiHostMutex `$lease }
         $resultObject = New-HostCodexResult -RunId $runId -IssueNumber 5262
         $resultText = $resultObject | ConvertTo-Json -Depth 32 -Compress
         $fixture = New-HostCodexFixtureFile -Name 'codex-success' -Result $resultObject -Events @(
+            [ordered]@{ type = 'item.completed'; item = [ordered]@{
+                id = 'empty-text-tool'; type = 'mcp_tool_call'; first = ''
+                result = [ordered]@{
+                    content = @([ordered]@{ type = 'text'; text = ''; next = 'checked' })
+                    values = @('', @(), $null, $false, 0, 'checked')
+                    last = ''
+                }
+                next = 'checked'
+            } },
             [ordered]@{ type = 'item.completed'; item = [ordered]@{ id = 'message-fixture'; type = 'agent_message'; text = $resultText } },
             [ordered]@{ type = 'turn.completed' }
         )
         $process = Invoke-HostCodexFixture -FixturePath $fixture -RunId $runId -IssueNumber 5262
         Assert-HostTest ($process.ExitCode -eq 0) "Valid Codex fixture failed: $($process.StdOut)"
         $json = ConvertFrom-LastHostJson $process.StdOut
-        Assert-HostTest ([bool]$json.Success -and [int]$json.EventCount -eq 2) 'Valid Codex JSONL/result did not succeed.'
+        Assert-HostTest ([bool]$json.Success -and [int]$json.EventCount -eq 3) 'Valid Codex JSONL with empty object/array text and a later sibling did not succeed.'
         Assert-HostTest ([string]$json.ApprovalPolicy -ceq 'never' -and [string]$json.Sandbox -ceq 'workspace-write') 'Codex Developer sandbox/approval contract changed.'
         $arguments = @($json.PlannedArguments)
         foreach ($required in @('--ephemeral', '--json', '--color', '--ignore-user-config', '--strict-config', '--output-schema')) {
@@ -3354,7 +3365,7 @@ if (`$lease.Acquired) { Exit-SashimiHostMutex `$lease }
             },
             [pscustomobject]@{
                 Name = 'unknown-wrapper'
-                Event = [ordered]@{ type = 'future_event_fixture'; payload = [ordered]@{ type = 'command_execution'; command = $disguisedCommand } }
+                Event = [ordered]@{ type = 'future_event_fixture'; payload = [ordered]@{ empty = ''; type = 'command_execution'; command = $disguisedCommand } }
             }
         )
         foreach ($disguised in $disguisedCommandEvents) {
@@ -3901,7 +3912,7 @@ wire_api = "responses"
         $unicodeEscapedPath = [string]::Join('', @($forbiddenPath.ToCharArray() | ForEach-Object { '\u{0:x4}' -f [int][char]$_ }))
         $cleanResult = New-HostCodexResult -RunId $runId -IssueNumber $issue -Role Reviewer -Mode Review -PullRequestNumber 6302
         $cleanResultText = $cleanResult | ConvertTo-Json -Depth 32 -Compress
-        $unicodePathLine = '{"type":"item.updated","item":{"id":"decoded-sensitive","type":"reasoning","detail":"' + $unicodeEscapedPath + '","marker":"' + $opaqueMarker + '"}}'
+        $unicodePathLine = '{"type":"item.updated","item":{"id":"decoded-sensitive","type":"reasoning","empty":"","detail":"' + $unicodeEscapedPath + '","marker":"' + $opaqueMarker + '"}}'
         Assert-HostTest ($unicodePathLine.IndexOf($forbiddenPath,[StringComparison]::OrdinalIgnoreCase) -lt 0 -and
             $unicodePathLine -notmatch '(?i)(?:\\|/)\.codex(?:\\|/)') `
             'Unicode-escape regression accidentally retained a directly detectable forbidden path spelling.'
