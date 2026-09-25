@@ -48,7 +48,30 @@ protected installed bundle, or scheduling state is modified by this repair.
   hard-link/junction rejection, literal prefix pages, unrelated-tree pruning,
   and a fresh list after writing a new source file.
 
-Additional checkout-role, Unity, integrity, and independent review results
-are recorded below after execution. The new protected bundle is NOT_INSTALLED.
-The product pilot remains FAILED and the 15-minute task remains Disabled.
+## Final validation and rollout
 
+- Runtime/test commit: 4684706e3fe36b8f5b73f310803b1ebdfd85450c.
+- Additional checkout/role regressions: 5 PASS, 0 FAIL. This includes the new
+  partial-checkout refusal, full validation-only resume, canonical LFS routing,
+  parser, and fixture isolation. Together the two parent fixture groups have
+  eight distinct passing cases and zero external mutations.
+- Independent review: 0 Blocker / 0 Major / 0 Minor. Seven distinct independent
+  cases pass. An initial sandbox-token run failed two source requests and is
+  retained as FAIL; the identical source passed under the actual user token.
+- Unity 6000.4.0f1: fresh import/compile PASS, EditMode 43/43 and PlayMode 8/8,
+  zero skips. Native exits are 0; diagnostics, failures, protected changes and
+  final workspace status are empty.
+- Integrity: 1,264 meta files, zero missing/orphan/invalid meta, duplicate GUID,
+  Missing Script or missing reference; 38 LFS working assets match their OIDs.
+- Installer DryRun: PASS, no staging/task change. Config and Codex distribution
+  are unchanged. Only the three intended runtime files differ from PR #58.
+  Candidate bundle: e15ca8ebcd18f82be430dca7a7958871ebad919314a225ff4c93cdb6d5c80596.
+  Manifest: 11768a649f3ccfd43c16a341c48fac0063efdc66347dc3d01ab82fd57b997a9e.
+  Installer: 3bb3b82b2210ee5558d8995b8a35d361f57d760b3490d073c6e6ac629e19c733.
+
+The new protected bundle is NOT_INSTALLED. Actual model execution and a new
+product pilot for this correction are NOT_RUN. The PR #58 product pilot remains
+FAILED, Issue #20 remains In Progress, and the 15-minute task remains Disabled.
+After Owner merge, install/read back the exact reviewed bundle while disabled,
+run the installed real functional smoke, then separate Issue #20 Developer and
+Reviewer runs through Verification. Only then enable the reviewed schedule.
