@@ -442,7 +442,7 @@ function Add-CodexDecodedJsonAuditText {
     [CmdletBinding()]
     param(
         [AllowNull()][object]$Value,
-        [Parameter(Mandatory = $true)][AllowEmptyCollection()][Collections.Generic.List[string]]$TextValues,
+        [Parameter(Mandatory = $true)][AllowEmptyCollection()][AllowEmptyString()][Collections.Generic.List[string]]$TextValues,
         [Parameter(Mandatory = $true)][object]$TraversalState,
         [ValidateRange(0, 101)][int]$Depth = 0
     )

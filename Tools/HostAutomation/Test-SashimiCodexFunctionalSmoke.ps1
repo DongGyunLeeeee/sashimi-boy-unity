@@ -48,6 +48,17 @@ try {
     Write-SashimiUtf8File -Path (Join-Path $workspace '.git/HEAD') -Content "ref: refs/heads/smoke`n"
     Write-SashimiUtf8File -Path (Join-Path $workspace '.git/config') -Content "[core]`nrepositoryformatversion = 0`nbare = false`n"
     Write-SashimiUtf8File -Path (Join-Path $workspace 'Example.txt') -Content "value=1`n"
+    $instructionsPath = Join-Path $workspace 'AGENTS.md'
+    Write-SashimiUtf8File -Path $instructionsPath -Content @"
+# Functional smoke instructions
+
+This disposable repository contains only a Host-supplied Example.txt exercise.
+Read these instructions and use only the sashimi_source tools. Developer may
+change only Example.txt as the Host requests. Reviewer must only read it.
+Do not modify these instructions or Git metadata. Do not run commands or claim
+Host tests ran. The Host owns all Git, GitHub, Project, and validation work.
+There are no additional instruction files or product decisions in this fixture.
+"@
     $runId = [DateTime]::UtcNow.ToString('yyyyMMddTHHmmssZ') + '-' + $id
     $head = '1111111111111111111111111111111111111111'
     $plans = [Collections.Generic.List[object]]::new()
@@ -55,6 +66,7 @@ try {
     foreach ($file in Get-ChildItem -LiteralPath (Join-Path $workspace '.git') -File -Recurse -Force) {
         $gitBefore[$file.FullName] = (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash
     }
+    $gitBefore[$instructionsPath] = (Get-FileHash -LiteralPath $instructionsPath -Algorithm SHA256).Hash
     foreach ($role in @('Developer','Reviewer')) {
         $mode = if ($role -ceq 'Developer') { 'NewWork' } else { 'Review' }
         $artifacts = Join-Path $root ('Artifacts/' + $role)
@@ -107,10 +119,10 @@ try {
                         $relativeDirectory = [IO.Path]::GetRelativePath($workspace,$entry.FullName).Replace('\','/')
                         if (@('.git','.git/objects','.git/refs','.git/refs/heads') -cnotcontains $relativeDirectory) { throw 'Smoke workspace contains an unexpected directory.' }
                         $directories.Push($entry.FullName)
-                    } else { $files.Add($entry); if ($files.Count -gt 4 -or $entry.Length -gt 16384) { throw 'Smoke workspace exceeds its closed manifest quota.' } }
+                    } else { $files.Add($entry); if ($files.Count -gt 5 -or $entry.Length -gt 16384) { throw 'Smoke workspace exceeds its closed manifest quota.' } }
                 }
             }
-            $allowed = @('Example.txt','.git/HEAD','.git/config','functional-smoke.fixture.json')
+            $allowed = @('Example.txt','AGENTS.md','.git/HEAD','.git/config','functional-smoke.fixture.json')
             foreach ($file in $files) {
                 Assert-SashimiNoReparsePoint -Path $file.FullName
                 $relative = [IO.Path]::GetRelativePath($workspace,$file.FullName).Replace('\','/')
@@ -118,7 +130,7 @@ try {
             }
             foreach ($path in $gitBefore.Keys) {
                 if ((Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash -cne $gitBefore[$path]) {
-                    throw 'Smoke Git metadata changed.'
+                    throw 'Smoke immutable instructions or Git metadata changed.'
                 }
             }
         }
