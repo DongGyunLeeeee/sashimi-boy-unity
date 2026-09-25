@@ -254,11 +254,49 @@ function Get-OrchestratorFileSha256 {
     return (Get-FileHash -LiteralPath $Path -Algorithm SHA256 -ErrorAction Stop).Hash.ToLowerInvariant()
 }
 
+function Assert-OrchestratorCodexDistributionIdentity {
+    param([Parameter(Mandatory)][object]$Executable,[AllowNull()][object]$ExpectedDistribution)
+    $companion = Get-OrchestratorPropertyValue $Executable 'CodeModeHost' $null
+    if ($null -eq $companion -or [string]$companion.FileName -cne 'codex-code-mode-host.exe' -or
+        [string]$companion.Sha256 -cnotmatch '^[0-9a-f]{64}$' -or [int64]$companion.Length -lt 1) {
+        throw 'Codex identity must include its exact code-mode host companion.'
+    }
+    $lines = @(
+        [string]::Join([char]0,@('codex.exe',[string]$Executable.Sha256,[string]$Executable.Length)),
+        [string]::Join([char]0,@('codex-code-mode-host.exe',[string]$companion.Sha256,[string]$companion.Length))
+    )
+    $distributionId = Get-OrchestratorTextSha256 ([string]::Join([char]10,$lines))
+    $installRoot = Join-Path ([Environment]::GetFolderPath([Environment+SpecialFolder]::ProgramFiles)) 'SashimiBoyAutomation'
+    $distributionsRoot = Join-Path $installRoot 'CodexDistributions'
+    $distributionRoot = Join-Path $distributionsRoot $distributionId
+    $expectedPath = Join-Path $distributionRoot 'codex.exe'
+    if (-not (Test-OrchestratorPathEqual ([string]$Executable.Path) $expectedPath)) { throw 'Codex distribution path must bind both executable identities.' }
+    if ($null -ne $ExpectedDistribution -and
+        ([string]$ExpectedDistribution.Sha256 -cne $distributionId -or
+         [int64]$ExpectedDistribution.Length -ne ([int64]$Executable.Length + [int64]$companion.Length))) {
+        throw 'Codex distribution provenance differs from its executable identities.'
+    }
+    $hostPath = Join-Path $distributionRoot 'codex-code-mode-host.exe'
+    $hostItem = Get-Item -LiteralPath $hostPath -Force -ErrorAction Stop
+    if ($hostItem.PSIsContainer -or [int64]$hostItem.Length -ne [int64]$companion.Length -or
+        (Get-OrchestratorFileSha256 $hostPath) -cne [string]$companion.Sha256) {
+        throw 'Codex code-mode host failed exact executable identity verification.'
+    }
+    $items = @(Get-ChildItem -LiteralPath $distributionRoot -Force -ErrorAction Stop)
+    if ($items.Count -ne 2 -or @($items | Where-Object {
+        $_.PSIsContainer -or @('codex.exe','codex-code-mode-host.exe') -cnotcontains $_.Name
+    }).Count -ne 0) { throw 'Codex distribution must contain exactly its two bound executables.' }
+    $userSid = [Security.Principal.WindowsIdentity]::GetCurrent().User
+    foreach ($protectedPath in @($installRoot,$distributionsRoot,$distributionRoot,$expectedPath,$hostPath)) {
+        Assert-OrchestratorProtectedAcl $protectedPath $userSid
+    }
+}
+
 function Assert-OrchestratorExecutableIdentity {
-    param([Parameter(Mandatory = $true)][string]$Path)
+    param([Parameter(Mandatory = $true)][string]$Path,[AllowNull()][object]$ExpectedCodexDistribution)
     $identityText=[IO.File]::ReadAllText((Get-OrchestratorFullPath $Path -MustExist),[Text.Encoding]::UTF8)
     try { $identity=$identityText | ConvertFrom-Json -Depth 16 -DateKind String -ErrorAction Stop } catch { throw 'Executable identity is not valid UTF-8 JSON.' }
-    if ([int]$identity.SchemaVersion -ne 1) { throw 'Executable identity SchemaVersion must be 1.' }
+    if ([int]$identity.SchemaVersion -ne 2) { throw 'Executable identity SchemaVersion must be 2.' }
     $entries=@($identity.Executables)
     if ($entries.Count -ne $script:ExecutableProperties.Count) { throw "Executable identity must contain exactly $($script:ExecutableProperties.Count) bound tools." }
     for ($index=0; $index -lt $script:ExecutableProperties.Count; $index++) {
@@ -281,6 +319,9 @@ function Assert-OrchestratorExecutableIdentity {
         if ($expectedName -ceq 'PowerShellExecutable' -and
             -not [string]::Equals($fullPath,'C:\Program Files\PowerShell\7\pwsh.exe',[StringComparison]::OrdinalIgnoreCase)) {
             throw 'PowerShellExecutable identity does not name the stable protected PowerShell path.'
+        }
+        if ($expectedName -ceq 'CodexExecutable') {
+            Assert-OrchestratorCodexDistributionIdentity -Executable $entry -ExpectedDistribution $ExpectedCodexDistribution
         }
     }
     return $entries.Count
@@ -877,6 +918,32 @@ function Invoke-OrchestratorUnelevated {
     return [SashimiBoyAutomation.LinkedTokenProcess]::RunUnelevated($executable,$commandLine,$PSScriptRoot)
 }
 
+function Assert-OrchestratorBundlePayload {
+    param(
+        [Parameter(Mandatory)][object]$Manifest,
+        [Parameter(Mandatory)][string]$BundleRoot,
+        [Parameter(Mandatory)][Security.Principal.SecurityIdentifier]$UserSid
+    )
+    $bundleId = Split-Path -Leaf $BundleRoot
+    $entries=@($manifest.Files | Sort-Object RelativePath)
+    if ($entries.Count -ne $script:RequiredBundleFiles.Count) { throw 'Integrity manifest has the wrong file count.' }
+    $requiredNames = @($script:RequiredBundleFiles | Sort-Object)
+    for ($index=0; $index -lt $requiredNames.Count; $index++) {
+        $entry=$entries[$index]; $requiredName=$requiredNames[$index]
+        if ([string]$entry.RelativePath -cne $requiredName -or [string]$entry.Sha256 -cnotmatch '^[0-9a-f]{64}$' -or [int64]$entry.Length -lt 0) { throw "Integrity manifest contains an invalid entry at index $index." }
+        $filePath=Join-Path $bundleRoot $requiredName
+        $item=Get-Item -LiteralPath $filePath -Force -ErrorAction Stop
+        if ($item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 -or [int64]$item.Length -ne [int64]$entry.Length -or (Get-OrchestratorFileSha256 $filePath) -cne [string]$entry.Sha256) { throw "Installed runtime file failed its exact hash/length check: $requiredName" }
+        Assert-OrchestratorProtectedAcl $filePath $userSid
+    }
+    $actualItems=@(Get-ChildItem -LiteralPath $bundleRoot -Force -ErrorAction Stop)
+    $expectedNames=@($script:RequiredBundleFiles)+@('HostIntegrity.json')
+    if (@($actualItems | Where-Object { $_.PSIsContainer }).Count -ne 0 -or @($actualItems | Where-Object { -not $_.PSIsContainer }).Count -ne $expectedNames.Count -or @($actualItems | Where-Object { -not $_.PSIsContainer -and $expectedNames -cnotcontains $_.Name }).Count -ne 0) { throw 'Installed runtime bundle contains an unexpected or missing filesystem entry.' }
+    if ((Get-OrchestratorBundleIdentityFromManifest -Manifest $manifest -Entries $entries) -cne $bundleId) {
+        throw 'Installed runtime bundle identity hash does not match its manifest provenance and file set.'
+    }
+}
+
 function Assert-OrchestratorRuntimeIntegrity {
     param([Parameter(Mandatory = $true)][string]$ConfigurationPath,[string]$ManifestPath)
 
@@ -922,23 +989,8 @@ function Assert-OrchestratorRuntimeIntegrity {
         [string]$manifest.ExecutableIdentityFile -cne $script:ExecutableIdentityName) {
         throw 'Integrity manifest identity does not match this installed runtime bundle.'
     }
-    $entries=@($manifest.Files | Sort-Object RelativePath)
-    if ($entries.Count -ne $script:RequiredBundleFiles.Count) { throw 'Integrity manifest has the wrong file count.' }
-    for ($index=0; $index -lt $script:RequiredBundleFiles.Count; $index++) {
-        $entry=$entries[$index]; $requiredName=$script:RequiredBundleFiles[$index]
-        if ([string]$entry.RelativePath -cne $requiredName -or [string]$entry.Sha256 -cnotmatch '^[0-9a-f]{64}$' -or [int64]$entry.Length -lt 0) { throw "Integrity manifest contains an invalid entry at index $index." }
-        $filePath=Join-Path $bundleRoot $requiredName
-        $item=Get-Item -LiteralPath $filePath -Force -ErrorAction Stop
-        if ($item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 -or [int64]$item.Length -ne [int64]$entry.Length -or (Get-OrchestratorFileSha256 $filePath) -cne [string]$entry.Sha256) { throw "Installed runtime file failed its exact hash/length check: $requiredName" }
-        Assert-OrchestratorProtectedAcl $filePath $userSid
-    }
-    $actualItems=@(Get-ChildItem -LiteralPath $bundleRoot -Force -ErrorAction Stop)
-    $expectedNames=@($script:RequiredBundleFiles)+@('HostIntegrity.json')
-    if (@($actualItems | Where-Object { $_.PSIsContainer }).Count -ne 0 -or @($actualItems | Where-Object { -not $_.PSIsContainer }).Count -ne $expectedNames.Count -or @($actualItems | Where-Object { -not $_.PSIsContainer -and $expectedNames -cnotcontains $_.Name }).Count -ne 0) { throw 'Installed runtime bundle contains an unexpected or missing filesystem entry.' }
-    if ((Get-OrchestratorBundleIdentityFromManifest -Manifest $manifest -Entries $entries) -cne $bundleId) {
-        throw 'Installed runtime bundle identity hash does not match its manifest provenance and file set.'
-    }
-    $verifiedExecutableCount=Assert-OrchestratorExecutableIdentity -Path $expectedExecutableIdentity
+    Assert-OrchestratorBundlePayload -Manifest $manifest -BundleRoot $bundleRoot -UserSid $userSid
+    $verifiedExecutableCount=Assert-OrchestratorExecutableIdentity -Path $expectedExecutableIdentity -ExpectedCodexDistribution $manifest.CodexDistribution
     return [pscustomobject]@{
         Required=$required; Verified=$true; BundleId=$bundleId; Manifest='HostIntegrity.json'
         ExecutableIdentity=$script:ExecutableIdentityName; ExecutablesVerified=$verifiedExecutableCount; Reason='VerifiedProtectedBundleAndExecutables'

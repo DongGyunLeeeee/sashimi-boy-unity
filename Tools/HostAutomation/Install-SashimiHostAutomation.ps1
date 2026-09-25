@@ -740,6 +740,50 @@ function Get-InstallerSourceExecutableSnapshot {
     return [pscustomobject][ordered]@{ Name=$Name; Path=$fullPath; Length=[int64]$bytes.LongLength; Sha256=$sha256; Bytes=$bytes }
 }
 
+function Get-InstallerCodexSourceSnapshots {
+    param([Parameter(Mandatory)][string]$ExecutablePath)
+    # The app's bin alias is a junction to its versioned distribution. Resolve
+    # that source-only alias once, then capture both images from the same plain
+    # directory. Installed paths never accept reparse traversal.
+    $sourceDirectory = Get-Item -LiteralPath (Split-Path -Parent $ExecutablePath) -Force -ErrorAction Stop
+    if (($sourceDirectory.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+        $sourceDirectory = $sourceDirectory.ResolveLinkTarget($true)
+    }
+    if ($null -eq $sourceDirectory -or ($sourceDirectory.Attributes -band [IO.FileAttributes]::Directory) -eq 0) { throw 'Codex source distribution directory is missing.' }
+    $paths = @(
+        (Join-Path $sourceDirectory.FullName (Split-Path -Leaf $ExecutablePath)),
+        (Join-Path $sourceDirectory.FullName 'codex-code-mode-host.exe')
+    )
+    $leases = [Collections.Generic.List[IO.FileStream]]::new()
+    try {
+        # Hold both source images before reading either snapshot. An app update
+        # cannot replace a companion between capture of the two reviewed files.
+        foreach ($path in $paths) {
+            Assert-InstallerNoReparsePoint $path
+            $leases.Add([IO.File]::Open($path,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::Read))
+        }
+        $main = Get-InstallerSourceExecutableSnapshot -Name CodexExecutable -Path $paths[0]
+        $hostEntry = Get-InstallerSourceExecutableSnapshot -Name CodexCodeModeHost -Path $paths[1]
+        foreach ($path in $paths) { Assert-InstallerNoReparsePoint $path }
+        return [pscustomobject]@{ Executable=$main; CodeModeHost=$hostEntry }
+    }
+    finally { foreach ($lease in $leases) { $lease.Dispose() } }
+}
+
+function Get-InstallerCodexDistributionHash {
+    param([Parameter(Mandatory)][object]$Executable,[Parameter(Mandatory)][object]$CodeModeHost)
+    foreach ($entry in @($Executable,$CodeModeHost)) {
+        if ([string]$entry.Sha256 -cnotmatch '^[0-9a-f]{64}$' -or [int64]$entry.Length -lt 1) {
+            throw 'Codex distribution requires two complete executable identities.'
+        }
+    }
+    $lines = @(
+        [string]::Join([char]0,@('codex.exe',[string]$Executable.Sha256,[string]$Executable.Length)),
+        [string]::Join([char]0,@('codex-code-mode-host.exe',[string]$CodeModeHost.Sha256,[string]$CodeModeHost.Length))
+    )
+    return Get-InstallerTextSha256 ([string]::Join([char]10,$lines))
+}
+
 function New-InstallerExecutableIdentity {
     param(
         [Parameter(Mandatory = $true)][object]$Config,
@@ -753,9 +797,16 @@ function New-InstallerExecutableIdentity {
         if ([string]$sourceEntry.Name -cne $name -or [int64]$sourceEntry.Length -lt 1 -or [string]$sourceEntry.Sha256 -cnotmatch '^[0-9a-f]{64}$') {
             throw "$name source snapshot is invalid."
         }
-        [ordered]@{ Name=$name; Path=$identityPath; Length=[int64]$sourceEntry.Length; Sha256=[string]$sourceEntry.Sha256 }
+        $entry = [ordered]@{ Name=$name; Path=$identityPath; Length=[int64]$sourceEntry.Length; Sha256=[string]$sourceEntry.Sha256 }
+        if ($name -ceq 'CodexExecutable') {
+            $hostPath = Join-Path (Split-Path -Parent $identityPath) 'codex-code-mode-host.exe'
+            $hostEntry = if ($SourceEntries.ContainsKey('CodexCodeModeHost')) { $SourceEntries['CodexCodeModeHost'] } else { Get-InstallerExecutableIdentityEntry -Name CodexCodeModeHost -Path $hostPath }
+            [void](Get-InstallerCodexDistributionHash $sourceEntry $hostEntry)
+            $entry.CodeModeHost = [ordered]@{ FileName='codex-code-mode-host.exe'; Length=[int64]$hostEntry.Length; Sha256=[string]$hostEntry.Sha256 }
+        }
+        $entry
     }
-    return [ordered]@{ SchemaVersion=1; Executables=@($entries) }
+    return [ordered]@{ SchemaVersion=2; Executables=@($entries) }
 }
 
 function Assert-InstallerExecutableIdentity {
@@ -763,7 +814,7 @@ function Assert-InstallerExecutableIdentity {
         [Parameter(Mandatory = $true)][object]$Identity,
         [hashtable]$SourceEntries = @{}
     )
-    if ([int]$Identity.SchemaVersion -ne 1) { throw 'Executable identity SchemaVersion must be 1.' }
+    if ([int]$Identity.SchemaVersion -ne 2) { throw 'Executable identity SchemaVersion must be 2.' }
     $entries = @($Identity.Executables)
     if ($entries.Count -ne $script:ExecutableProperties.Count) { throw 'Executable identity must contain exactly the configured bound tools.' }
     for ($index=0; $index -lt $script:ExecutableProperties.Count; $index++) {
@@ -775,6 +826,16 @@ function Assert-InstallerExecutableIdentity {
         $current=if ($SourceEntries.ContainsKey($expectedName)) { $SourceEntries[$expectedName] } else { Get-InstallerExecutableIdentityEntry -Name $expectedName -Path $identityPath }
         if ([int64]$current.Length -ne [int64]$entry.Length -or [string]$current.Sha256 -cne [string]$entry.Sha256) {
             throw "$expectedName changed after its executable identity was captured."
+        }
+        if ($expectedName -ceq 'CodexExecutable') {
+            if ([string]$entry.CodeModeHost.FileName -cne 'codex-code-mode-host.exe') { throw 'Codex companion identity has an invalid filename.' }
+            $distributionId = Get-InstallerCodexDistributionHash $entry $entry.CodeModeHost
+            if ((Split-Path -Leaf (Split-Path -Parent $identityPath)) -cne $distributionId) { throw 'Codex distribution path does not bind both executable identities.' }
+            $hostPath = Join-Path (Split-Path -Parent $identityPath) 'codex-code-mode-host.exe'
+            $hostEntry = if ($SourceEntries.ContainsKey('CodexCodeModeHost')) { $SourceEntries['CodexCodeModeHost'] } else { Get-InstallerExecutableIdentityEntry -Name CodexCodeModeHost -Path $hostPath }
+            if ([int64]$hostEntry.Length -ne [int64]$entry.CodeModeHost.Length -or [string]$hostEntry.Sha256 -cne [string]$entry.CodeModeHost.Sha256) {
+                throw 'Codex code-mode host changed after its identity was captured.'
+            }
         }
     }
 }
@@ -1076,18 +1137,27 @@ function Assert-InstallerCodexDistribution {
         [IO.Path]::GetFileName($expectedPath) -cne 'codex.exe') {
         throw 'Protected Codex distribution path is not its exact content-addressed location.'
     }
+    $files = @($Distribution.Files)
+    if ($files.Count -ne 2 -or [string]$files[0].FileName -cne 'codex.exe' -or
+        [string]$files[1].FileName -cne 'codex-code-mode-host.exe' -or
+        (Get-InstallerCodexDistributionHash $files[0] $files[1]) -cne [string]$Distribution.Sha256 -or
+        ([int64]$files[0].Length + [int64]$files[1].Length) -ne [int64]$Distribution.Length) {
+        throw 'Protected Codex distribution must bind exactly the two reviewed executable files.'
+    }
     $items = @(Get-ChildItem -LiteralPath $distributionRoot -Force -ErrorAction Stop)
-    if ($items.Count -ne 1 -or $items[0].PSIsContainer -or $items[0].Name -cne 'codex.exe' -or
-        ($items[0].Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 -or
-        [int64]$items[0].Length -ne [int64]$Distribution.Length -or
-        (Get-InstallerFileSha256 $items[0].FullName) -cne [string]$Distribution.Sha256) {
-        throw 'Protected Codex distribution failed its exact path, entry, hash, or length check.'
+    if ($items.Count -ne 2 -or @($items | Where-Object { $_.PSIsContainer -or @('codex.exe','codex-code-mode-host.exe') -cnotcontains $_.Name }).Count -ne 0) {
+        throw 'Protected Codex distribution has a missing or unexpected filesystem entry.'
     }
-    Assert-InstallerNoReparsePoint $items[0].FullName
-    if (-not $SkipAcl) {
-        Assert-InstallerProtectedAcl $items[0].FullName $UserSid
-        Assert-InstallerProtectedAcl $distributionRoot $UserSid
+    foreach ($file in $files) {
+        $path = Join-Path $distributionRoot ([string]$file.FileName)
+        $item = Get-Item -LiteralPath $path -Force -ErrorAction Stop
+        Assert-InstallerNoReparsePoint $path
+        if ([int64]$item.Length -ne [int64]$file.Length -or (Get-InstallerFileSha256 $path) -cne [string]$file.Sha256) {
+            throw 'Protected Codex distribution failed its exact path, entry, hash, or length check.'
+        }
+        if (-not $SkipAcl) { Assert-InstallerProtectedAcl $path $UserSid }
     }
+    if (-not $SkipAcl) { Assert-InstallerProtectedAcl $distributionRoot $UserSid }
 }
 
 function Install-InstallerCodexDistribution {
@@ -1105,19 +1175,24 @@ function Install-InstallerCodexDistribution {
     $stage = New-InstallerStagingWorkspace -ParentRoot $script:CodexDistributionsRoot -Purpose CodexDistribution -Identity ([string]$Distribution.Sha256) -UserSid $UserSid
     $promoted = $false
     try {
-        $stagedExecutable = Join-Path $stage.Payload 'codex.exe'
-        Assert-InstallerStagingWorkspace $stage.Workspace $stage.ParentRoot CodexDistribution $Distribution.Sha256
-        Invoke-InstallerTransactionCheckpoint 'Codex.Write' $stagedExecutable
-        [IO.File]::WriteAllBytes($stagedExecutable, [byte[]]$Distribution.Bytes)
-        Invoke-InstallerTransactionCheckpoint 'Codex.Written' $stagedExecutable
-        if ([int64](Get-Item -LiteralPath $stagedExecutable -Force -ErrorAction Stop).Length -ne [int64]$Distribution.Length -or
-            (Get-InstallerFileSha256 $stagedExecutable) -cne [string]$Distribution.Sha256) {
-            throw 'Staged Codex distribution bytes changed before promotion.'
+        foreach ($file in @($Distribution.Files)) {
+            if (@('codex.exe','codex-code-mode-host.exe') -cnotcontains [string]$file.FileName) { throw 'Unexpected Codex distribution payload.' }
+            $destination = Join-Path $stage.Payload ([string]$file.FileName)
+            $checkpoint = if ([string]$file.FileName -ceq 'codex.exe') { 'Codex' } else { 'Codex.Companion' }
+            Assert-InstallerStagingWorkspace $stage.Workspace $stage.ParentRoot CodexDistribution $Distribution.Sha256
+            Invoke-InstallerTransactionCheckpoint ($checkpoint + '.Write') $destination
+            [IO.File]::WriteAllBytes($destination, [byte[]]$file.Bytes)
+            Invoke-InstallerTransactionCheckpoint ($checkpoint + '.Written') $destination
+            if ([int64](Get-Item -LiteralPath $destination -Force -ErrorAction Stop).Length -ne [int64]$file.Length -or
+                (Get-InstallerFileSha256 $destination) -cne [string]$file.Sha256) {
+                throw 'Staged Codex distribution bytes changed before promotion.'
+            }
+            Set-InstallerProtectedAcl $destination $UserSid
         }
-        Set-InstallerProtectedAcl $stagedExecutable $UserSid
         Set-InstallerProtectedAcl $stage.Payload $UserSid -Container
         $stagedDistribution = [pscustomobject][ordered]@{
-            Root=$stage.Payload; Path=$stagedExecutable; Sha256=[string]$Distribution.Sha256; Length=[int64]$Distribution.Length
+            Root=$stage.Payload; Path=(Join-Path $stage.Payload 'codex.exe')
+            Sha256=[string]$Distribution.Sha256; Length=[int64]$Distribution.Length; Files=@($Distribution.Files)
         }
         Invoke-InstallerTransactionCheckpoint 'Codex.Verify' $stage.Payload
         Assert-InstallerCodexDistribution $stagedDistribution $UserSid
@@ -1184,9 +1259,12 @@ function New-InstallerBundlePlan {
 
     $sourceConfigHash=([Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($configBytes))).ToLowerInvariant()
     $sourceCodexPath = [string]$Config.CodexExecutable
-    $sourceCodexEntry = Get-InstallerSourceExecutableSnapshot -Name 'CodexExecutable' -Path $sourceCodexPath
+    $codexSnapshots = Get-InstallerCodexSourceSnapshots -ExecutablePath $sourceCodexPath
+    $sourceCodexEntry = $codexSnapshots.Executable
+    $sourceCodeModeHostEntry = $codexSnapshots.CodeModeHost
     $sourceCodexBytes = [byte[]]$sourceCodexEntry.Bytes
-    $sourceCodexHash = [string]$sourceCodexEntry.Sha256
+    $sourceCodexHash = Get-InstallerCodexDistributionHash $sourceCodexEntry $sourceCodeModeHostEntry
+    $sourceCodexLength = [int64]$sourceCodexEntry.Length + [int64]$sourceCodeModeHostEntry.Length
     $codexDistributionRoot = Join-Path $script:CodexDistributionsRoot $sourceCodexHash
     $codexDistributionPath = Join-Path $codexDistributionRoot 'codex.exe'
     $projectedConfig = New-InstallerCanonicalConfigProjection -Config $Config
@@ -1199,7 +1277,7 @@ function New-InstallerBundlePlan {
             Sha256=$projectedConfigHash; Length=[int64]$projectedConfigBytes.LongLength
         })
 
-    $identitySourceEntries = @{ CodexExecutable=$sourceCodexEntry }
+    $identitySourceEntries = @{ CodexExecutable=$sourceCodexEntry; CodexCodeModeHost=$sourceCodeModeHostEntry }
     $executableIdentity = New-InstallerExecutableIdentity -Config $projectedConfig -SourceEntries $identitySourceEntries
     Assert-InstallerExecutableIdentity -Identity $executableIdentity -SourceEntries $identitySourceEntries
     $identityContent = ($executableIdentity | ConvertTo-Json -Depth 8 -Compress) + "`n"
@@ -1222,7 +1300,7 @@ function New-InstallerBundlePlan {
     $identityLines = @(
         "installer-bootstrap`0$bootstrapHash`0$($bootstrapBytes.LongLength)",
         "source-config`0$sourceConfigHash`0$($configBytes.LongLength)",
-        "source-codex`0$sourceCodexHash`0$($sourceCodexBytes.LongLength)"
+        "source-codex`0$sourceCodexHash`0$sourceCodexLength"
     ) + @($orderedEntries | ForEach-Object { "$($_.RelativePath)`0$($_.Sha256)`0$($_.Length)" })
     $identityText = [string]::Join("`n", $identityLines)
     $bundleId = Get-InstallerTextSha256 $identityText
@@ -1232,7 +1310,7 @@ function New-InstallerBundlePlan {
         EntryPoint='Invoke-SashimiHostOrchestrator.ps1'; ConfigFile='Config.json'; ExecutableIdentityFile=$script:ExecutableIdentityName
         InstallerBootstrap=[ordered]@{ Sha256=$bootstrapHash; Length=[int64]$bootstrapBytes.LongLength }
         SourceConfig=[ordered]@{ Sha256=$sourceConfigHash; Length=[int64]$configBytes.LongLength }
-        CodexDistribution=[ordered]@{ Sha256=$sourceCodexHash; Length=[int64]$sourceCodexBytes.LongLength; FileName='codex.exe' }
+        CodexDistribution=[ordered]@{ Sha256=$sourceCodexHash; Length=$sourceCodexLength; FileName='codex.exe' }
         Files=$manifestFiles
     }
     $manifestContent = (($manifest | ConvertTo-Json -Depth 16 -Compress) + "`n")
@@ -1243,8 +1321,12 @@ function New-InstallerBundlePlan {
         InstallerBootstrap=[pscustomobject][ordered]@{ Sha256=$bootstrapHash; Length=[int64]$bootstrapBytes.LongLength }
         SourceConfig=[pscustomobject][ordered]@{ Sha256=$sourceConfigHash; Length=[int64]$configBytes.LongLength }
         CodexDistribution=[pscustomobject][ordered]@{
-            Root=$codexDistributionRoot; Path=$codexDistributionPath; Bytes=$sourceCodexBytes
-            Sha256=$sourceCodexHash; Length=[int64]$sourceCodexBytes.LongLength
+            Root=$codexDistributionRoot; Path=$codexDistributionPath
+            Sha256=$sourceCodexHash; Length=$sourceCodexLength
+            Files=@(
+                [pscustomobject]@{ FileName='codex.exe'; Sha256=[string]$sourceCodexEntry.Sha256; Length=[int64]$sourceCodexEntry.Length; Bytes=$sourceCodexBytes },
+                [pscustomobject]@{ FileName='codex-code-mode-host.exe'; Sha256=[string]$sourceCodeModeHostEntry.Sha256; Length=[int64]$sourceCodeModeHostEntry.Length; Bytes=[byte[]]$sourceCodeModeHostEntry.Bytes }
+            )
         }
     }
 }

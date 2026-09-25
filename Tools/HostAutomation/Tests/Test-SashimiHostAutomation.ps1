@@ -1780,6 +1780,8 @@ try {
     $script:fakeToolLogPath = Join-Path $script:temporaryRoot 'fake-tool-audit.tsv'
     $script:fakeTools = New-HostFakeToolAdapters -Root $script:temporaryRoot
     $script:fakeCodex = New-HostFakeCodexAdapter -Root $script:temporaryRoot
+    # The installed CLI distribution also needs its fixed-name code-mode host.
+    Copy-Item -LiteralPath $script:fakeTools.Git -Destination (Join-Path $script:temporaryRoot 'codex-code-mode-host.exe')
     $script:fakeConfigPath = New-HostTestConfig -GitExecutable $script:fakeTools.Git -GitLfsExecutable $script:fakeTools.GitLfs -GitHubCli $script:fakeTools.GitHub -CodexExecutable $script:fakeCodex.Path -UnityExecutable $script:fakeTools.Git
     Import-SashimiHostConfig $script:fakeConfigPath | Out-Null
     $script:fakeRepository = Join-Path $script:temporaryRoot 'fake-repository'
@@ -2423,6 +2425,7 @@ Assert-SashimiFixtureExecutableBoundary -FilePath 'C:\Program Files\Git\cmd\git.
         [void](Install-InstallerCodexDistribution $plan.CodexDistribution $sid)
         $bundleRoot = Join-Path $script:BundlesRoot $plan.BundleId
         [void](Install-InstallerBundle $plan $bundleRoot $sid)
+        & (Join-Path $PSScriptRoot 'Startup.DistributionFixtures.ps1') -BundleRoot $bundleRoot -HostRoot $hostRoot -Plan $plan -UserSid $sid -SourceCodexPath $installerConfig.CodexExecutable
         $stagedText = [IO.File]::ReadAllText((Join-Path $bundleRoot 'Config.json'))
         Assert-HostTest ($stagedText -ceq ((ConvertTo-InstallerJson $plan.Config) + "`n") -and $stagedText -cne $sourceText) 'Staging copied raw config instead of canonical projection.'
         $stagedRuntime = Import-SashimiHostConfig (Join-Path $bundleRoot 'Config.json')
@@ -2804,8 +2807,9 @@ if (`$lease.Acquired) { Exit-SashimiHostMutex `$lease }
             SASHIMI_FAKE_PUSH_STATE = $bundle.PushState
             SASHIMI_FAKE_STATUS_STATE = $bundle.StatusState
             SASHIMI_FAKE_GIT_STATUS = ''
-        } -TimeoutSeconds 60
+        } -TimeoutSeconds 120
 
+        Assert-HostTest (-not $developer.TimedOut -and $developer.TerminationConfirmed) 'PR-content drift fixture did not finish within its test deadline.'
         Assert-HostTest ($developer.ExitCode -ne 0) 'Developer accepted edited PR prose at the same head SHA/ref.'
         $developerJson = ConvertFrom-LastHostJson $developer.StdOut
         Assert-HostTest (-not [bool]$developerJson.Pushed -and -not [bool]$developerJson.TransitionedToReview) 'PR-content-stale Developer reported a push or status transition.'
@@ -5597,8 +5601,14 @@ wire_api = "responses"
                 Sha256 = (Get-FileHash -LiteralPath $item.FullName -Algorithm SHA256 -ErrorAction Stop).Hash.ToLowerInvariant()
             }
         }
+        $companionPath = Join-Path $identityRoot 'codex-code-mode-host.exe'
+        Copy-Item -LiteralPath $script:fakeTools.Git -Destination $companionPath
+        $identityEntries[0].CodeModeHost = [ordered]@{
+            FileName='codex-code-mode-host.exe'; Length=[int64](Get-Item -LiteralPath $companionPath).Length
+            Sha256=(Get-FileHash -LiteralPath $companionPath -Algorithm SHA256).Hash.ToLowerInvariant()
+        }
         $identityPath = Join-Path $identityRoot 'ExecutableIdentity.json'
-        Write-HostTestFile $identityPath (([ordered]@{ SchemaVersion=1; Executables=@($identityEntries) } | ConvertTo-Json -Depth 16) + "`n")
+        Write-HostTestFile $identityPath (([ordered]@{ SchemaVersion=2; Executables=@($identityEntries) } | ConvertTo-Json -Depth 16) + "`n")
 
         $launchSentinel = Join-Path $identityRoot 'changed-binary-launched.sentinel'
         $recordSentinel = Join-Path $identityRoot 'changed-binary-process-record.json'
@@ -5658,16 +5668,25 @@ wire_api = "responses"
         $installRoot = Join-Path $script:temporaryRoot 'protected-codex-policy'
         $root = Join-Path $installRoot 'CodexDistributions'
         $codexSha256 = (Get-FileHash -LiteralPath $script:fakeCodex.Path -Algorithm SHA256).Hash.ToLowerInvariant()
-        $distribution = Join-Path $root $codexSha256
+        $companionIdentity = [pscustomobject]@{
+            FileName='codex-code-mode-host.exe'; Length=[int64](Get-Item -LiteralPath $script:fakeTools.Git).Length
+            Sha256=(Get-FileHash -LiteralPath $script:fakeTools.Git -Algorithm SHA256).Hash.ToLowerInvariant()
+        }
+        $distributionId = Get-SashimiCodexDistributionHash ([pscustomobject]@{
+            Sha256=$codexSha256; Length=[int64](Get-Item -LiteralPath $script:fakeCodex.Path).Length; CodeModeHost=$companionIdentity
+        })
+        $distribution = Join-Path $root $distributionId
         [IO.Directory]::CreateDirectory($distribution) | Out-Null
         $workspace = Join-Path $script:temporaryRoot 'protected-codex-clean-workspace'
         [IO.Directory]::CreateDirectory($workspace) | Out-Null
         $codexPath = Join-Path $distribution 'codex.exe'
         Copy-Item -LiteralPath $script:fakeCodex.Path -Destination $codexPath -ErrorAction Stop
+        $companionPath = Join-Path $distribution 'codex-code-mode-host.exe'
+        Copy-Item -LiteralPath $script:fakeTools.Git -Destination $companionPath
         $item = Get-Item -LiteralPath $codexPath -Force -ErrorAction Stop
         $entry = [pscustomobject][ordered]@{
             Name='CodexExecutable'; Path=$item.FullName; Length=[int64]$item.Length
-            Sha256=$codexSha256
+            Sha256=$codexSha256; CodeModeHost=$companionIdentity
         }
         $untrustedRule = [pscustomobject][ordered]@{
             AccessControlType=[Security.AccessControl.AccessControlType]::Allow
@@ -5696,6 +5715,7 @@ wire_api = "responses"
             $script:SashimiBoundExecutableIdentities = @($entry)
             $script:SashimiConfiguredExecutablePaths['CodexExecutable'] = $item.FullName
             $script:codexAclFixtureExecutable = $item.FullName
+            $script:codexAclFixtureCompanion = $companionPath
             $script:codexAclFixtureParent = $distribution
             $script:codexAclFixtureProtectedRoot = $root
             $script:codexAclFixtureInstallRoot = $installRoot
@@ -5707,6 +5727,7 @@ wire_api = "responses"
             Set-Item -LiteralPath Function:\Get-SashimiFileSystemAccessRules -Value {
                 param([string]$Path)
                 if ($script:codexAclFixtureMode -ceq 'Executable' -and (Test-SashimiPathEqual $Path $script:codexAclFixtureExecutable)) { return @($script:codexAclFixtureRule) }
+                if ($script:codexAclFixtureMode -ceq 'Companion' -and (Test-SashimiPathEqual $Path $script:codexAclFixtureCompanion)) { return @($script:codexAclFixtureRule) }
                 if ($script:codexAclFixtureMode -ceq 'Parent' -and (Test-SashimiPathEqual $Path $script:codexAclFixtureParent)) { return @($script:codexAclFixtureRule) }
                 if ($script:codexAclFixtureMode -ceq 'ProtectedRoot' -and (Test-SashimiPathEqual $Path $script:codexAclFixtureProtectedRoot)) { return @($script:codexAclFixtureRule) }
                 if ($script:codexAclFixtureMode -ceq 'InstallRoot' -and (Test-SashimiPathEqual $Path $script:codexAclFixtureInstallRoot)) { return @($script:codexAclFixtureRule) }
@@ -5720,6 +5741,9 @@ wire_api = "responses"
             }
             Assert-HostThrows { & $invokeCodex $item.FullName } 'untrusted SID'
             Assert-HostTest (-not (Test-Path -LiteralPath $sentinel)) 'A Codex executable with an untrusted writable ACE crossed the process gate.'
+            $script:codexAclFixtureMode = 'Companion'
+            Assert-HostThrows { & $invokeCodex $item.FullName } 'untrusted SID'
+            Assert-HostTest (-not (Test-Path -LiteralPath $sentinel)) 'A writable code-mode host crossed the process gate.'
             $script:codexAclFixtureMode = 'Parent'
             Assert-HostThrows { & $invokeCodex $item.FullName } 'untrusted SID'
             Assert-HostTest (-not (Test-Path -LiteralPath $sentinel)) 'Codex beneath an untrusted writable parent crossed the process gate.'
@@ -5748,12 +5772,15 @@ wire_api = "responses"
                 Copy-Item -LiteralPath $script:fakeCodex.Path -Destination ([string]$shape.Path) -ErrorAction Stop
                 $shapeItem = Get-Item -LiteralPath ([string]$shape.Path) -Force -ErrorAction Stop
                 $script:SashimiBoundExecutableIdentities = @([pscustomobject][ordered]@{
-                        Name='CodexExecutable'; Path=$shapeItem.FullName; Length=[int64]$shapeItem.Length; Sha256=$codexSha256
+                        Name='CodexExecutable'; Path=$shapeItem.FullName; Length=[int64]$shapeItem.Length; Sha256=$codexSha256; CodeModeHost=$companionIdentity
                     })
                 $script:SashimiConfiguredExecutablePaths['CodexExecutable'] = $shapeItem.FullName
                 $shapeSentinel = [IO.Path]::ChangeExtension($shapeItem.FullName, '.audit.log')
                 Assert-HostThrows { & $invokeCodex $shapeItem.FullName } 'exact content-addressed path'
                 Assert-HostTest (-not (Test-Path -LiteralPath $shapeSentinel)) "Invalid Codex path shape '$($shape.Name)' crossed the process gate."
+                Assert-HostTest (Test-SashimiPathWithin $shapeItem.FullName $root) 'Fixture cleanup escaped distribution root.'
+                [IO.File]::Delete($shapeItem.FullName)
+                if ($shape.Name -ceq 'ExtraAncestor') { [IO.Directory]::Delete((Split-Path -Parent $shapeItem.FullName),$false) }
             }
 
             $script:codexAclFixtureMode = 'Safe'
@@ -5770,7 +5797,7 @@ wire_api = "responses"
             $junctionItem = Get-Item -LiteralPath $junctionCodex -Force -ErrorAction Stop
             $script:SashimiBoundExecutableIdentities = @([pscustomobject][ordered]@{
                     Name='CodexExecutable'; Path=$junctionCodex; Length=[int64]$junctionItem.Length
-                    Sha256=$junctionSha256
+                    Sha256=$junctionSha256; CodeModeHost=$companionIdentity
             })
             $script:SashimiConfiguredExecutablePaths['CodexExecutable'] = $junctionCodex
             $junctionSentinel = [IO.Path]::ChangeExtension($junctionTargetCodex, '.audit.log')
@@ -5794,6 +5821,17 @@ wire_api = "responses"
             # both content writes and path replacement until process creation
             # has consumed the executable path.
             Copy-Item -LiteralPath $script:fakeCodex.Path -Destination $item.FullName -Force -ErrorAction Stop
+            # Reject a missing, replaced, or additional companion before any process starts.
+            [IO.File]::Delete($companionPath)
+            Assert-HostThrows { & $invokeCodex $item.FullName } 'missing|not exist|cannot find'
+            Copy-Item -LiteralPath $script:fakeTools.Git -Destination $companionPath
+            [IO.File]::AppendAllText($companionPath,'tampered')
+            Assert-HostThrows { & $invokeCodex $item.FullName } 'code-mode host changed'
+            Copy-Item -LiteralPath $script:fakeTools.Git -Destination $companionPath -Force
+            $extraPath = Join-Path $distribution 'unexpected.dll'
+            [IO.File]::WriteAllText($extraPath,'unexpected')
+            Assert-HostThrows { & $invokeCodex $item.FullName } 'exactly its two bound executables'
+            [IO.File]::Delete($extraPath)
             $leaseHash = (Get-FileHash -LiteralPath $item.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
             Assert-HostTest ($leaseHash -ceq [string]$entry.Sha256) 'The restored Codex fixture no longer matches its reviewed identity.'
             $replacement = Join-Path $root 'replacement-codex.exe'
@@ -5817,10 +5855,46 @@ wire_api = "responses"
                 }
                 catch { }
                 Assert-HostTest (-not $replacementSucceeded) 'A coordinated path replacement succeeded after the final launch lease.'
+                Assert-HostThrows {
+                    $write = [IO.File]::Open($companionPath,[IO.FileMode]::Open,[IO.FileAccess]::Write,[IO.FileShare]::ReadWrite)
+                    $write.Dispose()
+                }
+                Assert-HostThrows { [IO.File]::Move($replacement,$companionPath,$true) }
                 Assert-HostTest ((Get-FileHash -LiteralPath $item.FullName -Algorithm SHA256).Hash.ToLowerInvariant() -ceq $leaseHash) `
                     'The launch-leased executable changed after its earlier verification point.'
             }
-            finally { $lease.Stream.Dispose() }
+            finally { Close-SashimiExecutableLaunchLease $lease }
+            # Inject the companion sharing conflict only after the real main
+            # lease denies writes, so a preflight failure cannot satisfy this test.
+            $script:partialLeaseMain = $item.FullName
+            $script:partialLeaseCompanion = $companionPath
+            $script:partialLeaseMetadata = $companionIdentity
+            $script:partialLeaseObserved = $false
+            $script:partialLeaseWriter = $null
+            $entry | Add-Member -MemberType ScriptProperty -Name CodeModeHost -Force -Value {
+                $mainLocked = $false
+                try {
+                    $probe = [IO.File]::Open($script:partialLeaseMain,[IO.FileMode]::Open,[IO.FileAccess]::Write,[IO.FileShare]::ReadWrite)
+                    $probe.Dispose()
+                } catch { $mainLocked = $true }
+                if ($mainLocked -and $null -eq $script:partialLeaseWriter) {
+                    $script:partialLeaseObserved = $true
+                    $script:partialLeaseWriter = [IO.File]::Open($script:partialLeaseCompanion,[IO.FileMode]::Open,[IO.FileAccess]::Write,[IO.FileShare]::Read)
+                }
+                return $script:partialLeaseMetadata
+            }
+            try {
+                Assert-HostThrows { Open-SashimiExecutableLaunchLease -FilePath $item.FullName -Kind Codex | Out-Null }
+                Assert-HostTest $script:partialLeaseObserved 'Partial failure never reached the held-main-lease boundary.'
+            }
+            finally {
+                if ($null -ne $script:partialLeaseWriter) { $script:partialLeaseWriter.Dispose() }
+                $entry | Add-Member -MemberType NoteProperty -Name CodeModeHost -Value $companionIdentity -Force
+            }
+            foreach ($path in @($item.FullName,$companionPath)) {
+                $writer = [IO.File]::Open($path,[IO.FileMode]::Open,[IO.FileAccess]::Write,[IO.FileShare]::Read)
+                $writer.Dispose()
+            }
             Assert-HostTest (-not (Test-Path -LiteralPath $sentinel)) 'A rejected, changed, or replacement-raced Codex executable was launched.'
         }
         finally {
