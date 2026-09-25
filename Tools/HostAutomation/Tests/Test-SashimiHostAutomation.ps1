@@ -443,11 +443,26 @@ public static class SashimiHostFakeTool
             DetectImplicitLfsSmudgeRedirect(args);
         }
 
+        // Windows Git LFS tries to create the configured hook directory during
+        // install unless --skip-repo is present. NUL is a device, not a folder.
+        if (isLfs && Has(args, "install") && !Has(args, "--skip-repo") &&
+            String.Equals(CommandConfig("core.hooksPath"), "NUL", StringComparison.OrdinalIgnoreCase))
+        {
+            Console.Error.WriteLine("mkdir Repository\\NUL: The system cannot find the path specified.");
+            return 2;
+        }
+
         if (Env("SASHIMI_FAKE_GIT_OPAQUE_FAILURE") == "1")
         {
             Console.WriteLine("opaque git stdout: openai-fixture-9Qx7mV2pL8cR4tN6");
             Console.Error.WriteLine("opaque git stderr: wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY");
             return 91;
+        }
+
+        if (isLfs && Has(args, "ls-files") && Has(args, "--json"))
+        {
+            Console.WriteLine("{\"files\":[]}");
+            return 0;
         }
 
         if (Has(args, "clone"))
@@ -4210,6 +4225,33 @@ wire_api = "responses"
                 [Environment]::SetEnvironmentVariable([string]$entry.Key, $entry.Value, 'Process')
             }
         }
+    }
+
+    Invoke-HostTestCase 'LfsCacheIntegrityMaterializationAndOptionalFailures' {
+        . (Join-Path $PSScriptRoot 'Lfs.CacheFixtures.ps1')
+        Invoke-HostLfsCacheRegression
+    }
+
+    Invoke-HostTestCase 'LfsMaterializationRefreshPreservesSemanticGitGuards' {
+        . (Join-Path $PSScriptRoot 'Lfs.CacheFixtures.ps1')
+        Invoke-HostLfsIndexRefreshRegression
+    }
+
+    Invoke-HostTestCase 'GitLfsInstallCannotWriteDisabledHooks' {
+        $working = Join-Path $script:temporaryRoot 'lfs-install-hook-boundary'
+        [void][IO.Directory]::CreateDirectory($working)
+        $environment = @{ SASHIMI_FAKE_TOOL_LOG = $script:fakeToolLogPath }
+        $hookInstall = Invoke-SashimiHostProcess -FilePath $script:fakeTools.GitLfs `
+            -ArgumentList @('install','--local') -WorkingDirectory $working `
+            -TimeoutSeconds 30 -Environment $environment -Kind Git
+        Assert-HostTest (-not $hookInstall.Succeeded -and $hookInstall.ExitCode -eq 2 -and
+            $hookInstall.StdErr -match 'mkdir Repository') `
+            'The native fake did not reproduce the Windows disabled-hook install failure.'
+        $filterInstall = Invoke-SashimiHostProcess -FilePath $script:fakeTools.GitLfs `
+            -ArgumentList @('install','--local','--skip-repo') -WorkingDirectory $working `
+            -TimeoutSeconds 30 -Environment $environment -Kind Git
+        Assert-HostTest $filterInstall.Succeeded `
+            "Filter-only Git LFS installation failed: $($filterInstall.StdErr)"
     }
 
     Invoke-HostTestCase 'GitLfsRoutingIsPinnedAndRepositoryRedirectsFailClosed' {

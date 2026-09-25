@@ -3118,3 +3118,237 @@ function Get-SashimiReviewDisposition {
         Blocking = $blocking; Incomplete = $incomplete; Manual = $manual; Minor = $minor
     }
 }
+
+function ConvertFrom-SashimiLfsObjectManifest {
+    param([Parameter(Mandatory)][string]$Json)
+    if ($Json.Length -gt 8MB) { throw 'LFS manifest exceeds the metadata size limit.' }
+    $document = [Text.Json.JsonDocument]::Parse($Json)
+    try {
+        $files = $document.RootElement.GetProperty('files')
+        if ($files.ValueKind -ne [Text.Json.JsonValueKind]::Array) { throw 'LFS manifest files must be an array.' }
+        if ($files.GetArrayLength() -gt 10000) { throw 'LFS manifest exceeds the file count limit.' }
+        $objects = [Collections.Generic.Dictionary[string,long]]::new([StringComparer]::Ordinal)
+        $names = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+        $totalBytes = 0L
+        $entries = [Collections.Generic.List[object]]::new()
+        foreach ($file in $files.EnumerateArray()) {
+            $oid = $file.GetProperty('oid').GetString()
+            $size = $file.GetProperty('size').GetInt64()
+            $name = $file.GetProperty('name').GetString()
+            if ($oid -cnotmatch '^[0-9a-f]{64}$' -or $size -lt 0 -or
+                $file.GetProperty('oid_type').GetString() -cne 'sha256' -or
+                $file.GetProperty('version').GetString() -cne 'https://git-lfs.github.com/spec/v1' -or
+                [string]::IsNullOrWhiteSpace($name) -or $name -match '(^/|\\|:|[\x00-\x1f]|(^|/)\.\.?(/|$)|(^|/)\.git(/|$))') {
+                throw 'LFS manifest contains an invalid object identity or repository path.'
+            }
+            if ($objects.ContainsKey($oid) -and $objects[$oid] -ne $size) { throw 'LFS manifest repeats an OID with a different size.' }
+            if ($name.Length -gt 1024 -or -not $names.Add($name)) { throw 'LFS manifest path is too long or duplicated.' }
+            if (-not $objects.ContainsKey($oid)) {
+                if ($size -gt [long]::MaxValue-$totalBytes) { throw 'LFS manifest total size overflows Int64.' }
+                $totalBytes += $size
+            }
+            $objects[$oid] = $size
+            $entries.Add([pscustomobject]@{ Name=$name; Oid=$oid; Size=$size })
+        }
+        return [pscustomobject]@{ Objects=$objects; Files=$entries.ToArray() }
+    }
+    finally { $document.Dispose() }
+}
+
+function Test-SashimiLfsObjectBytes {
+    param([Parameter(Mandatory)][IO.Stream]$Stream, [string]$Oid, [long]$Size)
+    if ($Stream.Length -ne $Size) { return $false }
+    $Stream.Position = 0
+    $hash = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($Stream)).ToLowerInvariant()
+    $Stream.Position = 0
+    return $hash -ceq $Oid
+}
+
+function Copy-SashimiVerifiedLfsObject {
+    param([Parameter(Mandatory)][string]$Source, [Parameter(Mandatory)][string]$Destination,
+        [Parameter(Mandatory)][string]$Oid, [Parameter(Mandatory)][long]$Size)
+    # Cache data is untrusted. Neither metadata nor a filename establishes a hit.
+    Assert-SashimiNoReparsePoint -Path $Source
+    Assert-SashimiNoReparsePoint -Path $Destination
+    $result=[pscustomobject]@{ Status='Missing'; CleanupWarning=$false }
+    if (-not [IO.File]::Exists($Source)) { return $result }
+    $inputStream=$null; $outputStream=$null; $temporary=''; $createdTemporary=$false
+    try {
+        $inputStream=[IO.FileStream]::new($Source,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::Read)
+        Assert-SashimiNoReparsePoint -Path $Source
+        if (-not (Test-SashimiLfsObjectBytes -Stream $inputStream -Oid $Oid -Size $Size)) { $result.Status='Invalid'; return $result }
+        if ([IO.File]::Exists($Destination)) {
+            Assert-SashimiNoReparsePoint -Path $Destination
+            $existing=[IO.FileStream]::new($Destination,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::Read)
+            try {
+                Assert-SashimiNoReparsePoint -Path $Destination
+                if (Test-SashimiLfsObjectBytes -Stream $existing -Oid $Oid -Size $Size) { $result.Status='Existing'; return $result }
+                $result.Status='InvalidDestination'; return $result
+            } finally { $existing.Dispose() }
+        }
+        $parent=[IO.Path]::GetDirectoryName($Destination)
+        [void][IO.Directory]::CreateDirectory($parent)
+        Assert-SashimiNoReparsePoint -Path $Destination
+        $temporary=Join-Path $parent ('.lfs-cache-copy-'+[Guid]::NewGuid().ToString('N')+'.tmp')
+        $outputStream=[IO.FileStream]::new($temporary,[IO.FileMode]::CreateNew,[IO.FileAccess]::ReadWrite,[IO.FileShare]::None)
+        $createdTemporary=$true
+        $inputStream.CopyTo($outputStream)
+        $outputStream.Flush($true)
+        if (-not (Test-SashimiLfsObjectBytes -Stream $outputStream -Oid $Oid -Size $Size)) { throw 'LFS copy failed its byte identity check.' }
+        $outputStream.Dispose(); $outputStream=$null
+        Assert-SashimiNoReparsePoint -Path $temporary
+        Assert-SashimiNoReparsePoint -Path $Destination
+        try { [IO.File]::Move($temporary,$Destination,$false); $temporary='' }
+        catch [IO.IOException] {
+            if (-not [IO.File]::Exists($Destination)) { throw }
+            Assert-SashimiNoReparsePoint -Path $Destination
+            $existing=[IO.FileStream]::new($Destination,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::Read)
+            try {
+                Assert-SashimiNoReparsePoint -Path $Destination
+                if (-not (Test-SashimiLfsObjectBytes -Stream $existing -Oid $Oid -Size $Size)) { $result.Status='InvalidDestination'; return $result }
+            } finally { $existing.Dispose() }
+        }
+        $result.Status='Copied'; return $result
+    }
+    finally {
+        if ($null -ne $inputStream) { $inputStream.Dispose() }
+        if ($null -ne $outputStream) { $outputStream.Dispose() }
+        if ($createdTemporary -and $temporary -and [IO.File]::Exists($temporary)) {
+            # Only this invocation's CreateNew temporary file is eligible.
+            try {
+                Assert-SashimiNoReparsePoint -Path $temporary
+                [IO.File]::Delete($temporary)
+            }
+            catch [IO.IOException] { $result.CleanupWarning=$true }
+            catch [UnauthorizedAccessException] { $result.CleanupWarning=$true }
+        }
+    }
+}
+
+function Get-SashimiLfsCacheUsage {
+    param([Parameter(Mandatory)][string]$Path)
+    $bytes=0L; $count=0
+    if (-not [IO.Directory]::Exists($Path)) { return [pscustomobject]@{ Bytes=0L; Files=0; Full=$false } }
+    $pending=[Collections.Generic.Stack[string]]::new()
+    $pending.Push($Path)
+    $visited=0
+    while ($pending.Count -gt 0) {
+        $directory=$pending.Pop()
+        Assert-SashimiNoReparsePoint -Path $directory
+        foreach ($entry in [IO.DirectoryInfo]::new($directory).EnumerateFileSystemInfos()) {
+            $visited++
+            if ($visited -gt 30000) { return [pscustomobject]@{ Bytes=$bytes; Files=$count; Full=$true } }
+            if (($entry.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { throw 'Reparse point in LFS cache.' }
+            if (($entry.Attributes -band [IO.FileAttributes]::Directory) -ne 0) { $pending.Push($entry.FullName) }
+            else {
+                $bytes+=$entry.Length; $count++
+                if ($bytes -ge 32GB -or $count -ge 10000) { return [pscustomobject]@{ Bytes=$bytes; Files=$count; Full=$true } }
+            }
+        }
+    }
+    return [pscustomobject]@{ Bytes=$bytes; Files=$count; Full=$false }
+}
+
+function Sync-SashimiLfsObjectCache {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$RepositoryPath, [Parameter(Mandatory)][string]$RunRoot,
+        [Parameter(Mandatory)][string]$ManifestJson, [Parameter(Mandatory)][ValidateSet('Restore','Store')][string]$Mode,
+        [switch]$DryRun)
+    $manifest=ConvertFrom-SashimiLfsObjectManifest -Json $ManifestJson
+    $root=ConvertTo-SashimiPath -Path $RunRoot -AllowMissing -Lexical
+    $repository=ConvertTo-SashimiPath -Path $RepositoryPath -AllowMissing -Lexical
+    if (-not (Test-SashimiPathWithin -Path $repository -Root $root) -or (Split-Path -Leaf $repository) -cne 'Repository') {
+        throw 'LFS cache may access only a standalone run Repository.'
+    }
+    $expected=Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'SashimiBoyAutomation\Runs'
+    if (-not (Test-SashimiHarnessMode) -and -not (Test-SashimiPathEqual $root $expected)) { throw 'LFS cache RunRoot is not the fixed Host root.' }
+    $cache=Join-Path (Split-Path -Parent $root) 'LfsCache\objects'
+    $local=Join-Path $repository '.git\lfs\objects'
+    Assert-SashimiNoReparsePoint -Path $repository
+    $result=[ordered]@{ Mode=$Mode; DryRun=[bool]$DryRun; Objects=$manifest.Objects.Count; Hits=0; Available=0; Misses=0; Stored=0; Skipped=0; Warnings=@(); AllAvailable=$false }
+    if ($DryRun -or $manifest.Objects.Count -eq 0) { return [pscustomobject]$result }
+    [void](Get-SashimiOwnedRun -RunPath (Split-Path -Parent $repository) -RunRoot $root)
+    $mutex=$null
+    try {
+        if ($Mode -ceq 'Store') {
+            Assert-SashimiNoReparsePoint -Path $cache
+            $mutex=Enter-SashimiHostMutex -Name ('Global\SashimiBoyLfsCache-'+(Get-SashimiTextSha256 $cache.ToLowerInvariant())) -TimeoutMilliseconds 0
+            if (-not $mutex.Acquired) { $result.Skipped=$manifest.Objects.Count; $result.Warnings=@('CacheWriterBusy'); return [pscustomobject]$result }
+        }
+        $usage=if ($Mode -ceq 'Store') { Get-SashimiLfsCacheUsage $cache } else { $null }
+        foreach ($oid in $manifest.Objects.Keys) {
+            $size=$manifest.Objects[$oid]
+            $relative=Join-Path $oid.Substring(0,2) (Join-Path $oid.Substring(2,2) $oid)
+            $cacheObject=Join-Path $cache $relative
+            $localObject=Join-Path $local $relative
+            try {
+                if ($Mode -ceq 'Restore') {
+                    Assert-SashimiNoReparsePoint -Path $localObject
+                    if ([IO.File]::Exists($localObject)) {
+                        $stream=[IO.FileStream]::new($localObject,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::Read)
+                        try { Assert-SashimiNoReparsePoint -Path $localObject; $valid=Test-SashimiLfsObjectBytes $stream $oid $size } finally { $stream.Dispose() }
+                        if ($valid) { $result.Available++; continue }
+                    }
+                    if ($size -gt 5GB) { $result.Skipped++; $result.Misses++; continue }
+                    $copy=Copy-SashimiVerifiedLfsObject $cacheObject $localObject $oid $size
+                    $status=$copy.Status
+                    if ($copy.CleanupWarning) { $result.Warnings+='CacheTemporaryCleanupUnavailable' }
+                    if ($status -in @('Copied','Existing')) { $result.Hits++; $result.Available++ }
+                    else { $result.Misses++; if ($status -ne 'Missing') { $result.Warnings+=('CacheObject'+$status) } }
+                }
+                else {
+                    if ($size -gt 5GB -or $usage.Full -or $usage.Bytes+$size -gt 32GB -or $usage.Files -ge 10000) { $result.Skipped++; continue }
+                    $copy=Copy-SashimiVerifiedLfsObject $localObject $cacheObject $oid $size
+                    $status=$copy.Status
+                    if ($copy.CleanupWarning) { $result.Warnings+='CacheTemporaryCleanupUnavailable' }
+                    if ($status -ceq 'Copied') { $result.Stored++; $usage.Bytes+=$size; $usage.Files++ }
+                    elseif ($status -cne 'Existing') { $result.Skipped++; $result.Warnings+=('CacheObject'+$status) }
+                }
+            }
+            catch [IO.IOException] { $result.Skipped++; $result.Warnings+=('CacheIoUnavailable'); if($Mode -ceq 'Restore'){$result.Misses++} }
+            catch [UnauthorizedAccessException] { $result.Skipped++; $result.Warnings+=('CacheAccessUnavailable'); if($Mode -ceq 'Restore'){$result.Misses++} }
+        }
+    }
+    catch [IO.IOException] { $result.Skipped=$manifest.Objects.Count; $result.Warnings+=('CacheIoUnavailable'); if($Mode -ceq 'Restore'){$result.Misses=$manifest.Objects.Count-$result.Available} }
+    catch [UnauthorizedAccessException] { $result.Skipped=$manifest.Objects.Count; $result.Warnings+=('CacheAccessUnavailable'); if($Mode -ceq 'Restore'){$result.Misses=$manifest.Objects.Count-$result.Available} }
+    finally { if($null -ne $mutex){Exit-SashimiHostMutex -Lease $mutex} }
+    $result.Warnings=@($result.Warnings|Sort-Object -Unique)
+    $result.AllAvailable=($result.Available -eq $manifest.Objects.Count)
+    return [pscustomobject]$result
+}
+
+function Assert-SashimiLfsMaterializedBytes {
+    param([Parameter(Mandatory)][string]$RepositoryPath, [Parameter(Mandatory)][string]$ManifestJson)
+    $manifest=ConvertFrom-SashimiLfsObjectManifest $ManifestJson
+    foreach($entry in $manifest.Files) {
+        $path=Join-Path $RepositoryPath $entry.Name
+        if(-not (Test-SashimiPathWithin -Path $path -Root $RepositoryPath)){throw 'LFS working file escaped Repository.'}
+        Assert-SashimiNoReparsePoint -Path $path
+        $stream=[IO.FileStream]::new($path,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::Read)
+        try { if(-not(Test-SashimiLfsObjectBytes $stream $entry.Oid $entry.Size)){throw 'LFS working file does not match the pinned manifest.'} }
+        finally {$stream.Dispose()}
+    }
+}
+
+function Initialize-SashimiLfsWorkspace {
+    param([Parameter(Mandatory)][string]$RepositoryPath, [Parameter(Mandatory)][string]$RunRoot,
+        [Parameter(Mandatory)][ValidatePattern('^[0-9a-f]{40}$')][string]$CommitSha,
+        [Parameter(Mandatory)][ValidateSet('origin','sashimi-canonical')][string]$Remote,
+        [Parameter(Mandatory)][scriptblock]$InvokeLfs, [switch]$DryRun)
+    $native=& $InvokeLfs 'Read pinned LFS object manifest' @('ls-files','--json',$CommitSha)
+    if ($DryRun) {
+        [void](& $InvokeLfs 'Materialize Git LFS content' @('pull',$Remote))
+        return [pscustomobject]@{ DryRun=$true; CommitSha=$CommitSha; Strategy='Preview' }
+    }
+    $manifestJson=[string]$native.StdOut
+    $restore=Sync-SashimiLfsObjectCache -RepositoryPath $RepositoryPath -RunRoot $RunRoot -ManifestJson $manifestJson -Mode Restore
+    # A complete verified local set needs checkout, since clones skip smudge.
+    # A partial set retains the endpoint-pinned native pull for missing objects.
+    $strategy=if ($restore.Objects -gt 0 -and $restore.AllAvailable) { 'checkout' } else { 'pull' }
+    [string[]]$arguments=if ($strategy -ceq 'checkout') { @('checkout') } else { @('pull',$Remote) }
+    [void](& $InvokeLfs 'Materialize Git LFS content' $arguments)
+    Assert-SashimiLfsMaterializedBytes -RepositoryPath $RepositoryPath -ManifestJson $manifestJson
+    [void](& $InvokeLfs 'Validate materialized LFS objects' @('fsck'))
+    $stored=Sync-SashimiLfsObjectCache -RepositoryPath $RepositoryPath -RunRoot $RunRoot -ManifestJson $manifestJson -Mode Store
+    return [pscustomobject]@{ DryRun=$false; CommitSha=$CommitSha; Strategy=$strategy; Restore=$restore; Store=$stored }
+}

@@ -424,9 +424,15 @@ try {
     [void](Invoke-ReviewerGit 'Set explicit local Git author email' @('-C',$script:repositoryPath,'config','--local','user.email',[string]$script:reviewerConfig.GitAuthorEmail) $normalizedRun)
     [void](Invoke-ReviewerGit 'Checkout latest main detached' @('-C',$script:repositoryPath,'switch','--detach',$script:pinnedMainSha) $normalizedRun)
     [void](Invoke-ReviewerGit 'Normal synthetic merge' @('-C',$script:repositoryPath,'merge','--no-ff','--no-edit',$script:pinnedHeadSha) $normalizedRun)
-    [void](Invoke-ReviewerGitLfs 'Install Git LFS locally' @('install','--local') $script:repositoryPath)
+    # Keep the command-scope hooksPath=NUL boundary while installing filters.
+    [void](Invoke-ReviewerGitLfs 'Install Git LFS locally' @('install','--local','--skip-repo') $script:repositoryPath)
     [void](Invoke-ReviewerGit 'Disable repository hooks' @('-C',$script:repositoryPath,'config','core.hooksPath','NUL') $normalizedRun)
-    [void](Invoke-ReviewerGitLfs 'Materialize LFS content' @('pull','origin') $script:repositoryPath)
+    $lfsHead=if ($DryRun) { '0'*40 } else { (Invoke-ReviewerGit 'Pin LFS integration commit' @('-C',$script:repositoryPath,'rev-parse','HEAD') $normalizedRun).StdOut.Trim().ToLowerInvariant() }
+    $lfsCache=Initialize-SashimiLfsWorkspace -RepositoryPath $script:repositoryPath -RunRoot ([string]$script:reviewerConfig.RunRoot) -CommitSha $lfsHead -Remote origin -DryRun:$DryRun -InvokeLfs {
+        param($stage,$arguments)
+        Invoke-ReviewerGitLfs $stage $arguments $script:repositoryPath
+    }
+    if (-not $DryRun) { Write-SashimiUtf8File (Join-Path $normalizedRun 'State\LfsCache.Initial.json') (ConvertTo-SashimiJson $lfsCache) }
     Assert-ReviewerPin 'Pre-review exact PR pin recheck'
     Assert-ReviewerIssuePin 'Pre-review exact Issue pin recheck'
     $reviewDiffContext = Get-ReviewerDiffContext
