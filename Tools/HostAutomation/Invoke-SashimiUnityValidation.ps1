@@ -1694,12 +1694,16 @@ function Get-SashimiGeneratorSourceManifest {
 
 function New-SashimiGeneratorBaseline {
     param([string]$ProjectRoot, [string]$StateRoot, [object[]]$ExpectedManifest)
-    $parent = Join-Path $StateRoot ('generator-baseline-' + [Guid]::NewGuid().ToString('N'))
+    # State is already unique to this run. Keep the second Unity project no
+    # deeper than RunPath/Repository; Mono file access can still reject paths
+    # beyond MAX_PATH even when Git and the native importer accept them.
+    $parent = Join-Path $StateRoot 'g'
+    $ownerNonce = [Guid]::NewGuid().ToString('N')
     Assert-SashimiNoReparsePoint -Path $parent
     if (Test-Path -LiteralPath $parent) { throw 'Generator baseline destination already exists.' }
     [void][IO.Directory]::CreateDirectory($parent)
-    Write-SashimiUtf8File -Path (Join-Path $parent '.generator-owner') -Content (Split-Path -Leaf $parent)
-    $destination = Join-Path $parent 'Repository'
+    Write-SashimiUtf8File -Path (Join-Path $parent '.generator-owner') -Content $ownerNonce
+    $destination = Join-Path $parent 'r'
     [void][IO.Directory]::CreateDirectory($destination)
     $pending = [Collections.Generic.Stack[string]]::new(); $pending.Push($ProjectRoot)
     [long]$copiedBytes = 0; $copiedEntries = 0
@@ -1713,7 +1717,17 @@ function New-SashimiGeneratorBaseline {
             if ($copiedEntries -gt 40000 -or $copiedBytes -gt 16GB) { throw 'Generator baseline copy, including Git metadata and objects, exceeded its fixed quota.' }
             $target = Join-Path $destination $relative
             if ($entry.PSIsContainer) { [void][IO.Directory]::CreateDirectory($target); $pending.Push($entry.FullName) }
-            else { [IO.File]::Copy($entry.FullName,$target,$false) }
+            else {
+                [IO.File]::Copy($entry.FullName,$target,$false)
+                # File.Copy creates an independent file but preserves ReadOnly
+                # on Git pack/index files. Only the fresh copy is made writable
+                # before any Unity process starts, so guarded cleanup can delete
+                # it without changing source attributes or weakening deletion.
+                $attributes = [IO.File]::GetAttributes($target)
+                if (($attributes -band [IO.FileAttributes]::ReadOnly) -ne 0) {
+                    [IO.File]::SetAttributes($target, ($attributes -band (-bnot [IO.FileAttributes]::ReadOnly)))
+                }
+            }
         }
     }
     $copied = @(Get-SashimiGeneratorSourceManifest -ProjectRoot $destination)
@@ -1723,7 +1737,25 @@ function New-SashimiGeneratorBaseline {
         (ConvertTo-SashimiJson $stillOriginal) -cne $expectedJson) {
         throw 'Generator baselines are not byte-identical before either generator executes.'
     }
-    return [pscustomobject]@{ Parent=$parent; Repository=$destination; StateRoot=$StateRoot }
+    return [pscustomobject]@{ Parent=$parent; Repository=$destination; StateRoot=$StateRoot; OwnerNonce=$ownerNonce }
+}
+
+function Remove-SashimiGeneratorBaseline {
+    param([Parameter(Mandatory)][object]$Workspace, [switch]$TerminationConfirmed)
+    if (-not $TerminationConfirmed) { throw 'Generator process termination was not confirmed; baseline preserved.' }
+    $expectedParent = Join-Path ([string]$Workspace.StateRoot) 'g'
+    $expectedRepository = Join-Path $expectedParent 'r'
+    if (-not (Test-SashimiPathEqual -Left $Workspace.Parent -Right $expectedParent) -or
+        -not (Test-SashimiPathEqual -Left $Workspace.Repository -Right $expectedRepository) -or
+        [string]$Workspace.OwnerNonce -cnotmatch '^[0-9a-f]{32}$') {
+        throw 'Generator workspace ownership mismatch.'
+    }
+    $marker = Join-Path $Workspace.Parent '.generator-owner'
+    Assert-SashimiNoReparsePoint -Path $marker
+    if ([IO.File]::ReadAllText($marker) -cne [string]$Workspace.OwnerNonce) {
+        throw 'Generator workspace ownership mismatch.'
+    }
+    Remove-SashimiUnityTreeWithoutReparseTraversal -Root $Workspace.Parent -ExpectedParent $Workspace.StateRoot
 }
 
 function Get-SashimiGeneratorDelta {
@@ -2660,10 +2692,7 @@ catch {
 
 if ($null -ne $generatorWorkspace) {
     try {
-        if (-not $script:rawValidationCleanupSafe) { throw 'Generator process termination was not confirmed; baseline preserved.' }
-        $marker = Join-Path $generatorWorkspace.Parent '.generator-owner'
-        if ([IO.File]::ReadAllText($marker) -cne (Split-Path -Leaf $generatorWorkspace.Parent)) { throw 'Generator workspace ownership mismatch.' }
-        Remove-SashimiUnityTreeWithoutReparseTraversal -Root $generatorWorkspace.Parent -ExpectedParent $generatorWorkspace.StateRoot
+        Remove-SashimiGeneratorBaseline -Workspace $generatorWorkspace -TerminationConfirmed:$script:rawValidationCleanupSafe
     }
     catch {
         Add-SashimiValidationFailure -Code GeneratorWorkspacePreserved -Stage Cleanup -Message $_.Exception.Message

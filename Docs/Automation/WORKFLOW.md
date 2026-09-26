@@ -354,6 +354,14 @@ Source-tool listings prune paths outside the literal requested prefix. They
 retain directory handle leases while traversing matching subtrees; read/write
 path, handle, type, byte and role restrictions remain in force.
 
+The independent Unity generator baseline uses the owned run's `State/g/r`
+directory, no deeper than its primary `Repository`. Its parent must be new,
+has a random ownership nonce, and can be cleaned only after process termination
+and exact parent/project/nonce checks. Newly copied files have only their
+ReadOnly bit removed before Unity starts; original file bytes and attributes
+remain unchanged. The fixed production RunRoot and no-reparse cleanup boundary
+are unchanged.
+
 The Windows Host installs Git LFS filters with `install --local --skip-repo`
 and keeps hooks disabled. Its fixed, optional local LFS object cache is defined
 in [Host operations](../HostAutomation/OPERATIONS.md#local-lfs-asset-cache).
