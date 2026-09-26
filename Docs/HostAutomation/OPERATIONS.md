@@ -599,8 +599,8 @@ One task invocation performs these phases:
    terminal failures, and implicit smudging is disabled before the pinned pull.
    Every `.git` control entry except object/LFS payload data is manifested;
    operation pseudorefs/directories, lock files, unknown control state, and
-   reparses fail closed, while optional locks and automatic maintenance are
-   disabled for Host inspection.
+   reparses fail closed, while optional locks, diff index auto-refresh, and
+   automatic maintenance are disabled for Host inspection.
 9. Revalidate the authenticated actor and complete pin immediately before every
    remote mutation. Developer delivery also pins the fetched `origin/main` SHA
    and stops before any later delivery push or status transition if the live
@@ -715,6 +715,18 @@ native/XML disagreement, unexpected Console errors, and out-of-scope mutation
 are failures. Screenshot and preview artifacts support human review; they do
 not replace human verification. The structured Unity report is written to
 `Artifacts\Unity\UnityValidation.Summary.json` in a non-DryRun run.
+
+The Owner-approved Stage01 salmon preview policy is fixed to Issue #20 and
+the three exact PNG paths listed in [SECURITY.md](SECURITY.md). RGB difference
+is limited to 1/255 and changed pixels to 0.1%; alpha, size, metadata and all
+other assets stay exact. Inspect `Determinism.Comparisons` for Run1/Run2,
+complete source, and both committed/Reviewer-run comparisons. Original hashes
+and complete delta files are retained; permitted drift is never rewritten or
+hidden. The parent Reviewer records its final comparison in
+`ReviewDecision.json`. New differences after generator evidence remain a
+failure. This does not waive the Owner's visual verification or enable the
+scheduled task; install the reviewed, merged bundle and complete a fresh
+Developer/Reviewer pilot before enabling it.
 
 Residual boundary: Unity and editor C# run only after the Host's canonical
 repository, authorized-author, exact ref/SHA, workflow, and protected-scope

@@ -3,6 +3,227 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+# Owner-approved 2026-09-26. This is a fixed Host policy, never an Issue/PR or
+# configuration supplied exclusion. It applies only to the three preview files.
+function Test-SashimiToleratedPreviewPath {
+    param([int]$IssueNumber, [string]$Path)
+    return $IssueNumber -eq 20 -and @(
+        'Assets/_SashimiBoy/Art/Generated/Previews/Stage01/SalmonAssembly_Initial.png',
+        'Assets/_SashimiBoy/Art/Generated/Previews/Stage01/SalmonAssembly_Parts.png',
+        'Assets/_SashimiBoy/Art/Generated/Previews/Stage01/SalmonAssembly_Anchors.png'
+    ) -ccontains $Path
+}
+
+function Initialize-SashimiPreviewComparison {
+    if ('Sashimi.Host.PreviewPng' -as [type]) { return }
+    # Decode original RGB/RGBA samples, not a renderer's premultiplied/converted
+    # bitmap. Fixed input/decode quotas also bound corrupt or compressed bombs.
+    Add-Type -TypeDefinition @'
+using System;
+using System.IO;
+using System.IO.Compression;
+using System.Security.Cryptography;
+using System.Text;
+namespace Sashimi.Host {
+    public sealed class PreviewDifference {
+        public int Width, Height, MaximumRgbDelta;
+        public long PixelCount, ChangedPixels;
+        public bool AlphaExact, MetadataExact, Passed;
+    }
+    public static class PreviewPng {
+        const int MaximumBytes = 25 * 1024 * 1024;
+        const int MaximumDecodedBytes = 32 * 1024 * 1024;
+        sealed class Decoded { public int Width, Height, Channels; public byte[] Pixels, Metadata; }
+        static uint UInt32(byte[] b, int p) => ((uint)b[p] << 24) | ((uint)b[p+1] << 16) | ((uint)b[p+2] << 8) | b[p+3];
+        static readonly uint[] CrcTable = MakeCrcTable();
+        static uint[] MakeCrcTable() {
+            var table = new uint[256];
+            for (uint i=0; i<256; i++) { uint c=i; for (int k=0;k<8;k++) c=(c & 1)!=0 ? 0xedb88320U^(c>>1) : c>>1; table[i]=c; }
+            return table;
+        }
+        static uint Crc(byte[] b, int p, int n) {
+            uint c=0xffffffffU; for(int i=0;i<n;i++) c=CrcTable[(c^b[p+i])&255]^(c>>8); return c^0xffffffffU;
+        }
+        static InvalidDataException Invalid() => new InvalidDataException("Preview PNG is malformed, unsupported, or exceeds its fixed quota.");
+        // Avoid zlib read-ahead concealing trailing compressed data. IDAT size
+        // and decoded size are already bounded before decompression starts.
+        sealed class ExactInput : MemoryStream {
+            public ExactInput(byte[] b) : base(b, false) {}
+            public override int Read(byte[] b,int o,int n) => base.Read(b,o,Math.Min(n,1));
+            public override int Read(Span<byte> b) => base.Read(b.Slice(0,Math.Min(b.Length,1)));
+        }
+        static int Paeth(int a,int b,int c) {
+            int p=a+b-c, pa=Math.Abs(p-a), pb=Math.Abs(p-b), pc=Math.Abs(p-c);
+            return pa<=pb && pa<=pc ? a : pb<=pc ? b : c;
+        }
+        static Decoded Decode(byte[] bytes) {
+            byte[] signature={137,80,78,71,13,10,26,10};
+            if(bytes==null || bytes.Length<45 || bytes.Length>MaximumBytes || !bytes.AsSpan(0,8).SequenceEqual(signature)) throw Invalid();
+            int width=0,height=0,channels=0,p=8; bool header=false,data=false,endedData=false,end=false;
+            using var idat=new MemoryStream(); using var metadata=new MemoryStream();
+            while(p<bytes.Length) {
+                if(bytes.Length-p<12) throw Invalid();
+                uint n=UInt32(bytes,p); if(n>(uint)(bytes.Length-p-12)) throw Invalid();
+                int size=(int)n; string type=Encoding.ASCII.GetString(bytes,p+4,4);
+                for(int k=p+4;k<p+8;k++) if(!((bytes[k]>=65 && bytes[k]<=90)||(bytes[k]>=97 && bytes[k]<=122))) throw Invalid();
+                if((bytes[p+6]&32)!=0 || Crc(bytes,p+4,size+4)!=UInt32(bytes,p+8+size)) throw Invalid();
+                if(!header && type!="IHDR") throw Invalid();
+                if(type=="IHDR") {
+                    if(header || p!=8 || size!=13) throw Invalid();
+                    uint w=UInt32(bytes,p+8),h=UInt32(bytes,p+12);
+                    if(w==0 || h==0 || w>16384 || h>16384 || bytes[p+16]!=8 || (bytes[p+17]!=2 && bytes[p+17]!=6) || bytes[p+18]!=0 || bytes[p+19]!=0 || bytes[p+20]!=0) throw Invalid();
+                    width=(int)w; height=(int)h; channels=bytes[p+17]==2 ? 3 : 4;
+                    if((long)width*height*channels>MaximumDecodedBytes) throw Invalid();
+                    header=true;
+                } else if(type=="IDAT") {
+                    if(endedData) throw Invalid();
+                    if(!data) metadata.Write(Encoding.ASCII.GetBytes("IDAT"));
+                    data=true; idat.Write(bytes,p+8,size);
+                } else {
+                    if(data) endedData=true;
+                    if(type=="IEND") { if(!data || size!=0 || p+12!=bytes.Length) throw Invalid(); end=true; }
+                    // tRNS adds transparency to RGB; palettes, animation and
+                    // unknown critical chunks are outside this narrow policy.
+                    else if(type=="tRNS" || type=="acTL" || type=="fcTL" || type=="fdAT" || (bytes[p+4]&32)==0) throw Invalid();
+                }
+                if(type!="IDAT") metadata.Write(bytes,p,size+12);
+                p+=size+12; if(end) break;
+            }
+            if(!end || idat.Length<6) throw Invalid();
+            byte[] compressed=idat.ToArray();
+            if((compressed[0]&15)!=8 || (compressed[0]>>4)>7 || ((compressed[0]<<8)+compressed[1])%31!=0 || (compressed[1]&32)!=0) throw Invalid();
+            byte[] pixels=new byte[width*height*channels]; int stride=width*channels;
+            using var input=new ExactInput(compressed);
+            using(var zlib=new ZLibStream(input,CompressionMode.Decompress,true)) {
+                byte[] row=new byte[stride]; uint adlerA=1,adlerB=0;
+                for(int y=0;y<height;y++) {
+                    int filter=zlib.ReadByte(); if(filter<0 || filter>4) throw Invalid();
+                    adlerA=(adlerA+(uint)filter)%65521; adlerB=(adlerB+adlerA)%65521;
+                    zlib.ReadExactly(row);
+                    for(int x=0;x<stride;x++) {
+                        adlerA=(adlerA+row[x])%65521; adlerB=(adlerB+adlerA)%65521;
+                        int at=y*stride+x, a=x>=channels ? pixels[at-channels] : 0, b=y>0 ? pixels[at-stride] : 0, c=y>0 && x>=channels ? pixels[at-stride-channels] : 0;
+                        int predictor=filter==0 ? 0 : filter==1 ? a : filter==2 ? b : filter==3 ? (a+b)/2 : Paeth(a,b,c);
+                        pixels[at]=unchecked((byte)(row[x]+predictor));
+                    }
+                }
+                if(zlib.ReadByte()!=-1 || input.Position!=input.Length || UInt32(compressed,compressed.Length-4)!=((adlerB<<16)|adlerA)) throw Invalid();
+            }
+            return new Decoded { Width=width,Height=height,Channels=channels,Pixels=pixels,Metadata=SHA256.HashData(metadata.ToArray()) };
+        }
+        public static PreviewDifference Compare(byte[] first, byte[] second) {
+            var a=Decode(first); var b=Decode(second);
+            if(a.Width!=b.Width || a.Height!=b.Height || a.Channels!=b.Channels) throw Invalid();
+            var result=new PreviewDifference { Width=a.Width,Height=a.Height,PixelCount=(long)a.Width*a.Height,AlphaExact=true,MetadataExact=a.Metadata.AsSpan().SequenceEqual(b.Metadata) };
+            for(int p=0;p<a.Pixels.Length;p+=a.Channels) {
+                bool changed=false;
+                for(int c=0;c<3;c++) { int delta=Math.Abs(a.Pixels[p+c]-b.Pixels[p+c]); if(delta>0) changed=true; result.MaximumRgbDelta=Math.Max(result.MaximumRgbDelta,delta); }
+                if(changed) result.ChangedPixels++;
+                if(a.Channels==4 && a.Pixels[p+3]!=b.Pixels[p+3]) result.AlphaExact=false;
+            }
+            result.Passed=result.MetadataExact && result.AlphaExact && result.MaximumRgbDelta<=1 && result.ChangedPixels*1000<=result.PixelCount;
+            return result;
+        }
+    }
+}
+'@
+}
+
+function Get-SashimiPreviewCaptures {
+    param([string]$ProjectRoot, [AllowEmptyCollection()][object[]]$Snapshot, [int]$IssueNumber)
+    $captures = [Collections.Generic.Dictionary[string,byte[]]]::new([StringComparer]::Ordinal)
+    foreach ($entry in $Snapshot) {
+        if (-not (Test-SashimiToleratedPreviewPath $IssueNumber $entry.Path) -or
+            (Get-SashimiPropertyValue $entry 'Kind' 'File') -cne 'File') { continue }
+        $path = Join-Path $ProjectRoot $entry.Path
+        Assert-SashimiNoReparsePoint $path
+        $stream = [IO.File]::Open($path,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::Read)
+        try {
+            if ($stream.Length -lt 1 -or $stream.Length -gt 25MB -or $stream.Length -ne $entry.Length) { throw 'Preview capture exceeds its quota or changed since the manifest.' }
+            $bytes = [byte[]]::new([int]$stream.Length)
+            $stream.ReadExactly($bytes,0,$bytes.Length)
+            if ($stream.ReadByte() -ne -1 -or [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($bytes)).ToLowerInvariant() -cne $entry.Sha256) {
+                throw 'Preview capture changed since the manifest.'
+            }
+            $captures.Add($entry.Path,$bytes)
+        } finally { $stream.Dispose() }
+    }
+    # Captures remain private in memory. Only hashes and comparison metrics may
+    # enter the existing bounded JSON evidence files.
+    return ,$captures
+}
+
+function Compare-SashimiGeneratedManifest {
+    param(
+        [AllowEmptyCollection()][object[]]$Before, [AllowEmptyCollection()][object[]]$After,
+        [object]$BeforeCaptures, [object]$AfterCaptures, [int]$IssueNumber
+    )
+    $left=[Collections.Generic.Dictionary[string,object]]::new([StringComparer]::Ordinal)
+    $right=[Collections.Generic.Dictionary[string,object]]::new([StringComparer]::Ordinal)
+    foreach ($entry in $Before) { $left.Add([string]$entry.Path,$entry) }
+    foreach ($entry in $After) { $right.Add([string]$entry.Path,$entry) }
+    $changed=[Collections.Generic.List[string]]::new()
+    $previews=[Collections.Generic.List[object]]::new()
+    $passed=$left.Count -eq $right.Count
+    foreach ($path in $left.Keys) {
+        if (-not $right.ContainsKey($path)) { $passed=$false; $changed.Add($path); continue }
+        $a=$left[$path]; $b=$right[$path]
+        $kindA=[string](Get-SashimiPropertyValue $a 'Kind' 'File'); $kindB=[string](Get-SashimiPropertyValue $b 'Kind' 'File')
+        if ($kindA -cne $kindB -or $kindA -ceq 'Missing') { $passed=$false; $changed.Add($path); continue }
+        if ([long]$a.Length -eq [long]$b.Length -and [string]$a.Sha256 -ceq [string]$b.Sha256) { continue }
+        $changed.Add($path)
+        if ($kindA -cne 'File' -or -not (Test-SashimiToleratedPreviewPath $IssueNumber $path)) { $passed=$false; continue }
+        $evidence=[ordered]@{ Path=$path; BeforeSha256=$a.Sha256; AfterSha256=$b.Sha256; BeforeLength=$a.Length; AfterLength=$b.Length; Passed=$false; Metrics=$null; Error=$null }
+        try {
+            foreach ($pair in @(@($BeforeCaptures,$a),@($AfterCaptures,$b))) {
+                $capture=$pair[0]; $entry=$pair[1]
+                if ($null -eq $capture -or -not $capture.ContainsKey($path) -or $capture[$path].Length -ne $entry.Length -or
+                    [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([byte[]]$capture[$path])).ToLowerInvariant() -cne $entry.Sha256) {
+                    throw 'Preview comparison requires original bytes bound to the manifest.'
+                }
+            }
+            Initialize-SashimiPreviewComparison
+            $evidence.Metrics=[Sashimi.Host.PreviewPng]::Compare($BeforeCaptures[$path],$AfterCaptures[$path])
+            $evidence.Passed=$evidence.Metrics.Passed
+        } catch { $evidence.Error='Original PNG bytes are unavailable, malformed, unsupported, or outside the fixed policy.' }
+        if (-not $evidence.Passed) { $passed=$false }
+        $previews.Add([pscustomobject]$evidence)
+    }
+    foreach ($path in $right.Keys) { if (-not $left.ContainsKey($path)) { $passed=$false; $changed.Add($path) } }
+    return [pscustomobject]@{ Policy='Stage01SalmonPreviewRgb1PixelPermille1-v1'; Passed=$passed; ByteIdentical=($changed.Count -eq 0); ChangedPaths=$changed.ToArray(); Previews=$previews.ToArray() }
+}
+
+function Compare-SashimiGeneratorReproducibility {
+    param(
+        [object]$Run1, [object]$Run2, [object]$Committed,
+        [int]$IssueNumber, [switch]$CompareSource, [switch]$CompareCommitted
+    )
+    $pairs=[Collections.Generic.List[object]]::new()
+    $pairs.Add([pscustomobject]@{Pair='Run1-Run2 outputs';Result=(Compare-SashimiGeneratedManifest -Before $Run1.Output -After $Run2.Output -BeforeCaptures $Run1.Captures -AfterCaptures $Run2.Captures -IssueNumber $IssueNumber)})
+    if ($CompareSource) {
+        $pairs.Add([pscustomobject]@{Pair='Run1-Run2 complete source';Result=(Compare-SashimiGeneratedManifest -Before $Run1.Source -After $Run2.Source -BeforeCaptures $Run1.Captures -AfterCaptures $Run2.Captures -IssueNumber $IssueNumber)})
+    }
+    if ($CompareCommitted) {
+        # Similarity is not transitive; neither committed comparison can be
+        # inferred from the independent runs' comparison.
+        $pairs.Add([pscustomobject]@{Pair='Committed-Run1';Result=(Compare-SashimiGeneratedManifest -Before $Committed.Output -After $Run1.Output -BeforeCaptures $Committed.Captures -AfterCaptures $Run1.Captures -IssueNumber $IssueNumber)})
+        $pairs.Add([pscustomobject]@{Pair='Committed-Run2';Result=(Compare-SashimiGeneratedManifest -Before $Committed.Output -After $Run2.Output -BeforeCaptures $Committed.Captures -AfterCaptures $Run2.Captures -IssueNumber $IssueNumber)})
+    }
+    return [pscustomobject]@{
+        Passed=(@($pairs | Where-Object { -not $_.Result.Passed }).Count -eq 0)
+        CommittedPassed=(@($pairs | Where-Object { $_.Pair.StartsWith('Committed-', [StringComparison]::Ordinal) -and -not $_.Result.Passed }).Count -eq 0)
+        Comparisons=$pairs.ToArray()
+    }
+}
+
+function Assert-SashimiGeneratorManifestUnchanged {
+    param([object[]]$Before, [object[]]$After)
+    # No tolerance between observations of a single completed run. This also
+    # detects Run2 writing back into Run1's project via an absolute path.
+    $comparison=Compare-SashimiGeneratedManifest -Before $Before -After $After -IssueNumber 0
+    if (-not $comparison.Passed) { throw 'The primary generator source manifest changed after Run1 evidence was captured.' }
+}
+
 $script:SashimiMinimumPowerShellVersion = [Version]'7.5.0'
 if ($PSVersionTable.PSEdition -cne 'Core' -or $PSVersionTable.PSVersion -lt $script:SashimiMinimumPowerShellVersion) {
     throw "SASHIMI BOY Host Automation requires PowerShell Core $script:SashimiMinimumPowerShellVersion or newer."
@@ -2105,6 +2326,43 @@ function Assert-SashimiToolEnvironmentOverride {
     throw "GitHub CLI environment override '$Name' is not in the fixed Host allowlist."
 }
 
+function Get-SashimiContentDiffArguments {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)][string]$RepositoryPath,
+        [string]$BaselineRef = ''
+    )
+
+    # With index auto-refresh disabled, name-only output can include files
+    # whose stat data changed but whose contents did not. Numstat compares
+    # contents; disable rename pairing so every record has exactly one path.
+    $arguments = @('-C',$RepositoryPath,'diff','--numstat','-z','--no-renames',
+        '--no-ext-diff','--no-textconv','--diff-filter=ACDMRTUXB')
+    if (-not [string]::IsNullOrEmpty($BaselineRef)) { $arguments += $BaselineRef }
+    return $arguments + @('--')
+}
+
+function ConvertFrom-SashimiNumstatPathList {
+    [CmdletBinding()]
+    param([AllowNull()][AllowEmptyString()][string]$Text)
+
+    if ([string]::IsNullOrEmpty($Text)) { return @() }
+    if ($Text[$Text.Length - 1] -ne [char]0) {
+        throw 'Git numstat output is missing its final NUL terminator.'
+    }
+    $paths = [Collections.Generic.List[string]]::new()
+    foreach ($record in $Text.Substring(0,$Text.Length - 1).Split([char]0)) {
+        $match = [regex]::Match($record,'\A(?:[0-9]+\t[0-9]+|-\t-)\t([^\x00]+)\z')
+        if (-not $match.Success) {
+            throw 'Git numstat output contains a malformed or rename-paired record.'
+        }
+        # Zero counts can represent empty-file or mode-only changes. Preserve
+        # every path Git emits, including binary, added and deleted files.
+        $paths.Add($match.Groups[1].Value)
+    }
+    return $paths.ToArray()
+}
+
 function Set-SashimiFixedGitProcessEnvironment {
     [CmdletBinding()]
     param([Parameter(Mandatory = $true)][Diagnostics.ProcessStartInfo]$StartInfo)
@@ -2145,6 +2403,10 @@ function Set-SashimiFixedGitProcessEnvironment {
         [pscustomobject]@{ Key='maintenance.auto'; Value='false' },
         [pscustomobject]@{ Key='sequence.editor'; Value='false' },
         [pscustomobject]@{ Key='diff.external'; Value='' },
+        # Porcelain diff can refresh stat-only index entries even with
+        # GIT_OPTIONAL_LOCKS=0. Inspection must preserve exact index bytes;
+        # content and whitespace detection remain enabled.
+        [pscustomobject]@{ Key='diff.autoRefreshIndex'; Value='false' },
         [pscustomobject]@{ Key='commit.gpgSign'; Value='false' },
         [pscustomobject]@{ Key='tag.gpgSign'; Value='false' },
         [pscustomobject]@{ Key='credential.interactive'; Value='never' },

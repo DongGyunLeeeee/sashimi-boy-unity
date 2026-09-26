@@ -218,7 +218,8 @@ fetch and push URLs, attributes/filter inputs, worktree identity, and every
 `.git` control entry except object and LFS payload stores. Merge, cherry-pick,
 revert, rebase, bisect, notes-merge, sequencer, lock, unknown-control, and
 reparse state are terminal even if present in the first snapshot. Read-only Git
-inspection runs with optional locks and automatic maintenance disabled. Each
+inspection runs with optional locks, diff index auto-refresh, and automatic
+maintenance disabled. Each
 Unity stage runs in a kill-on-close job and the Host confirms that no descendant
 remains before trusting the post-stage snapshot. Drift is terminal and cannot
 fall through to commit, push, comment, or Project transition. Network Git/LFS
@@ -406,6 +407,11 @@ and performs the final transition to `Done`.
 - Issue-specific generator or preview hooks run only when an approved typed
   mapping exists in configuration. Natural-language Issue or handoff text
   cannot supply a command.
+- Issue #20's three Stage01 salmon preview PNGs have the fixed Owner-approved
+  RGB 1/255, changed-pixel 0.1% tolerance described in
+  [SECURITY.md](SECURITY.md). Alpha, dimensions, metadata, other assets and
+  Git control state stay exact. Both independent runs and both Reviewer
+  committed comparisons must pass; human visual verification still applies.
 - Bootstrap validation exercises the privilege boundary through parser, static
   ordering, source-tree fail-closed, fixture, and DryRun checks only. It does
   not register the task or execute a real elevated-parent/linked-token relaunch;
