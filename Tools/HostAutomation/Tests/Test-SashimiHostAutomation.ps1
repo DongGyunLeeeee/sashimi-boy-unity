@@ -6479,6 +6479,7 @@ function Unregister-ScheduledTask {
     }
 
     . (Join-Path $PSScriptRoot 'CompletionFixtures.ps1')
+    . (Join-Path $PSScriptRoot 'PreviewFixtures.ps1')
 
     Invoke-HostTestCase 'PendingCommandAndNaturalLanguageRemainInert' {
         $sentinel = Join-Path $script:temporaryRoot 'pending-command-executed.txt'

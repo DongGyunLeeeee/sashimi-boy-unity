@@ -208,13 +208,14 @@ function Assert-ReviewerIssuePin {
 }
 
 function Get-ReviewerGitVisibleContentSnapshot {
+    param([int]$PreviewIssueNumber = 0)
     # Hash every tracked file and every non-ignored untracked file.  Unity's
     # normal ignored import products (for example Library/) are intentionally
     # outside the deliverable worktree, while source/test files remain covered
     # byte-for-byte even if their Git status category does not change.
     $listed = Invoke-ReviewerGit 'Snapshot Git-visible worktree paths' @(
         '-C',$script:repositoryPath,'ls-files','-z','--cached','--others','--exclude-standard','--') $normalizedRun
-    if ($DryRun) { return [pscustomobject]@{ FileCount=0; Sha256='planned'; WithoutSettingsSha256='planned' } }
+    if ($DryRun) { return [pscustomobject]@{ FileCount=0; Sha256='planned'; WithoutSettingsSha256='planned'; Manifest=@(); PreviewCaptures=$null } }
 
     $repositoryRoot = [IO.Path]::GetFullPath($script:repositoryPath).TrimEnd([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar)
     $repositoryPrefix = $repositoryRoot + [IO.Path]::DirectorySeparatorChar
@@ -231,6 +232,7 @@ function Get-ReviewerGitVisibleContentSnapshot {
     $sortedPaths = [string[]]@($uniquePaths)
     [Array]::Sort($sortedPaths, [StringComparer]::Ordinal)
     $records = [Collections.Generic.List[string]]::new()
+    $manifest = [Collections.Generic.List[object]]::new()
     foreach ($relativePath in $sortedPaths) {
         $candidatePath = [IO.Path]::GetFullPath((Join-Path $repositoryRoot $relativePath.Replace('/', [IO.Path]::DirectorySeparatorChar)))
         if (Test-Path -LiteralPath $candidatePath -PathType Leaf) {
@@ -241,13 +243,16 @@ function Get-ReviewerGitVisibleContentSnapshot {
             }
             $digest = (Get-FileHash -LiteralPath $candidatePath -Algorithm SHA256).Hash.ToLowerInvariant()
             $records.Add("$relativePath`0file`0$([int64]$item.Length)`0$digest")
+            $manifest.Add([pscustomobject]@{Path=$relativePath;Kind='File';Length=[long]$item.Length;Sha256=$digest})
         }
         elseif (Test-Path -LiteralPath $candidatePath -PathType Container) {
             Assert-SashimiNoReparsePoint -Path $candidatePath
             $records.Add("$relativePath`0directory`00`0")
+            $manifest.Add([pscustomobject]@{Path=$relativePath;Kind='Directory';Length=0;Sha256=''})
         }
         else {
             $records.Add("$relativePath`0missing`00`0")
+            $manifest.Add([pscustomobject]@{Path=$relativePath;Kind='Missing';Length=0;Sha256=''})
         }
     }
 
@@ -255,10 +260,13 @@ function Get-ReviewerGitVisibleContentSnapshot {
         FileCount = $sortedPaths.Count
         Sha256 = Get-SashimiTextSha256 -Text ([string]::Join("`n", $records.ToArray()))
         WithoutSettingsSha256 = Get-SashimiTextSha256 -Text ([string]::Join("`n", [string[]]@($records | Where-Object { -not $_.StartsWith("ProjectSettings/ProjectSettings.asset`0", [StringComparison]::Ordinal) })))
+        Manifest = $manifest.ToArray()
+        PreviewCaptures = Get-SashimiPreviewCaptures -ProjectRoot $repositoryRoot -Snapshot $manifest.ToArray() -IssueNumber $PreviewIssueNumber
     }
 }
 
 function Get-ReviewerGitSnapshot {
+    param([int]$PreviewIssueNumber = 0)
     $head = (Invoke-ReviewerGit 'Snapshot local HEAD' @('-C',$script:repositoryPath,'rev-parse','HEAD') $normalizedRun).StdOut.Trim().ToLowerInvariant()
     $ref = (Invoke-ReviewerGit 'Snapshot current ref' @('-C',$script:repositoryPath,'rev-parse','--symbolic-full-name','HEAD') $normalizedRun).StdOut.Trim()
     $status = (Invoke-ReviewerGit 'Snapshot working tree and index' @('-C',$script:repositoryPath,'status','--porcelain=v1','--untracked-files=all') $normalizedRun).StdOut
@@ -268,7 +276,7 @@ function Get-ReviewerGitSnapshot {
     $hooks = (Invoke-ReviewerGit 'Snapshot disabled hooks' @('-C',$script:repositoryPath,'config','--get','core.hooksPath') $normalizedRun).StdOut.Trim()
     $localConfig = (Invoke-ReviewerGit 'Snapshot local Git config' @('-C',$script:repositoryPath,'config','--local','--list') $normalizedRun).StdOut.Trim()
     $indexFlags = (Invoke-ReviewerGit 'Snapshot index flags' @('-C',$script:repositoryPath,'ls-files','-v') $normalizedRun).StdOut
-    $visibleContent = Get-ReviewerGitVisibleContentSnapshot
+    $visibleContent = Get-ReviewerGitVisibleContentSnapshot -PreviewIssueNumber $PreviewIssueNumber
     $controlFiles = New-Object 'System.Collections.Generic.List[string]'
     foreach ($relativeControlPath in @('.git/HEAD','.git/index','.git/config','.git/info/exclude','.git/info/attributes','.git/packed-refs','.git/shallow')) {
         $controlPath = Join-Path $script:repositoryPath ($relativeControlPath.Replace('/','\'))
@@ -280,17 +288,21 @@ function Get-ReviewerGitSnapshot {
         if ($origin -cne [string]$script:reviewerConfig.RemoteUrl) { throw 'Reviewer repository origin no longer equals the canonical repository URL.' }
         if ($pushOrigin -cne [string]$script:reviewerConfig.RemoteUrl -or $hooks -cne 'NUL') { throw 'Reviewer remote or hooks configuration crossed the Host ownership boundary.' }
     }
-    return [pscustomobject][ordered]@{ Head=$head; Ref=$ref; Status=$status; Refs=$refs; Origin=$origin; PushOrigin=$pushOrigin; Hooks=$hooks; LocalConfig=$localConfig; IndexFlags=$indexFlags; VisibleFileCount=$visibleContent.FileCount; VisibleContentSha256=$visibleContent.Sha256; WithoutSettingsSha256=$visibleContent.WithoutSettingsSha256; ControlFiles=[string]::Join(';',$controlFiles) }
+    return [pscustomobject][ordered]@{ Head=$head; Ref=$ref; Status=$status; Refs=$refs; Origin=$origin; PushOrigin=$pushOrigin; Hooks=$hooks; LocalConfig=$localConfig; IndexFlags=$indexFlags; VisibleFileCount=$visibleContent.FileCount; VisibleContentSha256=$visibleContent.Sha256; WithoutSettingsSha256=$visibleContent.WithoutSettingsSha256; ControlFiles=[string]::Join(';',$controlFiles); Manifest=$visibleContent.Manifest; PreviewCaptures=$visibleContent.PreviewCaptures }
 }
 
 function Assert-ReviewerGitSnapshotUnchanged {
     param(
         [Parameter(Mandatory = $true)][object]$Before,
         [Parameter(Mandatory = $true)][string]$Boundary,
-        [AllowNull()][object]$KnownUnityDefaultDrift
+        [AllowNull()][object]$KnownUnityDefaultDrift,
+        [int]$IssueNumber = 0,
+        [AllowNull()][object]$ValidationResult
     )
-    $after = Get-ReviewerGitSnapshot
+    $previewIssueNumber = if ($Boundary -ceq 'Unity validation') { $IssueNumber } else { 0 }
+    $after = Get-ReviewerGitSnapshot -PreviewIssueNumber $previewIssueNumber
     $allowSettings = $false
+    $previewComparison = $null
     if (-not $DryRun -and $Boundary -ceq 'Unity validation' -and [bool](Get-SashimiPropertyValue $KnownUnityDefaultDrift 'Allowed' $false)) {
         $assessment = Get-SashimiPropertyValue $KnownUnityDefaultDrift 'Assessment' $null
         $settingsPath=Join-Path $script:repositoryPath 'ProjectSettings/ProjectSettings.asset'
@@ -300,12 +312,55 @@ function Assert-ReviewerGitSnapshotUnchanged {
             (Get-FileHash -LiteralPath $settingsPath -Algorithm SHA256).Hash.ToLowerInvariant() -ceq [string](Get-SashimiPropertyValue $assessment 'WorkingFileSha256' '')
         if (-not $allowSettings) { throw 'Reviewer Unity-default drift evidence no longer matches the worktree.' }
     }
+    if (-not $DryRun -and $previewIssueNumber -eq 20) {
+        $generated = Get-SashimiPropertyValue $ValidationResult 'Determinism' $null
+        if ([bool](Get-SashimiPropertyValue $generated 'Required' $false) -and [bool](Get-SashimiPropertyValue $generated 'Passed' $false)) {
+            # Bind every present approved preview to its Run1 evidence, including
+            # an edit which restores baseline bytes and therefore clears status.
+            foreach ($current in $after.Manifest) {
+                if (-not (Test-SashimiToleratedPreviewPath $IssueNumber $current.Path)) { continue }
+                $bound = @((Get-SashimiPropertyValue $generated 'Run1Snapshot' @()) | Where-Object { $_.Path -ceq $current.Path })
+                if ($bound.Count -ne 1 -or $current.Kind -cne 'File' -or $bound[0].Kind -cne 'File' -or
+                    $bound[0].Length -ne $current.Length -or $bound[0].Sha256 -cne $current.Sha256) {
+                    throw 'Reviewer preview evidence no longer matches the worktree.'
+                }
+            }
+        }
+    }
+    if (-not $DryRun -and -not $allowSettings -and $previewIssueNumber -eq 20 -and $Before.VisibleContentSha256 -cne $after.VisibleContentSha256) {
+        $determinism = Get-SashimiPropertyValue $ValidationResult 'Determinism' $null
+        if (-not [bool](Get-SashimiPropertyValue $determinism 'Required' $false) -or
+            -not [bool](Get-SashimiPropertyValue $determinism 'Passed' $false)) { throw 'Reviewer preview drift lacks executed generator evidence.' }
+        $stages = Get-SashimiPropertyValue $ValidationResult 'Stages' $null
+        foreach ($name in @('GeneratorRun1','GeneratorRun2')) {
+            $stage = Get-SashimiPropertyValue $stages $name $null
+            if (-not [bool](Get-SashimiPropertyValue $stage 'Success' $false) -or
+                [bool](Get-SashimiPropertyValue $stage 'Planned' $true)) { throw 'Reviewer preview drift lacks executed generator evidence.' }
+        }
+        foreach ($pair in @('Run1-Run2 outputs','Run1-Run2 complete source','Committed-Run1','Committed-Run2')) {
+            $evidence = @((Get-SashimiPropertyValue $determinism 'Comparisons' @()) | Where-Object { $_.Pair -ceq $pair })
+            if ($evidence.Count -ne 1 -or -not [bool]$evidence[0].Result.Passed) { throw 'Reviewer preview drift lacks pairwise generator evidence.' }
+        }
+        $previewComparison = Compare-SashimiGeneratedManifest -Before $Before.Manifest -After $after.Manifest -BeforeCaptures $Before.PreviewCaptures -AfterCaptures $after.PreviewCaptures -IssueNumber $IssueNumber
+        if (-not $previewComparison.Passed -or $previewComparison.ByteIdentical -or -not [string]::IsNullOrWhiteSpace($Before.Status)) {
+            throw 'Reviewer preview drift exceeds the fixed Owner-approved policy.'
+        }
+        $expectedStatus = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+        foreach ($path in $previewComparison.ChangedPaths) {
+            [void]$expectedStatus.Add(" M $path")
+        }
+        $actualStatus = @($after.Status.TrimEnd("`r","`n") -split '\r?\n')
+        if ($actualStatus.Count -ne $expectedStatus.Count) { throw 'Reviewer preview drift contains unexpected Git status entries.' }
+        foreach ($line in $actualStatus) { if (-not $expectedStatus.Remove($line)) { throw 'Reviewer preview drift contains unexpected Git status entries.' } }
+    }
     foreach ($name in @('Head','Ref','Status','Refs','Origin','PushOrigin','Hooks','LocalConfig','IndexFlags','VisibleFileCount','VisibleContentSha256','WithoutSettingsSha256','ControlFiles')) {
         if ($allowSettings -and @('Status','VisibleContentSha256') -ccontains $name) { continue }
+        if ($null -ne $previewComparison -and @('Status','VisibleContentSha256','WithoutSettingsSha256') -ccontains $name) { continue }
         if (-not [string]::Equals([string]$Before.$name, [string]$after.$name, [StringComparison]::Ordinal)) {
             throw "$Boundary crossed the read-only Reviewer boundary by changing Git $name."
         }
     }
+    return $previewComparison
 }
 
 function Assert-ReviewerPublicationFreshness {
@@ -487,9 +542,9 @@ Use Unverified only when a specific CURRENT required acceptance check cannot be 
     $validationArgs = @('-ConfigPath',$ConfigPath,'-ProjectPath',$script:repositoryPath,'-ArtifactsPath',(Join-Path $script:artifactsPath 'Unity'),'-IssueNumber',[string]$selection.IssueNumber,'-BaselineRef','origin/main','-OwnedUnityPidPath',(Join-Path $normalizedRun 'State\OwnedUnityPids.json'),'-CancellationMarkerPath',$script:cancellationMarkerPath,'-ReviewRunId',$runId)
     if ($UnityFixturePath) { $validationArgs += @('-ValidationFixturePath',$UnityFixturePath) }; if ($DryRun) { $validationArgs += '-DryRun' }
     $validationTimeout = (4 * [int]$script:reviewerConfig.Timeouts.UnityStageSeconds) + (2 * [int]$script:reviewerConfig.Timeouts.GeneratorSeconds) + 600
-    $beforeUnity = Get-ReviewerGitSnapshot
+    $beforeUnity = Get-ReviewerGitSnapshot -PreviewIssueNumber ([int]$selection.IssueNumber)
     $validationResult = Invoke-ReviewerScriptJson 'Host full Unity validation' (Join-Path $PSScriptRoot 'Invoke-SashimiUnityValidation.ps1') $validationArgs $validationTimeout
-    Assert-ReviewerGitSnapshotUnchanged -Before $beforeUnity -Boundary 'Unity validation' -KnownUnityDefaultDrift (Get-SashimiPropertyValue $validationResult 'KnownUnityDefaultDrift' $null)
+    $reviewerUnityBoundary = Assert-ReviewerGitSnapshotUnchanged -Before $beforeUnity -Boundary 'Unity validation' -KnownUnityDefaultDrift (Get-SashimiPropertyValue $validationResult 'KnownUnityDefaultDrift' $null) -IssueNumber ([int]$selection.IssueNumber) -ValidationResult $validationResult
     [void](Invoke-ReviewerGit 'Git whitespace validation' @('-C',$script:repositoryPath,'diff','--check','origin/main...HEAD') $normalizedRun)
     Assert-ReviewerNotCancelled
 
@@ -503,6 +558,7 @@ Use Unverified only when a specific CURRENT required acceptance check cannot be 
 
     $findings = @((Get-SashimiPropertyValue $codexPayload 'findings' (Get-SashimiPropertyValue $codexPayload 'Findings' @())))
     $reviewDisposition = Get-SashimiReviewDisposition -Findings $findings
+    $reviewDisposition | Add-Member -NotePropertyName UnityBoundaryPreviewComparison -NotePropertyValue $reviewerUnityBoundary
     $blocking = @($reviewDisposition.Blocking)
     $findingCount = $findings.Count
     if (-not $DryRun) { Write-SashimiStageArtifactSeal -RunPath $normalizedRun -Scope Unity }

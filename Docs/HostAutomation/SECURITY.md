@@ -441,9 +441,13 @@ screening cannot identify arbitrary opaque secrets.
 Generator reproducibility uses two byte-identical pre-generator workspaces.
 The second is a marker-owned private State copy, with a complete source
 manifest (excluding Git payload, caches, temporary files and logs). Host
-compares both declared outputs and the complete source delta, rejects
-undeclared writes, and requires Reviewer regeneration to equal the committed
-deliverable. The private project is `State/g/r`, no deeper than the primary
+compares both declared outputs and complete resulting source manifests,
+retains each original source delta, rejects undeclared writes independently
+for each run, and requires Reviewer regeneration to match the committed
+deliverable under the fixed policy below. The Reviewer deliverable is captured
+before the first Unity stage, including import/compile. Run2 must leave the
+primary workspace exactly equal to its captured Run1 manifest. The private
+project is `State/g/r`, no deeper than the primary
 `Repository`; the fixed production RunRoot remains unchanged. The parent must
 not already exist. A random ownership nonce is retained in the Host result and
 its sibling marker; cleanup verifies the exact parent, project, and nonce after
@@ -453,6 +457,43 @@ changing source attributes or the shared no-reparse deletion helper. It removes
 the private baseline only after confirmed termination.
 This catches generators that generate random output only when an asset is
 missing; simply running twice in the same directory cannot establish that.
+
+Owner approval on 2026-09-26 allows a bounded pixel comparison for Issue #20
+and only these exact paths:
+
+- `Assets/_SashimiBoy/Art/Generated/Previews/Stage01/SalmonAssembly_Initial.png`
+- `Assets/_SashimiBoy/Art/Generated/Previews/Stage01/SalmonAssembly_Parts.png`
+- `Assets/_SashimiBoy/Art/Generated/Previews/Stage01/SalmonAssembly_Anchors.png`
+
+Each RGB channel may differ by at most 1 out of 255; at most 0.1% of pixel
+coordinates may have any changed RGB channel. The integer check is
+`changedPixels * 1000 <= width * height`, with no rounded percentage. Alpha,
+dimensions, pixel format, and all non-IDAT PNG chunk bytes/order remain exact.
+All other files, including `.meta`, generated Unity assets, source textures,
+and any other PNG, remain byte-exact. Complete path/kind sets must match;
+additions/deletions do not receive a tolerance exception. Actual source delta
+membership may differ when one preview run equals baseline and the other has
+an allowed tiny difference; both full deltas remain available as evidence.
+
+The fixed decoder accepts noninterlaced 8-bit RGB/RGBA only, validates PNG
+structure/CRC and the zlib stream/checksum/end, and caps each original at
+25 MiB, each dimension at 16384, and decoded pixel storage at 32 MiB. Changed
+unsupported/invalid images fail closed. Captured original bytes are bound to
+manifest length/SHA-256 under a no-write/no-delete read handle; the comparison
+never consumes the separately sanitized public preview artifacts. Raw captures
+stay private in memory. The existing 4 MiB summary quota contains only policy,
+original hashes/lengths, pair names, dimensions, changed-pixel count, maximum
+RGB delta, exact-alpha/metadata verdicts, and pass/failure evidence.
+
+Run1/Run2 and, for Reviewer, committed/Run1 and committed/Run2 must each pass:
+bounded similarity is not transitive. Later Unity stages may not change a
+preview after its Run1 evidence. The parent Reviewer rechecks actual original
+bytes and evidence hashes; only the Unity boundary for Issue #20 may admit
+the corresponding exact unstaged ` M` preview statuses. Git control/index/refs
+and every other visible file remain unchanged. Codex remains byte-exact and
+read-only. The existing separate Unity-default settings exception is not
+expanded or combined with this preview exception. Human visual review remains
+mandatory. No Issue text, model output, or config can enlarge these limits.
 
 The Unity Editor inventory opens every scene and prefab under Assets, including
 unloaded assets, and records active AudioListeners/EventSystems, missing

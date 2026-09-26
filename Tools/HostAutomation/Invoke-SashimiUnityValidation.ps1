@@ -2133,6 +2133,7 @@ $result = [ordered]@{
         Paths = @()
         Run1Snapshot = @()
         Run2Snapshot = @()
+        Comparisons = @()
         Passed = $null
     }
     ChangedPaths = @()
@@ -2486,15 +2487,25 @@ try {
             $script:gitControlBaseline = Get-SashimiUnityGitControlSnapshot -ProjectRoot $normalizedProjectPath -Boundary 'immediately before first Unity stage'
             $script:gitControlPassed = $true
             Add-SashimiValidationCheck -Name 'GitControlBaseline' -Passed $true -Detail 'Complete Git control state was captured immediately before Unity execution.'
+            # Pin the Reviewer deliverable before any untrusted Unity code,
+            # including import hooks. Generator input baselines are separate.
+            $committedOutputSnapshot = @()
+            $committedPreviewCaptures = $null
+            if ($null -eq $fixture -and $null -ne $validationDefinition -and -not [string]::IsNullOrWhiteSpace($ReviewRunId)) {
+                $committedOutputSnapshot = @(Get-SashimiDeterminismSnapshot -ProjectRoot $normalizedProjectPath -RelativePaths $determinismPaths)
+                $committedPreviewCaptures = Get-SashimiPreviewCaptures -ProjectRoot $normalizedProjectPath -Snapshot $committedOutputSnapshot -IssueNumber $IssueNumber
+            }
             $stages.CompileImport = Invoke-SashimiUnityValidationStage -Name CompileImport -Arguments $compileArguments -LogPath $compileLog -RawLogPath $compileRawLog -UnityExecutable $unityExecutable -ProjectRoot $normalizedProjectPath -TimeoutSeconds $unityTimeout -Fixture $fixture -Compile
             $generatorPassed = $true
             if ($null -ne $validationDefinition -and $stages.CompileImport.Success) {
                 $secondGeneratorProject = $normalizedProjectPath
                 $generatorInputSnapshot = @()
-                $committedOutputSnapshot = @()
+                $run1PreviewCaptures = $null
+                $run2PreviewCaptures = $null
+                $sourceAfterRun1 = @()
+                $sourceAfterRun2 = @()
                 if ($null -eq $fixture) {
                     $generatorInputSnapshot = @(Get-SashimiGeneratorSourceManifest -ProjectRoot $normalizedProjectPath)
-                    $committedOutputSnapshot = @(Get-SashimiDeterminismSnapshot -ProjectRoot $normalizedProjectPath -RelativePaths $determinismPaths)
                     $generatorWorkspace = New-SashimiGeneratorBaseline -ProjectRoot $normalizedProjectPath -StateRoot $script:unityArtifactStateRoot -ExpectedManifest $generatorInputSnapshot
                     $secondGeneratorProject = $generatorWorkspace.Repository
                     Write-SashimiBoundedUnityTextArtifact -Path (Join-Path $normalizedArtifactsPath 'GeneratorInputs.snapshot.json') -Content (ConvertTo-SashimiJson $generatorInputSnapshot)
@@ -2505,6 +2516,10 @@ try {
                     $fixtureDeterminism = Get-SashimiPropertyValue -Object $fixture -Name 'Determinism' -DefaultValue $null
                     $run1Fixture = Get-SashimiPropertyValue -Object $fixtureDeterminism -Name 'Run1' -DefaultValue $null
                     $snapshot1 = if ($null -ne $run1Fixture) { @($run1Fixture) } else { @(Get-SashimiDeterminismSnapshot -ProjectRoot $normalizedProjectPath -RelativePaths $determinismPaths) }
+                    if ($null -eq $fixture) {
+                        $sourceAfterRun1 = @(Get-SashimiGeneratorSourceManifest $normalizedProjectPath)
+                        $run1PreviewCaptures = Get-SashimiPreviewCaptures -ProjectRoot $normalizedProjectPath -Snapshot $sourceAfterRun1 -IssueNumber $IssueNumber
+                    }
                     $result.Determinism.Run1Snapshot = $snapshot1
                     Write-SashimiBoundedUnityTextArtifact -Path (Join-Path $normalizedArtifactsPath 'GeneratorRun1.snapshot.json') -Content (ConvertTo-SashimiJson $snapshot1 -Pretty)
 
@@ -2523,24 +2538,38 @@ try {
                         $snapshot2 = if ($null -ne $run2Fixture) { @($run2Fixture) } else { @(Get-SashimiDeterminismSnapshot -ProjectRoot $secondGeneratorProject -RelativePaths $determinismPaths) }
                         $result.Determinism.Run2Snapshot = $snapshot2
                         Write-SashimiBoundedUnityTextArtifact -Path (Join-Path $normalizedArtifactsPath 'GeneratorRun2.snapshot.json') -Content (ConvertTo-SashimiJson $snapshot2 -Pretty)
-                        $snapshot1Json = ConvertTo-SashimiJson $snapshot1
-                        $snapshot2Json = ConvertTo-SashimiJson $snapshot2
-                        $result.Determinism.Passed = [string]::Equals($snapshot1Json, $snapshot2Json, [StringComparison]::Ordinal)
+                        if ($null -eq $fixture) {
+                            # Run2 must not write back into the primary workspace.
+                            # Preserve Run1 evidence, then verify it is still exact.
+                            $primaryAfterRun2 = @(Get-SashimiGeneratorSourceManifest $normalizedProjectPath)
+                            Assert-SashimiGeneratorManifestUnchanged -Before $sourceAfterRun1 -After $primaryAfterRun2
+                            $sourceAfterRun2 = @(Get-SashimiGeneratorSourceManifest $secondGeneratorProject)
+                            $run2PreviewCaptures = Get-SashimiPreviewCaptures -ProjectRoot $secondGeneratorProject -Snapshot $sourceAfterRun2 -IssueNumber $IssueNumber
+                        }
                         if ($null -eq $fixture) {
                             $allowedGeneratorPaths = @($determinismPaths) + @($screenshotPaths) + @($previewPaths)
-                            $delta1 = @(Get-SashimiGeneratorDelta -Before $generatorInputSnapshot -After @(Get-SashimiGeneratorSourceManifest $normalizedProjectPath) -AllowedPaths $allowedGeneratorPaths)
-                            $delta2 = @(Get-SashimiGeneratorDelta -Before $generatorInputSnapshot -After @(Get-SashimiGeneratorSourceManifest $secondGeneratorProject) -AllowedPaths $allowedGeneratorPaths)
+                            $delta1 = @(Get-SashimiGeneratorDelta -Before $generatorInputSnapshot -After $sourceAfterRun1 -AllowedPaths $allowedGeneratorPaths)
+                            $delta2 = @(Get-SashimiGeneratorDelta -Before $generatorInputSnapshot -After $sourceAfterRun2 -AllowedPaths $allowedGeneratorPaths)
                             Write-SashimiBoundedUnityTextArtifact -Path (Join-Path $normalizedArtifactsPath 'GeneratorRun1.delta.json') -Content (ConvertTo-SashimiJson $delta1)
                             Write-SashimiBoundedUnityTextArtifact -Path (Join-Path $normalizedArtifactsPath 'GeneratorRun2.delta.json') -Content (ConvertTo-SashimiJson $delta2)
-                            if ((ConvertTo-SashimiJson $delta1) -cne (ConvertTo-SashimiJson $delta2) -or
-                                @($snapshot1 | Where-Object Kind -eq 'Missing').Count -gt 0) { $result.Determinism.Passed = $false }
-                            if (-not [string]::IsNullOrWhiteSpace($ReviewRunId) -and
-                                (ConvertTo-SashimiJson $committedOutputSnapshot) -cne $snapshot1Json) {
-                                $result.Determinism.Passed = $false
-                                Add-SashimiValidationFailure -Code GeneratorDeliverableMismatch -Stage GeneratorRun1 -Message 'Generated outputs differ from the committed Reviewer deliverable.'
-                            }
+                            # Keep both actual deltas and their undeclared-write checks.
+                            # A preview may equal baseline in only one run; compare the
+                            # complete resulting manifests, not raw delta membership.
                         }
-                        Add-SashimiValidationCheck -Name 'GeneratorDeterminism' -Passed ([bool]$result.Determinism.Passed) -Detail $(if ($result.Determinism.Passed) { 'Independent byte-identical baselines produced matching outputs and complete source deltas.' } else { 'Generator outputs, deltas, or committed deliverables differ.' })
+                        $comparisonArgs = @{
+                            Run1=[pscustomobject]@{Output=$snapshot1;Source=$sourceAfterRun1;Captures=$run1PreviewCaptures}
+                            Run2=[pscustomobject]@{Output=$snapshot2;Source=$sourceAfterRun2;Captures=$run2PreviewCaptures}
+                            Committed=[pscustomobject]@{Output=$committedOutputSnapshot;Captures=$committedPreviewCaptures}
+                            IssueNumber=$IssueNumber; CompareSource=($null -eq $fixture)
+                            CompareCommitted=($null -eq $fixture -and -not [string]::IsNullOrWhiteSpace($ReviewRunId))
+                        }
+                        $reproducibility = Compare-SashimiGeneratorReproducibility @comparisonArgs
+                        $result.Determinism.Comparisons = $reproducibility.Comparisons
+                        $result.Determinism.Passed = $reproducibility.Passed
+                        if (-not $reproducibility.CommittedPassed) {
+                            Add-SashimiValidationFailure -Code GeneratorDeliverableMismatch -Stage GeneratorRun1 -Message 'Generated outputs differ from the committed Reviewer deliverable beyond the fixed preview policy.'
+                        }
+                        Add-SashimiValidationCheck -Name 'GeneratorDeterminism' -Passed ([bool]$result.Determinism.Passed) -Detail $(if ($result.Determinism.Passed) { 'Independent byte-identical baselines produced matching complete manifests under the fixed Owner-approved preview policy; original deltas are retained.' } else { 'Generator outputs, complete source manifests, or committed deliverables exceed the fixed comparison policy.' })
                         if (-not $result.Determinism.Passed) { Add-SashimiValidationFailure -Code GeneratorNonDeterministic -Stage GeneratorRun2 -Message 'Two generator runs produced different outputs.' }
                     }
                 }
@@ -2553,6 +2582,11 @@ try {
                 Add-SashimiValidationCheck -Name 'UnityComponentInventory' -Passed $true -Detail 'All scenes and prefabs were inspected for duplicate active AudioListener/EventSystem components and broken references.' -Data $result.ComponentInventory
                 $stages.EditMode = Invoke-SashimiUnityValidationStage -Name EditMode -Arguments $editArguments -LogPath $editLog -RawLogPath $editRawLog -XmlPath $editXml -RawXmlPath $editRawXml -UnityExecutable $unityExecutable -ProjectRoot $normalizedProjectPath -TimeoutSeconds $unityTimeout -Fixture $fixture -TestStage
                 $stages.PlayMode = Invoke-SashimiUnityValidationStage -Name PlayMode -Arguments $playArguments -LogPath $playLog -RawLogPath $playRawLog -XmlPath $playXml -RawXmlPath $playRawXml -UnityExecutable $unityExecutable -ProjectRoot $normalizedProjectPath -TimeoutSeconds $unityTimeout -Fixture $fixture -TestStage
+                if ($null -eq $fixture -and $null -ne $validationDefinition -and $generatorPassed) {
+                    # Later Unity stages may not alter even an approved preview
+                    # after its generator evidence, including another tiny edit.
+                    [void](Get-SashimiPreviewCaptures -ProjectRoot $normalizedProjectPath -Snapshot $snapshot1 -IssueNumber $IssueNumber)
+                }
             }
             }
         }
