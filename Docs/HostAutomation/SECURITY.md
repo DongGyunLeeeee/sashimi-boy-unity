@@ -382,8 +382,16 @@ identity, expected branch, upstream, and every `.git` control file/directory
 except object and LFS payload stores. Merge, cherry-pick, revert, rebase,
 bisect, notes-merge, sequencer, lock, unknown-control, oversized-control, and
 reparse state fail even at baseline. Host Git inspection fixes
-`GIT_OPTIONAL_LOCKS=0` and disables automatic GC/maintenance so read-only
-checks do not rewrite the state being protected. Any drift is a terminal
+`GIT_OPTIONAL_LOCKS=0`, fixes `diff.autoRefreshIndex=false`, and disables
+automatic GC/maintenance so read-only checks do not rewrite the state being
+protected. The diff setting prevents porcelain diff from refreshing stat-only
+index entries; optional locks alone do not prevent that write. Actual content
+and whitespace differences are still checked. Tracked working-tree path scans
+use NUL-delimited `--numstat --no-renames` rather than `--name-only`, which can
+report stat-only differences when auto-refresh is disabled. Strict parsing
+retains every emitted path, including binary, mode-only and empty-file changes;
+renames appear as separate old and new paths. Index hashes remain exact at
+every Codex/Unity boundary, with no new drift exception. Any drift is a terminal
 security failure; nothing is silently restored and the failure path cannot
 publish a comment or transition Project state.
 

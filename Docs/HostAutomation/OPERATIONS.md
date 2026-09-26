@@ -599,8 +599,8 @@ One task invocation performs these phases:
    terminal failures, and implicit smudging is disabled before the pinned pull.
    Every `.git` control entry except object/LFS payload data is manifested;
    operation pseudorefs/directories, lock files, unknown control state, and
-   reparses fail closed, while optional locks and automatic maintenance are
-   disabled for Host inspection.
+   reparses fail closed, while optional locks, diff index auto-refresh, and
+   automatic maintenance are disabled for Host inspection.
 9. Revalidate the authenticated actor and complete pin immediately before every
    remote mutation. Developer delivery also pins the fetched `origin/main` SHA
    and stops before any later delivery push or status transition if the live

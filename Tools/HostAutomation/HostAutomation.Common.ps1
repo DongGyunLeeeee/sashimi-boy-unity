@@ -2105,6 +2105,43 @@ function Assert-SashimiToolEnvironmentOverride {
     throw "GitHub CLI environment override '$Name' is not in the fixed Host allowlist."
 }
 
+function Get-SashimiContentDiffArguments {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)][string]$RepositoryPath,
+        [string]$BaselineRef = ''
+    )
+
+    # With index auto-refresh disabled, name-only output can include files
+    # whose stat data changed but whose contents did not. Numstat compares
+    # contents; disable rename pairing so every record has exactly one path.
+    $arguments = @('-C',$RepositoryPath,'diff','--numstat','-z','--no-renames',
+        '--no-ext-diff','--no-textconv','--diff-filter=ACDMRTUXB')
+    if (-not [string]::IsNullOrEmpty($BaselineRef)) { $arguments += $BaselineRef }
+    return $arguments + @('--')
+}
+
+function ConvertFrom-SashimiNumstatPathList {
+    [CmdletBinding()]
+    param([AllowNull()][AllowEmptyString()][string]$Text)
+
+    if ([string]::IsNullOrEmpty($Text)) { return @() }
+    if ($Text[$Text.Length - 1] -ne [char]0) {
+        throw 'Git numstat output is missing its final NUL terminator.'
+    }
+    $paths = [Collections.Generic.List[string]]::new()
+    foreach ($record in $Text.Substring(0,$Text.Length - 1).Split([char]0)) {
+        $match = [regex]::Match($record,'\A(?:[0-9]+\t[0-9]+|-\t-)\t([^\x00]+)\z')
+        if (-not $match.Success) {
+            throw 'Git numstat output contains a malformed or rename-paired record.'
+        }
+        # Zero counts can represent empty-file or mode-only changes. Preserve
+        # every path Git emits, including binary, added and deleted files.
+        $paths.Add($match.Groups[1].Value)
+    }
+    return $paths.ToArray()
+}
+
 function Set-SashimiFixedGitProcessEnvironment {
     [CmdletBinding()]
     param([Parameter(Mandatory = $true)][Diagnostics.ProcessStartInfo]$StartInfo)
@@ -2145,6 +2182,10 @@ function Set-SashimiFixedGitProcessEnvironment {
         [pscustomobject]@{ Key='maintenance.auto'; Value='false' },
         [pscustomobject]@{ Key='sequence.editor'; Value='false' },
         [pscustomobject]@{ Key='diff.external'; Value='' },
+        # Porcelain diff can refresh stat-only index entries even with
+        # GIT_OPTIONAL_LOCKS=0. Inspection must preserve exact index bytes;
+        # content and whitespace detection remain enabled.
+        [pscustomobject]@{ Key='diff.autoRefreshIndex'; Value='false' },
         [pscustomobject]@{ Key='commit.gpgSign'; Value='false' },
         [pscustomobject]@{ Key='tag.gpgSign'; Value='false' },
         [pscustomobject]@{ Key='credential.interactive'; Value='never' },

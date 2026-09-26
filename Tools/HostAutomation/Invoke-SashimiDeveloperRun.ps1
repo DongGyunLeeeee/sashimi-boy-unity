@@ -356,11 +356,14 @@ function ConvertFrom-DeveloperNulPathList {
 
 function Get-UnstagedContentPaths {
     if ($DryRun) { return @() }
-    $tracked = Invoke-DeveloperGit -Stage 'Inspect unstaged tracked paths for content safety' -Arguments @(
-        '-C',$script:repositoryPath,'diff','--name-only','-z','--no-ext-diff','--no-textconv','--') -WorkingDirectory $RunPath
+    $tracked = Invoke-DeveloperGit -Stage 'Inspect unstaged tracked paths for content safety' -Arguments (
+        Get-SashimiContentDiffArguments -RepositoryPath $script:repositoryPath) -WorkingDirectory $RunPath
     $untracked = Invoke-DeveloperGit -Stage 'Inspect untracked paths for content safety' -Arguments @(
         '-C',$script:repositoryPath,'ls-files','--others','--exclude-standard','-z','--') -WorkingDirectory $RunPath
-    return @(ConvertFrom-DeveloperNulPathList $tracked.StdOut) + @(ConvertFrom-DeveloperNulPathList $untracked.StdOut) | Sort-Object -Unique
+    $trackedPaths = @(ConvertFrom-SashimiNumstatPathList $tracked.StdOut | ForEach-Object {
+            ConvertTo-DeveloperDeliveryPath -Path ([string]$_)
+        })
+    return $trackedPaths + @(ConvertFrom-DeveloperNulPathList $untracked.StdOut) | Sort-Object -Unique
 }
 
 function Get-StagedDeliveryAuditPaths {

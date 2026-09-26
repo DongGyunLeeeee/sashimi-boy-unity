@@ -4151,6 +4151,61 @@ wire_api = "responses"
         }
     }
 
+    Invoke-HostTestCase 'NumstatPathsRetainBinaryEmptyFileAndModeChanges' {
+        $expected = @('Tools/한글 file.txt','Assets/binary.bin','empty.txt','mode-only.txt',"tab`tname.txt","line`nname.txt")
+        $records = @("12`t3`t$($expected[0])", "-`t-`t$($expected[1])", "0`t0`t$($expected[2])",
+            "0`t0`t$($expected[3])", "1`t1`t$($expected[4])", "1`t1`t$($expected[5])")
+        $actual = @(ConvertFrom-SashimiNumstatPathList (($records -join "`0") + "`0"))
+        Assert-HostTest (($actual -join "`0") -ceq ($expected -join "`0")) `
+            'Numstat parsing lost or altered binary, zero-count, Unicode, whitespace or newline paths.'
+        Assert-HostTest (@(ConvertFrom-SashimiNumstatPathList '').Count -eq 0 -and
+            @(ConvertFrom-SashimiNumstatPathList $null).Count -eq 0) 'An empty diff did not yield an empty path list.'
+        foreach ($bad in @("path-only`0", "1`t1`tpath", "1`t1`tpath`0`0", "1`t-`tpath`0",
+                "x`t1`tpath`0", "1`t1`t`0old`0new`0", "1`t1`tpath`0invalid`0", "`0")) {
+            Assert-HostThrows { ConvertFrom-SashimiNumstatPathList $bad } 'Git numstat output'
+        }
+    }
+
+    Invoke-HostTestCase 'UnityScopeConsumesNumstatBeforeAndAfterStages' {
+        foreach ($boundary in @('None','Before','After')) {
+            $safeRecord = "1`t1`tTools/Automation/Changed.ps1`0"
+            # Zero line counts still represent a real protected-path change.
+            $protectedRecord = "0`t0`tProjectSettings/ProjectSettings.asset`0"
+            $before = if ($boundary -ceq 'Before') { $protectedRecord } else { $safeRecord }
+            $after = if ($boundary -ceq 'After') { $protectedRecord } else { $safeRecord }
+            $fixture = New-HostUnityFixtureFile -Name ("numstat-scope-" + $boundary) -Git @{
+                PreUnityChangedPaths = @{ StdOut = $before }
+                ChangedPaths = @{ StdOut = $after }
+                PreUnityUntrackedPaths = @{ StdOut = "Tools/Automation/Untracked.ps1`0" }
+                UntrackedPaths = @{ StdOut = "Tools/Automation/Untracked.ps1`0" }
+            }
+            # Exercise real production parsing, not the fixture's path override.
+            $fixtureData = Read-SashimiJsonFile $fixture
+            $fixtureData.PSObject.Properties.Remove('ChangedPaths')
+            Write-HostTestFile $fixture (($fixtureData | ConvertTo-Json -Depth 64 -Compress) + "`n")
+            $process = Invoke-HostUnityFixture $fixture
+            $json = ConvertFrom-LastHostJson $process.StdOut
+            if ($boundary -ceq 'None') {
+                Assert-HostTest ($process.ExitCode -eq 0 -and [bool]$json.Success) `
+                    "Content-only path scan failed: $($process.StdOut) $($process.StdErr)"
+                foreach ($paths in @(@{Value=$json.PreUnityChangedPaths},@{Value=$json.ChangedPaths})) {
+                    Assert-HostTest (@($paths.Value).Count -eq 2 -and
+                        @($paths.Value) -ccontains 'Tools/Automation/Changed.ps1' -and
+                        @($paths.Value) -ccontains 'Tools/Automation/Untracked.ps1') `
+                        'Tracked and untracked singleton paths were lost or concatenated.'
+                }
+            }
+            else {
+                $code = if ($boundary -ceq 'Before') { 'PreUnityProtectedProductionScopeChanged' } else { 'ProtectedProductionScopeChanged' }
+                Assert-HostTest ($process.ExitCode -ne 0 -and @($json.Failures | Where-Object Code -ceq $code).Count -eq 1) `
+                    "The $boundary stage gate missed a zero-count protected-path change."
+                if ($boundary -ceq 'Before') {
+                    Assert-HostTest (@($json.Stages.PSObject.Properties).Count -eq 0) 'Protected paths allowed Unity to start.'
+                }
+            }
+        }
+    }
+
     Invoke-HostTestCase 'GitAndGitHubEnvironmentIsScrubbedBeforeHostOverrides' {
         $poisoned = [ordered]@{
             GIT_DIR='fixture-poison'; GIT_WORK_TREE='fixture-poison'; GIT_INDEX_FILE='fixture-poison'
@@ -4187,7 +4242,7 @@ wire_api = "responses"
                 'Git LFS did not receive the immutable canonical fetch/push endpoint under its fixed remote name.'
             $expectedLfsEndpoint = 'https://github.com/DongGyunLeeeee/sashimi-boy-unity.git/info/lfs'
             foreach ($pair in @(
-                    'core.longpaths=true', 'gc.auto=0', 'maintenance.auto=false',
+                    'core.longpaths=true', 'gc.auto=0', 'maintenance.auto=false', 'diff.autoRefreshIndex=false',
                     "lfs.url=$expectedLfsEndpoint", "lfs.pushurl=$expectedLfsEndpoint",
                     "remote.origin.lfsurl=$expectedLfsEndpoint", "remote.origin.lfspushurl=$expectedLfsEndpoint",
                     "remote.sashimi-canonical.lfsurl=$expectedLfsEndpoint", "remote.sashimi-canonical.lfspushurl=$expectedLfsEndpoint",

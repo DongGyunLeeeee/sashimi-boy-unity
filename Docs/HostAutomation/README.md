@@ -218,7 +218,8 @@ fetch and push URLs, attributes/filter inputs, worktree identity, and every
 `.git` control entry except object and LFS payload stores. Merge, cherry-pick,
 revert, rebase, bisect, notes-merge, sequencer, lock, unknown-control, and
 reparse state are terminal even if present in the first snapshot. Read-only Git
-inspection runs with optional locks and automatic maintenance disabled. Each
+inspection runs with optional locks, diff index auto-refresh, and automatic
+maintenance disabled. Each
 Unity stage runs in a kill-on-close job and the Host confirms that no descendant
 remains before trusting the post-stage snapshot. Drift is terminal and cannot
 fall through to commit, push, comment, or Project transition. Network Git/LFS

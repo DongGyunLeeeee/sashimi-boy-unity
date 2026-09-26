@@ -2361,7 +2361,7 @@ try {
     # the root of a non-bare working tree without exposing its absolute path.
     $gitRootArguments = @('-C', $normalizedProjectPath, 'rev-parse', '--is-inside-work-tree', '--show-prefix')
     $diffCheckArguments = @('-C', $normalizedProjectPath, 'diff', '--check', $BaselineRef, '--')
-    $changedPathArguments = @('-C', $normalizedProjectPath, 'diff', '--name-only', '-z', '--diff-filter=ACDMRTUXB', $BaselineRef, '--')
+    $changedPathArguments = @(Get-SashimiContentDiffArguments -RepositoryPath $normalizedProjectPath -BaselineRef $BaselineRef)
     $untrackedPathArguments = @('-C', $normalizedProjectPath, 'ls-files', '--others', '--exclude-standard', '-z')
     $lfsArguments = @('ls-files', '--long')
     $trackedPathArguments = @('-C', $normalizedProjectPath, 'ls-files', '-z')
@@ -2466,7 +2466,7 @@ try {
             if (-not $preUnityScanPassed) {
                 Add-SashimiValidationFailure -Code PreUnityChangedPathScanFailed -Stage Preflight -Message "Unable to enumerate changed paths before Unity execution: $($preUnityChangedResult.StdErr) $($preUnityUntrackedResult.StdErr)"
             }
-            $preUnityChangedPaths = @((ConvertTo-SashimiGitPathList $preUnityChangedResult.StdOut) + (ConvertTo-SashimiGitPathList $preUnityUntrackedResult.StdOut) | Sort-Object -Unique)
+            $preUnityChangedPaths = @(@(ConvertFrom-SashimiNumstatPathList $preUnityChangedResult.StdOut) + @(ConvertTo-SashimiGitPathList $preUnityUntrackedResult.StdOut) | Sort-Object -Unique)
             $fixturePreUnityChangedPaths = Get-SashimiPropertyValue -Object $fixture -Name 'PreUnityChangedPaths' -DefaultValue (Get-SashimiPropertyValue -Object $fixture -Name 'ChangedPaths' -DefaultValue $null)
             if ($null -ne $fixturePreUnityChangedPaths) {
                 $preUnityChangedPaths = @($fixturePreUnityChangedPaths | ForEach-Object { ([string]$_).Replace('\', '/') } | Sort-Object -Unique)
@@ -2567,7 +2567,7 @@ try {
         if (-not $changedResult.Succeeded -or -not $untrackedResult.Succeeded) {
             Add-SashimiValidationFailure -Code GitChangedPathScanFailed -Stage Git -Message "Unable to enumerate changed paths: $($changedResult.StdErr) $($untrackedResult.StdErr)"
         }
-        $changedPaths = @((ConvertTo-SashimiGitPathList $changedResult.StdOut) + (ConvertTo-SashimiGitPathList $untrackedResult.StdOut) | Sort-Object -Unique)
+        $changedPaths = @(@(ConvertFrom-SashimiNumstatPathList $changedResult.StdOut) + @(ConvertTo-SashimiGitPathList $untrackedResult.StdOut) | Sort-Object -Unique)
         $fixtureChangedPaths = Get-SashimiPropertyValue -Object $fixture -Name 'ChangedPaths' -DefaultValue $null
         if ($null -ne $fixtureChangedPaths) { $changedPaths = @($fixtureChangedPaths | ForEach-Object { ([string]$_).Replace('\', '/') } | Sort-Object -Unique) }
         $result.ChangedPaths = $changedPaths
