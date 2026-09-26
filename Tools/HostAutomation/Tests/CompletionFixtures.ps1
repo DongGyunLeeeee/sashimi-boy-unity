@@ -265,6 +265,72 @@ if ($Mode -eq 'random-if-missing') {
     }
 }
 
+Invoke-HostTestCase 'CompletionGeneratorBaselineStaysShortAndCleansReadOnlyCopies' {
+    $production = Join-Path $hostRoot 'Invoke-SashimiUnityValidation.ps1'
+    foreach ($name in @('Get-SashimiGeneratorSourceManifest','New-SashimiGeneratorBaseline',
+            'Remove-SashimiGeneratorBaseline','Remove-SashimiUnityTreeWithoutReparseTraversal')) {
+        Set-Item -Path ('Function:' + $name) -Value (Get-HostTestFunctionScriptBlock $production $name)
+    }
+    $root = Join-Path $script:temporaryRoot 'generator-short-path'
+    $project = Join-Path $root 'Repository'
+    $state = Join-Path $root 'State'
+    Write-HostTestFile (Join-Path $project 'input.txt') 'fixed input'
+    $packRelative = '.git/objects/pack/pack-fixture.idx'
+    $sourcePack = Join-Path $project $packRelative
+    Write-HostTestFile $sourcePack 'read-only pack index'
+    [IO.File]::SetAttributes($sourcePack, ([IO.File]::GetAttributes($sourcePack) -bor [IO.FileAttributes]::ReadOnly))
+    $sourceAttributes = [IO.File]::GetAttributes($sourcePack)
+    $sourceHash = (Get-FileHash -LiteralPath $sourcePack).Hash
+    $before = @(Get-SashimiGeneratorSourceManifest $project)
+    $baseline = New-SashimiGeneratorBaseline -ProjectRoot $project -StateRoot $state -ExpectedManifest $before
+    Assert-HostTest ($baseline.Repository.Length -le $project.Length) 'Generator baseline reintroduced deeper Unity paths.'
+    Assert-HostTest ((ConvertTo-SashimiJson @(Get-SashimiGeneratorSourceManifest $baseline.Repository)) -ceq
+        (ConvertTo-SashimiJson $before)) 'Short baseline changed source bytes.'
+    $copyPack = Join-Path $baseline.Repository $packRelative
+    Assert-HostTest ((Get-FileHash -LiteralPath $copyPack).Hash -ceq $sourceHash) 'Copied Git pack bytes changed.'
+    Assert-HostTest (([IO.File]::GetAttributes($copyPack) -band [IO.FileAttributes]::ReadOnly) -eq 0) 'Fresh copied pack remains undeletable.'
+    Assert-HostTest ([IO.File]::GetAttributes($sourcePack) -eq $sourceAttributes) 'Copy preparation changed source attributes.'
+    Assert-HostThrows { New-SashimiGeneratorBaseline -ProjectRoot $project -StateRoot $state -ExpectedManifest $before } 'already exists'
+    Assert-HostThrows { Remove-SashimiGeneratorBaseline -Workspace $baseline } 'termination was not confirmed'
+    Assert-HostTest (Test-Path -LiteralPath $copyPack) 'Unconfirmed termination removed the baseline.'
+    $marker = Join-Path $baseline.Parent '.generator-owner'
+    Write-HostTestFile $marker ('0' * 32)
+    Assert-HostThrows { Remove-SashimiGeneratorBaseline -Workspace $baseline -TerminationConfirmed } 'ownership mismatch'
+    Assert-HostTest (Test-Path -LiteralPath $copyPack) 'Wrong ownership marker removed the baseline.'
+    Write-HostTestFile $marker $baseline.OwnerNonce
+    $wrongWorkspace = [pscustomobject]@{ Parent=$project; Repository=(Join-Path $project 'r'); StateRoot=$state; OwnerNonce=$baseline.OwnerNonce }
+    Assert-HostThrows { Remove-SashimiGeneratorBaseline -Workspace $wrongWorkspace -TerminationConfirmed } 'ownership mismatch'
+    Remove-SashimiGeneratorBaseline -Workspace $baseline -TerminationConfirmed
+    Assert-HostTest (-not (Test-Path -LiteralPath $baseline.Parent)) 'Owned copied Git pack prevented baseline cleanup.'
+    $next = New-SashimiGeneratorBaseline -ProjectRoot $project -StateRoot $state -ExpectedManifest $before
+    Assert-HostTest ($next.OwnerNonce -cne $baseline.OwnerNonce) 'A new baseline reused the old ownership nonce.'
+    Assert-HostThrows { Remove-SashimiGeneratorBaseline -Workspace $baseline -TerminationConfirmed } 'ownership mismatch'
+    Assert-HostTest (Test-Path -LiteralPath (Join-Path $next.Repository $packRelative)) 'A stale cleanup removed a new baseline.'
+    Remove-SashimiGeneratorBaseline -Workspace $next -TerminationConfirmed
+    Assert-HostTest ((Get-FileHash -LiteralPath $sourcePack).Hash -ceq $sourceHash -and
+        [IO.File]::GetAttributes($sourcePack) -eq $sourceAttributes) 'Cleanup changed the original Git pack.'
+}
+
+Invoke-HostTestCase 'CompletionGeneratorCleanupDoesNotFollowReparseTargets' {
+    $production = Join-Path $hostRoot 'Invoke-SashimiUnityValidation.ps1'
+    foreach ($name in @('Get-SashimiGeneratorSourceManifest','New-SashimiGeneratorBaseline',
+            'Remove-SashimiGeneratorBaseline','Remove-SashimiUnityTreeWithoutReparseTraversal')) {
+        Set-Item -Path ('Function:' + $name) -Value (Get-HostTestFunctionScriptBlock $production $name)
+    }
+    $root = Join-Path $script:temporaryRoot 'generator-reparse-cleanup'
+    $project = Join-Path $root 'Repository'
+    Write-HostTestFile (Join-Path $project 'input.txt') 'fixed input'
+    $baseline = New-SashimiGeneratorBaseline -ProjectRoot $project -StateRoot (Join-Path $root 'State') `
+        -ExpectedManifest @(Get-SashimiGeneratorSourceManifest $project)
+    $outside = Join-Path $root 'Outside'
+    $sentinel = Join-Path $outside 'sentinel.txt'
+    Write-HostTestFile $sentinel 'outside content'
+    [void](New-Item -ItemType Junction -Path (Join-Path $baseline.Repository 'link') -Target $outside)
+    Remove-SashimiGeneratorBaseline -Workspace $baseline -TerminationConfirmed
+    Assert-HostTest (-not (Test-Path -LiteralPath $baseline.Parent)) 'Baseline junction was not unlinked.'
+    Assert-HostTest ([IO.File]::ReadAllText($sentinel) -ceq 'outside content') 'Cleanup followed a junction outside the baseline.'
+}
+
 Invoke-HostTestCase 'CompletionInventoryRequiresAllAssetsAndConsistentActiveComponents' {
     $production = Join-Path $hostRoot 'Invoke-SashimiUnityValidation.ps1'
     foreach ($name in @('Read-SashimiBoundedStableUtf8File','Read-SashimiComponentInventory')) {

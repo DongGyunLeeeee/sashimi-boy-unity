@@ -435,7 +435,14 @@ The second is a marker-owned private State copy, with a complete source
 manifest (excluding Git payload, caches, temporary files and logs). Host
 compares both declared outputs and the complete source delta, rejects
 undeclared writes, and requires Reviewer regeneration to equal the committed
-deliverable. It removes the private baseline only after confirmed termination.
+deliverable. The private project is `State/g/r`, no deeper than the primary
+`Repository`; the fixed production RunRoot remains unchanged. The parent must
+not already exist. A random ownership nonce is retained in the Host result and
+its sibling marker; cleanup verifies the exact parent, project, and nonce after
+confirmed process termination. A fresh `File.Copy` result has only its ReadOnly
+bit removed before Unity starts, so copied Git packs can be deleted without
+changing source attributes or the shared no-reparse deletion helper. It removes
+the private baseline only after confirmed termination.
 This catches generators that generate random output only when an asset is
 missing; simply running twice in the same directory cannot establish that.
 
