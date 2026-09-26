@@ -370,6 +370,12 @@ verifies materialized asset bytes. Cache availability is not an acceptance
 gate; missing objects use the existing canonical remote. Required asset
 download or integrity failures stop the run without changing Project state.
 
+Host Git/LFS processes also pin Basic authentication for only the canonical
+HTTPS LFS endpoint in command scope. This prevents Git LFS from caching a new
+access mode in local config after a successful first transfer. Credentials
+still come from the fixed GitHub helper, and all Git-control bytes remain
+subject to the existing exact comparison.
+
 - Developer: [`DEVELOPER.md`](DEVELOPER.md)
 - Reviewer: [`REVIEWER.md`](REVIEWER.md)
 - Automation UI bootstrap text: [`BOOTSTRAP.md`](BOOTSTRAP.md)

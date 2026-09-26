@@ -443,6 +443,17 @@ public static class SashimiHostFakeTool
             DetectImplicitLfsSmudgeRedirect(args);
         }
 
+        // Model the native LFS first-authentication config cache. With no
+        // endpoint access pin, a successful transfer still mutates .git/config.
+        if (isLfs && (Has(args, "pull") || Has(args, "push")) &&
+            Env("SASHIMI_FAKE_LFS_AUTH_CACHE") == "1")
+        {
+            const string endpoint = "https://github.com/DongGyunLeeeee/sashimi-boy-unity.git/info/lfs";
+            if (!String.Equals(CommandConfig("lfs." + endpoint + ".access"), "basic", StringComparison.Ordinal))
+                File.AppendAllText(Path.Combine(Directory.GetCurrentDirectory(), ".git", "config"),
+                    "[lfs \"" + endpoint + "\"]\n\taccess = basic\n", new UTF8Encoding(false));
+        }
+
         // Windows Git LFS tries to create the configured hook directory during
         // install unless --skip-repo is present. NUL is a device, not a folder.
         if (isLfs && Has(args, "install") && !Has(args, "--skip-repo") &&
@@ -4246,6 +4257,7 @@ wire_api = "responses"
                     "lfs.url=$expectedLfsEndpoint", "lfs.pushurl=$expectedLfsEndpoint",
                     "remote.origin.lfsurl=$expectedLfsEndpoint", "remote.origin.lfspushurl=$expectedLfsEndpoint",
                     "remote.sashimi-canonical.lfsurl=$expectedLfsEndpoint", "remote.sashimi-canonical.lfspushurl=$expectedLfsEndpoint",
+                    "lfs.$expectedLfsEndpoint.access=basic",
                     'lfs.basictransfersonly=true')) {
                 Assert-HostTest (@($gitEnvironment.GitConfigPairs | Where-Object { [string]$_ -ceq $pair }).Count -eq 1) `
                     "Git LFS fixed command configuration omitted '$pair'."
@@ -4307,6 +4319,46 @@ wire_api = "responses"
             -TimeoutSeconds 30 -Environment $environment -Kind Git
         Assert-HostTest $filterInstall.Succeeded `
             "Filter-only Git LFS installation failed: $($filterInstall.StdErr)"
+    }
+
+    Invoke-HostTestCase 'GitLfsAuthenticationPreservesConfigOnPullAndPush' {
+        $authRoot = Join-Path $script:temporaryRoot 'git-lfs-auth-cache'
+        [IO.Directory]::CreateDirectory((Join-Path $authRoot '.git')) | Out-Null
+        $configPath = Join-Path $authRoot '.git/config'
+        $initialConfig = "[core]`n`trepositoryformatversion = 0`n"
+        Write-HostTestFile $configPath $initialConfig
+        $beforeHash = (Get-FileHash -LiteralPath $configPath -Algorithm SHA256).Hash
+        $fixtureEnvironment = @{
+            SASHIMI_FAKE_LFS_AUTH_CACHE='1'; SASHIMI_FAKE_TOOL_LOG=$script:fakeToolLogPath
+        }
+        # The negative control is the fixture executable only, never installed
+        # Git/LFS. It proves that native success alone misses the config write.
+        $control = Invoke-SashimiHostProcess -FilePath $script:fakeTools.GitLfs `
+            -ArgumentList @('push','sashimi-canonical',('a'*40)) -WorkingDirectory $authRoot `
+            -Kind Generic -TimeoutSeconds 30 -ClearEnvironment -Environment $fixtureEnvironment
+        Assert-HostTest ($control.Succeeded -and
+            (Get-FileHash -LiteralPath $configPath -Algorithm SHA256).Hash -cne $beforeHash) `
+            'The authentication-cache negative control did not reproduce the successful config mutation.'
+        Write-HostTestFile $configPath $initialConfig
+        foreach ($operation in @('pull','push')) {
+            $transferArguments = @($operation,'sashimi-canonical')
+            if ($operation -ceq 'push') { $transferArguments += ('a'*40) }
+            $transfer = Invoke-SashimiHostProcess -FilePath $script:fakeTools.GitLfs `
+                -ArgumentList $transferArguments -WorkingDirectory $authRoot `
+                -Kind Git -TimeoutSeconds 30 -Environment $fixtureEnvironment
+            Assert-HostTest ($transfer.Succeeded -and
+                (Get-FileHash -LiteralPath $configPath -Algorithm SHA256).Hash -ceq $beforeHash) `
+                "The fixed $operation process changed local Git config during authentication."
+        }
+        $probe = Invoke-SashimiHostProcess -FilePath $script:fakeTools.GitLfs `
+            -ArgumentList @('--fixture-environment') -WorkingDirectory $authRoot -Kind Git -TimeoutSeconds 30 `
+            -Environment @{ SASHIMI_FAKE_TOOL_LOG=$script:fakeToolLogPath }
+        Assert-HostTest $probe.Succeeded "Git LFS command-scope authentication probe failed: $($probe.StdErr)"
+        $environment = ConvertFrom-LastHostJson $probe.StdOut
+        $accessEntries = @($environment.GitConfigPairs | Where-Object { $_ -match '^lfs\..*access=' })
+        Assert-HostTest ($accessEntries.Count -eq 1 -and $accessEntries[0] -ceq
+            'lfs.https://github.com/DongGyunLeeeee/sashimi-boy-unity.git/info/lfs.access=basic') `
+            'LFS authentication was not limited to the exact canonical endpoint.'
     }
 
     Invoke-HostTestCase 'GitLfsRoutingIsPinnedAndRepositoryRedirectsFailClosed' {

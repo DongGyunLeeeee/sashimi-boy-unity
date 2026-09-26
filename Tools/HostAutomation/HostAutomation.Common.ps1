@@ -2425,6 +2425,10 @@ function Set-SashimiFixedGitProcessEnvironment {
         [pscustomobject]@{ Key='remote.origin.lfspushurl'; Value=$script:SashimiExpectedGitLfsUrl },
         [pscustomobject]@{ Key='remote.sashimi-canonical.lfsurl'; Value=$script:SashimiExpectedGitLfsUrl },
         [pscustomobject]@{ Key='remote.sashimi-canonical.lfspushurl'; Value=$script:SashimiExpectedGitLfsUrl },
+        # LFS otherwise learns Basic auth after the first 401 and persists
+        # lfs.<endpoint>.access in .git/config. Pin only this reviewed endpoint
+        # in command scope so pull/push preserve the exact Git-control snapshot.
+        [pscustomobject]@{ Key=('lfs.' + $script:SashimiExpectedGitLfsUrl + '.access'); Value='basic' },
         [pscustomobject]@{ Key='lfs.basictransfersonly'; Value='true' },
         [pscustomobject]@{ Key='http.extraHeader'; Value='' },
         [pscustomobject]@{ Key='http.proxy'; Value='' },
