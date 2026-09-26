@@ -46,9 +46,38 @@ selection's isolation audit was not exercised and failed; its receipt remains
 separate. Adding the existing fake executable boundary case exercised that
 audit and produced the six-case passing result.
 
-Real Unity path reproduction, full main Unity checks, independent final review
-and installer preview are pending. This source is not installed. A source-level
-test does not establish that the actual Issue #20 pilot has passed.
+Independent review of runtime commit `a827dab89e4bfa949956954a3090f119b13cc0b3`
+found zero Blocker, Major or Minor findings. Seven independently executed
+focused Host cases passed, including the parser/compiler/environment boundaries,
+input/delta checks, short baseline cleanup, stale ownership and junction target
+preservation. Native exit was zero, stderr was empty, no external mutation
+occurred, and the fixture temporary root was cleaned.
+
+An independent minimal Unity 6000.4.0f1 project reproduced the file I/O failure:
+all five old-length paths existed but Mono OpenRead threw
+DirectoryNotFoundException (native exit 1). All five corresponding short paths
+were readable and matched their expected SHA-256 (native exit 0). This is a
+positive/negative path probe, not a successful product generator run.
+
+The isolated main-based candidate passed clean import/compile, EditMode 43/43,
+and PlayMode 8/8 with native exit zero, no skipped tests, empty diagnostics and
+no tracked workspace changes. Actual NUnit XML was inspected. Production
+integrity scans passed: 1,264 meta files, zero missing/orphan/invalid meta,
+duplicate GUIDs, Missing Scripts or missing references; all 38 main LFS assets
+matched their required bytes. `git diff --check` passed.
+
+Read-only installer preview passed for bundle
+`8e979f9fae67d7e2a11f6fbc903e8ba4ba703e9b83b4dd0b863a1a1164428552`,
+manifest `811b51488da4847b3d13a3371f9b011b650fb461e14cc0297f60aa921e3a3fc2`.
+Only the UnityValidation payload differs from the installed bundle; config,
+installer and Codex distribution identities are unchanged. Preview did not
+stage files, modify the task or enable scheduling. This source remains
+NOT_INSTALLED and the original Issue #20 pilot remains FAILED.
+
+Local receipts are retained under `Logs/HostUnityPathRepair52-20260926` outside
+this checkout: `UnityVerification`, `integrity-scans.json`,
+`installer-preview.json`, and `IndependentRegression`. The complete old pilot
+diagnosis is retained separately; failed receipts were not overwritten.
 
 ## Separate Issue #20 finding
 
