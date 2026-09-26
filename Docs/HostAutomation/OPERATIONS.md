@@ -782,6 +782,14 @@ Both roles install local LFS filters with `--skip-repo` because hooks remain
 disabled with `core.hooksPath=NUL`. The Host retains explicit LFS push for
 the exact Developer delivery commit; this change does not enable hooks.
 
+All Host Git/LFS processes pin `lfs.<canonical-endpoint>.access=basic` in
+command scope for the exact HTTPS endpoint above. Git LFS otherwise learns
+this mode after its first authentication challenge and writes `.git/config`,
+including on an otherwise successful upload. The existing GitHub credential
+helper supplies credentials from its store. The pin contains no credentials,
+does not write local/global config, and does not permit config drift at any
+Developer or Reviewer boundary. Authentication failures still stop delivery.
+
 Before Codex or Unity runs, the Host reads `git-lfs ls-files --json` at the
 exact integration commit. Cache paths come only from validated SHA-256 OIDs.
 Source size and SHA-256 are verified while holding a read handle; each copy
