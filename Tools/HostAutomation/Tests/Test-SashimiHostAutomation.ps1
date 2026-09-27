@@ -4702,6 +4702,21 @@ wire_api = "responses"
         Assert-HostTest ($result.MissingMeta -ccontains 'Assets/FixtureData/Real.asset' -and $result.MissingMeta -ccontains 'Assets/FixtureData/gitkeep.prefab') 'The missing-meta evidence lost exact asset paths.'
     }
 
+    Invoke-HostTestCase 'ReviewerDetachedHeadRequiresOwnedCleanRunAndNativeProbeEvidence' {
+        . (Join-Path $PSScriptRoot 'Reviewer.DetachedFixtures.ps1')
+        Invoke-HostReviewerDetachedHeadRegression
+    }
+
+    Invoke-HostTestCase 'ReviewerDetachedSnapshotStillPinsCommitModeAndCompleteGitState' {
+        . (Join-Path $PSScriptRoot 'Reviewer.DetachedFixtures.ps1')
+        Invoke-HostReviewerDetachedSnapshotRegression
+    }
+
+    Invoke-HostTestCase 'ReviewerStructuredValidationFailureKeepsExitAndSafeCodes' {
+        . (Join-Path $PSScriptRoot 'Reviewer.DetachedFixtures.ps1')
+        Invoke-HostReviewerStructuredFailureRegression
+    }
+
     Invoke-HostTestCase 'ReviewerUnityDefaultDriftRequiresOwnedRunAndExactContent' {
         . (Join-Path $PSScriptRoot 'Reviewer.DriftFixtures.ps1')
         Invoke-HostReviewerDriftRegression

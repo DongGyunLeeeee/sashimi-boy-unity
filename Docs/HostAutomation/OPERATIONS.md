@@ -710,6 +710,13 @@ Before a Developer push or Reviewer transition, the Host inspects:
 - protected production-scope changes;
 - requested screenshot or preview hooks.
 
+The Reviewer uses a detached synthetic merge. Unity validation accepts that
+state only for the exact marker-bound, initially clean Review run; Developer
+still requires a branch. The native detached probes and full Git snapshot must
+pass, and commit, HEAD mode, refs, index and control files must remain unchanged
+after every stage. Failure reports retain the native exit and bounded validation
+failure codes even when a child summary has no top-level `Error` field.
+
 Git processes do not inherit system or user-global Git configuration. The Host
 supplies a fixed isolated configuration stack that disables hooks, fsmonitor,
 external diff/editor/signing/proxy helpers and pins the exact GitHub CLI
