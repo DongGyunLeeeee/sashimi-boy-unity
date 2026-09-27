@@ -140,6 +140,9 @@ role:
 - local synthetic merge for Reviewer;
 - focused commit and normal push for Developer only;
 - Draft PR creation only for Developer New Work;
+- evidence-body update only for Developer resume on the exact linked open
+  Draft PR while the Issue remains In Progress, with all publication pins
+  rechecked and exact content/identity read-back before pin advancement;
 - evidence comments and exact allowed Project transitions.
 
 Configuration is strict UTF-8 under an exact recursive schema. Import rejects
