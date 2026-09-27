@@ -8,7 +8,9 @@ using System.Reflection;
 using System.Security.Cryptography;
 using NUnit.Framework;
 using UnityEditor;
+using UnityEditor.SceneManagement;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
 namespace SashimiBoy.Tests
 {
@@ -42,6 +44,141 @@ namespace SashimiBoy.Tests
         private const string FallbackPath =
             "Assets/_SashimiBoy/Art/Generated/Prefabs/Stage01/" +
             "PF_Stage01_ProceduralSalmon.prefab";
+
+        [TestCase("Initial", false)]
+        [TestCase("Parts", false)]
+        [TestCase("Anchors", false)]
+        [TestCase("Initial", true)]
+        [TestCase("Parts", true)]
+        [TestCase("Anchors", true)]
+        public void PreviewCapture_PreservesOpenScenesAndUnsavedEdits(
+            string modeName,
+            bool failDuringCapture)
+        {
+            Scene originalActive = SceneManager.GetActiveScene();
+            Scene dirtyScene = default;
+            Scene cleanScene = default;
+            Scene capturedScene = default;
+            string fixtureFolderName = "__SalmonPreviewRegression_" + Guid.NewGuid().ToString("N");
+            string fixtureFolder = "Assets/" + fixtureFolderName;
+            try
+            {
+                // Existing untitled scenes prevent NewScene(Additive). Open uniquely
+                // owned copies instead; never save, close, or replace a user scene.
+                Assert.That(AssetDatabase.CreateFolder("Assets", fixtureFolderName), Is.Not.Empty);
+                Assert.That(AssetDatabase.CopyAsset(StageScenePath, fixtureFolder + "/Dirty.unity"), Is.True);
+                Assert.That(AssetDatabase.CopyAsset(StageScenePath, fixtureFolder + "/Clean.unity"), Is.True);
+                dirtyScene = EditorSceneManager.OpenScene(
+                    fixtureFolder + "/Dirty.unity", OpenSceneMode.Additive);
+                SceneManager.SetActiveScene(dirtyScene);
+                GameObject unsaved = new GameObject("Unsaved salmon preview regression");
+                Vector3 editedPosition = new Vector3(17f, 23f, 31f);
+                unsaved.transform.position = editedPosition;
+                RenderSettings.ambientLight = new Color(0.7f, 0.1f, 0.2f, 1f);
+                EditorSceneManager.MarkSceneDirty(dirtyScene);
+                cleanScene = EditorSceneManager.OpenScene(
+                    fixtureFolder + "/Clean.unity", OpenSceneMode.Additive);
+                Scene activeAtCapture = failDuringCapture ? cleanScene : dirtyScene;
+                SceneManager.SetActiveScene(activeAtCapture);
+                Assert.That(cleanScene.isDirty, Is.False);
+                Assert.That(dirtyScene.isDirty, Is.True, "Cover scene edits not saved to disk.");
+
+                Scene[] scenes = Enumerable.Range(0, SceneManager.sceneCount)
+                    .Select(SceneManager.GetSceneAt).ToArray();
+                bool[] dirty = scenes.Select(scene => scene.isDirty).ToArray();
+                string[] paths = scenes.Select(scene => scene.path).ToArray();
+                int[][] roots = scenes.Select(scene => scene.GetRootGameObjects()
+                    .Select(root => root.GetInstanceID()).OrderBy(id => id).ToArray())
+                    .ToArray();
+                Color ambient = RenderSettings.ambientLight;
+                bool renderCalled = false;
+                InvalidOperationException failure =
+                    new InvalidOperationException("Injected preview render failure");
+                Action<Camera, string, int, int> render = (camera, path, width, height) =>
+                {
+                    renderCalled = true;
+                    capturedScene = camera.gameObject.scene;
+                    Assert.That(EditorSceneManager.IsPreviewScene(capturedScene), Is.True);
+                    Assert.That(camera.scene, Is.EqualTo(capturedScene));
+                    Assert.That(SceneManager.GetActiveScene(), Is.EqualTo(activeAtCapture));
+                    Assert.That(capturedScene.GetRootGameObjects()
+                        .Any(root => root.name == "PreviewGround"), Is.True);
+                    Assert.That(capturedScene.GetRootGameObjects()
+                        .SelectMany(root => root.GetComponentsInChildren<Renderer>(true))
+                        .Count(), Is.GreaterThan(1), "Subject and ground belong to the preview.");
+                    Assert.That(path, Does.EndWith("ScenePreservationRegression.png"));
+                    Assert.That(width, Is.EqualTo(1600));
+                    Assert.That(height, Is.EqualTo(1000));
+                    if (failDuringCapture)
+                    {
+                        throw failure;
+                    }
+                };
+                Type pipeline = RuntimeReflection.RuntimeType(
+                    "SashimiBoy.EditorTools.SalmonButcheryArtPipeline");
+                Type modeType = pipeline.GetNestedType("PreviewMode", BindingFlags.NonPublic);
+                Assert.That(modeType, Is.Not.Null);
+                object mode = Enum.Parse(modeType, modeName);
+                TestDelegate capture = () => RuntimeReflection.InvokeStatic(
+                    pipeline.FullName,
+                    "CapturePreview",
+                    "ScenePreservationRegression.png",
+                    mode,
+                    render);
+
+                if (failDuringCapture)
+                {
+                    TargetInvocationException thrown =
+                        Assert.Throws<TargetInvocationException>(capture);
+                    Assert.That(thrown.InnerException, Is.SameAs(failure));
+                }
+                else
+                {
+                    capture();
+                }
+
+                Assert.That(renderCalled, Is.True);
+                Assert.That(capturedScene.IsValid(), Is.False,
+                    "The owned preview scene must close even on failure.");
+                Assert.That(SceneManager.sceneCount, Is.EqualTo(scenes.Length));
+                Assert.That(SceneManager.GetActiveScene(), Is.EqualTo(activeAtCapture));
+                Assert.That(RenderSettings.ambientLight, Is.EqualTo(ambient));
+                Assert.That(unsaved != null, Is.True, "Unsaved objects must survive capture.");
+                Assert.That(unsaved.transform.position, Is.EqualTo(editedPosition));
+                for (int i = 0; i < scenes.Length; i++)
+                {
+                    Assert.That(SceneManager.GetSceneAt(i), Is.EqualTo(scenes[i]));
+                    Assert.That(scenes[i].isLoaded, Is.True);
+                    Assert.That(scenes[i].path, Is.EqualTo(paths[i]));
+                    Assert.That(scenes[i].isDirty, Is.EqualTo(dirty[i]));
+                    Assert.That(scenes[i].GetRootGameObjects()
+                        .Select(root => root.GetInstanceID()).OrderBy(id => id).ToArray(),
+                        Is.EqualTo(roots[i]), "Capture must not leave objects in user scenes.");
+                }
+            }
+            finally
+            {
+                if (originalActive.IsValid() && originalActive.isLoaded)
+                {
+                    SceneManager.SetActiveScene(originalActive);
+                }
+
+                if (cleanScene.IsValid())
+                {
+                    EditorSceneManager.CloseScene(cleanScene, true);
+                }
+
+                if (dirtyScene.IsValid())
+                {
+                    EditorSceneManager.CloseScene(dirtyScene, true);
+                }
+
+                if (AssetDatabase.IsValidFolder(fixtureFolder))
+                {
+                    Assert.That(AssetDatabase.DeleteAsset(fixtureFolder), Is.True);
+                }
+            }
+        }
 
         [TestCase(false)]
         [TestCase(true)]

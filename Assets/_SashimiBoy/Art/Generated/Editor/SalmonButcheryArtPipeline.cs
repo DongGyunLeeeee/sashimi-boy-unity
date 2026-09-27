@@ -987,88 +987,112 @@ namespace SashimiBoy.EditorTools
 
         private static void CapturePreview(
             string fileName,
-            PreviewMode mode)
+            PreviewMode mode,
+            Action<Camera, string, int, int> render = null)
         {
-            Scene scene = EditorSceneManager.NewScene(
-                NewSceneSetup.EmptyScene,
-                NewSceneMode.Single);
-            GameObject assemblyPrefab =
-                AssetDatabase.LoadAssetAtPath<GameObject>(AssemblyPrefabPath);
-            Require(assemblyPrefab != null, "Assembly prefab is missing.");
-            Camera camera = new GameObject("PreviewCamera").AddComponent<Camera>();
-            camera.clearFlags = CameraClearFlags.SolidColor;
-            camera.backgroundColor = new Color(0.035f, 0.045f, 0.06f, 1f);
-            camera.fieldOfView = 32f;
-            camera.allowHDR = false;
-            camera.allowMSAA = true;
-            Light key = new GameObject("KeyLight").AddComponent<Light>();
-            key.type = LightType.Directional;
-            key.intensity = 0.82f;
-            key.transform.rotation = Quaternion.Euler(48f, -32f, 0f);
-            Light fill = new GameObject("FillLight").AddComponent<Light>();
-            fill.type = LightType.Directional;
-            fill.intensity = 0.36f;
-            fill.transform.rotation = Quaternion.Euler(62f, 152f, 0f);
-            RenderSettings.ambientLight = new Color(0.28f, 0.30f, 0.34f, 1f);
-            GameObject assembly = PrefabUtility.InstantiatePrefab(assemblyPrefab)
-                as GameObject;
-            Require(assembly != null, "Could not instantiate assembly preview.");
-            SalmonAssemblyView view = assembly.GetComponent<SalmonAssemblyView>();
-            Require(view != null, "Assembly view component is missing.");
-            GameObject previewSubject = assembly;
-
-            Material groundMaterial = new Material(Shader.Find("Standard"));
-            groundMaterial.color = new Color(0.11f, 0.13f, 0.16f, 1f);
-            groundMaterial.SetFloat("_Glossiness", 0.16f);
-            GameObject ground = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            ground.name = "PreviewGround";
-            ground.transform.position = new Vector3(0f, -0.055f, 0f);
-            ground.transform.localScale = new Vector3(8f, 0.1f, 8f);
-            ground.GetComponent<Renderer>().sharedMaterial = groundMaterial;
-            UnityEngine.Object.DestroyImmediate(ground.GetComponent<Collider>());
-
-            List<GameObject> markers = new List<GameObject>();
-            if (mode == PreviewMode.Parts)
+            // Never replace, save, or reopen the user's scenes, including untitled
+            // dirty scenes. Explicit destinations also keep their lighting untouched.
+            Scene scene = EditorSceneManager.NewPreviewScene();
+            List<Material> materials = new List<Material>();
+            try
             {
-                UnityEngine.Object.DestroyImmediate(assembly);
-                previewSubject = CreateSeparatedPartsPreview();
-            }
-            else if (mode == PreviewMode.Anchors)
-            {
-                AddAnchorMarkers(view, markers);
-            }
+                GameObject assemblyPrefab =
+                    AssetDatabase.LoadAssetAtPath<GameObject>(AssemblyPrefabPath);
+                Require(assemblyPrefab != null, "Assembly prefab is missing.");
+                Camera camera = CreatePreviewObject("PreviewCamera", scene).AddComponent<Camera>();
+                camera.scene = scene;
+                camera.clearFlags = CameraClearFlags.SolidColor;
+                camera.backgroundColor = new Color(0.035f, 0.045f, 0.06f, 1f);
+                camera.fieldOfView = 32f;
+                camera.allowHDR = false;
+                camera.allowMSAA = true;
+                Light key = CreatePreviewObject("KeyLight", scene).AddComponent<Light>();
+                key.type = LightType.Directional;
+                key.intensity = 0.82f;
+                key.transform.rotation = Quaternion.Euler(48f, -32f, 0f);
+                Light fill = CreatePreviewObject("FillLight", scene).AddComponent<Light>();
+                fill.type = LightType.Directional;
+                fill.intensity = 0.36f;
+                fill.transform.rotation = Quaternion.Euler(62f, 152f, 0f);
+                GameObject assembly = PrefabUtility.InstantiatePrefab(assemblyPrefab, scene)
+                    as GameObject;
+                Require(assembly != null, "Could not instantiate assembly preview.");
+                SalmonAssemblyView view = assembly.GetComponent<SalmonAssemblyView>();
+                Require(view != null, "Assembly view component is missing.");
+                GameObject previewSubject = assembly;
 
-            Bounds bounds;
-            Require(
-                TryGetRendererBounds(previewSubject, out bounds),
-                "Preview has no bounds.");
-            if (mode == PreviewMode.Anchors)
-            {
-                for (int i = 0; i < markers.Count; i++)
+                Material groundMaterial = new Material(Shader.Find("Standard"));
+                materials.Add(groundMaterial);
+                groundMaterial.color = new Color(0.11f, 0.13f, 0.16f, 1f);
+                groundMaterial.SetFloat("_Glossiness", 0.16f);
+                GameObject ground = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                SceneManager.MoveGameObjectToScene(ground, scene);
+                ground.name = "PreviewGround";
+                ground.transform.position = new Vector3(0f, -0.055f, 0f);
+                ground.transform.localScale = new Vector3(8f, 0.1f, 8f);
+                ground.GetComponent<Renderer>().sharedMaterial = groundMaterial;
+                UnityEngine.Object.DestroyImmediate(ground.GetComponent<Collider>());
+
+                List<GameObject> markers = new List<GameObject>();
+                if (mode == PreviewMode.Parts)
                 {
-                    Bounds markerBounds;
-                    if (TryGetRendererBounds(markers[i], out markerBounds))
+                    UnityEngine.Object.DestroyImmediate(assembly);
+                    previewSubject = CreateSeparatedPartsPreview(scene);
+                }
+                else if (mode == PreviewMode.Anchors)
+                {
+                    AddAnchorMarkers(view, markers, scene, materials);
+                }
+
+                Bounds bounds;
+                Require(
+                    TryGetRendererBounds(previewSubject, out bounds),
+                    "Preview has no bounds.");
+                if (mode == PreviewMode.Anchors)
+                {
+                    for (int i = 0; i < markers.Count; i++)
                     {
-                        bounds.Encapsulate(markerBounds);
+                        Bounds markerBounds;
+                        if (TryGetRendererBounds(markers[i], out markerBounds))
+                        {
+                            bounds.Encapsulate(markerBounds);
+                        }
+                    }
+                }
+
+                FitCamera(camera, bounds, mode == PreviewMode.Parts);
+                (render ?? RenderCamera)(
+                    camera,
+                    PreviewRoot + "/" + fileName,
+                    1600,
+                    1000);
+            }
+            finally
+            {
+                try
+                {
+                    EditorSceneManager.ClosePreviewScene(scene);
+                }
+                finally
+                {
+                    foreach (Material material in materials)
+                    {
+                        UnityEngine.Object.DestroyImmediate(material);
                     }
                 }
             }
-
-            FitCamera(camera, bounds, mode == PreviewMode.Parts);
-            RenderCamera(
-                camera,
-                PreviewRoot + "/" + fileName,
-                1600,
-                1000);
-            UnityEngine.Object.DestroyImmediate(groundMaterial);
-            EditorSceneManager.NewScene(
-                NewSceneSetup.EmptyScene,
-                NewSceneMode.Single);
         }
 
-        private static GameObject CreateSeparatedPartsPreview()
+        private static GameObject CreatePreviewObject(string name, Scene scene)
         {
-            GameObject root = new GameObject("SeparatedCanonicalParts");
+            GameObject instance = new GameObject(name);
+            SceneManager.MoveGameObjectToScene(instance, scene);
+            return instance;
+        }
+
+        private static GameObject CreateSeparatedPartsPreview(Scene scene)
+        {
+            GameObject root = CreatePreviewObject("SeparatedCanonicalParts", scene);
             Dictionary<string, Vector3> positions =
                 new Dictionary<string, Vector3>(StringComparer.Ordinal)
                 {
@@ -1085,7 +1109,7 @@ namespace SashimiBoy.EditorTools
                 GameObject prefab =
                     AssetDatabase.LoadAssetAtPath<GameObject>(spec.PrefabPath);
                 Require(prefab != null, "Missing wrapper preview: " + spec.PrefabPath);
-                GameObject instance = PrefabUtility.InstantiatePrefab(prefab)
+                GameObject instance = PrefabUtility.InstantiatePrefab(prefab, scene)
                     as GameObject;
                 Require(instance != null, "Could not preview " + spec.Id);
                 instance.name = spec.Id;
@@ -1098,7 +1122,9 @@ namespace SashimiBoy.EditorTools
 
         private static void AddAnchorMarkers(
             SalmonAssemblyView view,
-            List<GameObject> markers)
+            List<GameObject> markers,
+            Scene scene,
+            List<Material> materials)
         {
             List<Transform> anchors = new List<Transform>
             {
@@ -1124,12 +1150,14 @@ namespace SashimiBoy.EditorTools
                 }
 
                 GameObject marker = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+                SceneManager.MoveGameObjectToScene(marker, scene);
                 marker.name = "Marker_" + anchor.name;
                 marker.transform.position = anchor.position;
                 marker.transform.localScale = Vector3.one *
                     (anchor.name.Contains("Output") ? 0.12f : 0.07f);
                 UnityEngine.Object.DestroyImmediate(marker.GetComponent<Collider>());
                 Material material = new Material(shader);
+                materials.Add(material);
                 material.color = anchor.name.Contains("Output")
                     ? new Color(1f, 0.52f, 0.16f, 1f)
                     : anchor.name.Contains("Attachment")
@@ -1163,26 +1191,31 @@ namespace SashimiBoy.EditorTools
             int width,
             int height)
         {
-            RenderTexture target = new RenderTexture(width, height, 24);
-            target.antiAliasing = 4;
-            target.Create();
             RenderTexture previous = RenderTexture.active;
-            camera.targetTexture = target;
-            camera.Render();
-            RenderTexture.active = target;
-            Texture2D image = new Texture2D(
-                width,
-                height,
-                TextureFormat.RGB24,
-                false);
-            image.ReadPixels(new Rect(0f, 0f, width, height), 0, 0);
-            image.Apply(false, false);
-            File.WriteAllBytes(AssetPathToAbsolutePath(assetPath), image.EncodeToPNG());
-            UnityEngine.Object.DestroyImmediate(image);
-            camera.targetTexture = null;
-            RenderTexture.active = previous;
-            target.Release();
-            UnityEngine.Object.DestroyImmediate(target);
+            RenderTexture previousTarget = camera.targetTexture;
+            RenderTexture target = new RenderTexture(width, height, 24);
+            Texture2D image = null;
+            try
+            {
+                target.antiAliasing = 4;
+                target.Create();
+                camera.targetTexture = target;
+                camera.Render();
+                RenderTexture.active = target;
+                image = new Texture2D(width, height, TextureFormat.RGB24, false);
+                image.ReadPixels(new Rect(0f, 0f, width, height), 0, 0);
+                image.Apply(false, false);
+                File.WriteAllBytes(AssetPathToAbsolutePath(assetPath), image.EncodeToPNG());
+            }
+            finally
+            {
+                camera.targetTexture = previousTarget;
+                RenderTexture.active = previous;
+                UnityEngine.Object.DestroyImmediate(image);
+                target.Release();
+                UnityEngine.Object.DestroyImmediate(target);
+            }
+
             AssetDatabase.ImportAsset(assetPath, ImportAssetOptions.ForceSynchronousImport);
             TextureImporter importer =
                 AssetImporter.GetAtPath(assetPath) as TextureImporter;
