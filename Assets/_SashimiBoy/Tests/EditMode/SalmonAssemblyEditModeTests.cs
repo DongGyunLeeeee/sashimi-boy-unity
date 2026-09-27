@@ -43,6 +43,52 @@ namespace SashimiBoy.Tests
             "Assets/_SashimiBoy/Art/Generated/Prefabs/Stage01/" +
             "PF_Stage01_ProceduralSalmon.prefab";
 
+        [TestCase(false)]
+        [TestCase(true)]
+        public void PreviewMetadataNormalization_PreservesBytesExceptTrailingSpacesAndTabs(
+            bool includeBom)
+        {
+            const string guid = "0123456789abcdef0123456789abcdef";
+            string originalText =
+                "fileFormatVersion: 2\r\n" +
+                "guid: " + guid + " \t\r\n" +
+                "  customData: \n  spriteID:\t\r  indices: \t\r\n" +
+                "  mipmapLimitGroupName: \n  userData: \r\n" +
+                "  assetBundleName: \n  assetBundleVariant: \r\n" +
+                "  label: \"연어  fish\tvalue\"\r\n \t\n" +
+                "  unchanged: value\u00a0\n  eof: \t";
+            string expectedText =
+                "fileFormatVersion: 2\r\n" +
+                "guid: " + guid + "\r\n" +
+                "  customData:\n  spriteID:\r  indices:\r\n" +
+                "  mipmapLimitGroupName:\n  userData:\r\n" +
+                "  assetBundleName:\n  assetBundleVariant:\r\n" +
+                "  label: \"연어  fish\tvalue\"\r\n\n" +
+                "  unchanged: value\u00a0\n  eof:";
+            System.Text.UTF8Encoding encoding = new System.Text.UTF8Encoding(includeBom);
+            byte[] original = encoding.GetPreamble()
+                .Concat(encoding.GetBytes(originalText)).ToArray();
+            byte[] expected = encoding.GetPreamble()
+                .Concat(encoding.GetBytes(expectedText)).ToArray();
+            byte[] snapshot = (byte[])original.Clone();
+
+            byte[] normalized = (byte[])RuntimeReflection.InvokeStatic(
+                "SashimiBoy.EditorTools.SalmonButcheryArtPipeline",
+                "RemoveTrailingSpacesAndTabs",
+                original);
+
+            Assert.That(normalized, Is.EqualTo(expected),
+                "Only ASCII spaces/tabs at line ends or EOF may change.");
+            Assert.That(original, Is.EqualTo(snapshot), "Input bytes must remain unchanged.");
+            Assert.That(
+                (byte[])RuntimeReflection.InvokeStatic(
+                    "SashimiBoy.EditorTools.SalmonButcheryArtPipeline",
+                    "RemoveTrailingSpacesAndTabs",
+                    normalized),
+                Is.EqualTo(expected),
+                "Normalization must be idempotent.");
+        }
+
         [Test]
         public void SourceManifest_AllImportedBytesAndGuidsArePreserved()
         {

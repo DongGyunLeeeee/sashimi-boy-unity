@@ -931,9 +931,58 @@ namespace SashimiBoy.EditorTools
                 "SalmonAssembly_Anchors.png",
                 PreviewMode.Anchors);
             AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport);
+            // Unity can serialize empty importer fields with trailing spaces.
+            // Normalize only these owned outputs, after the final preview import.
+            NormalizePreviewMetadata("SalmonAssembly_Initial.png");
+            NormalizePreviewMetadata("SalmonAssembly_Parts.png");
+            NormalizePreviewMetadata("SalmonAssembly_Anchors.png");
             Debug.Log(
                 "[Sashimi Boy] Stage01 salmon assembly previews captured: " +
                 PreviewRoot);
+        }
+
+        private static void NormalizePreviewMetadata(string fileName)
+        {
+            string path = AssetPathToAbsolutePath(PreviewRoot + "/" + fileName + ".meta");
+            byte[] original = File.ReadAllBytes(path);
+            byte[] normalized = RemoveTrailingSpacesAndTabs(original);
+            if (!original.SequenceEqual(normalized))
+            {
+                File.WriteAllBytes(path, normalized);
+            }
+        }
+
+        private static byte[] RemoveTrailingSpacesAndTabs(byte[] original)
+        {
+            // Work on bytes to preserve GUIDs, encoding/BOM, line endings and EOF.
+            using (MemoryStream output = new MemoryStream(original.Length))
+            {
+                int lineStart = 0;
+                for (int i = 0; i <= original.Length; i++)
+                {
+                    if (i < original.Length && original[i] != '\r' && original[i] != '\n')
+                    {
+                        continue;
+                    }
+
+                    int contentEnd = i;
+                    while (contentEnd > lineStart &&
+                           (original[contentEnd - 1] == ' ' || original[contentEnd - 1] == '\t'))
+                    {
+                        contentEnd--;
+                    }
+
+                    output.Write(original, lineStart, contentEnd - lineStart);
+                    if (i < original.Length)
+                    {
+                        output.WriteByte(original[i]);
+                    }
+
+                    lineStart = i + 1;
+                }
+
+                return output.ToArray();
+            }
         }
 
         private static void CapturePreview(
