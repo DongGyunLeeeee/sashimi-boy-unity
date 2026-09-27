@@ -322,6 +322,12 @@ Automation rule.
   retained outside Repository. The Reviewer independently verifies the final
   file hash, unchanged Git control state and every other source byte. This
   exception never applies to Developer delivery and adds no approved setting.
+- Host Unity validation accepts the Reviewer's detached synthetic integration
+  only with the validated initially clean Review context, exact run ID,
+  Repository path, unchanged ownership marker, and successful native evidence
+  of detached HEAD. Developer validation still requires a branch. Resolved
+  commit, HEAD mode, refs, index, and every other Git control remain pinned
+  across all Unity stages; a detached probe failure cannot authorize execution.
 - `Set-GitHubProjectStatus.ps1` validates an existing Project item and an
   allowed role transition before editing the existing `Status` field. It
   supports `-WhatIf` and never creates schema.

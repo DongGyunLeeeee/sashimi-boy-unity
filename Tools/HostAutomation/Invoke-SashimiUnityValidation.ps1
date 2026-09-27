@@ -27,8 +27,8 @@ param(
 
     [string]$CancellationMarkerPath,
 
-    # Only the Host Reviewer supplies this run-bound exception. Developer
-    # validation continues to reject every ProjectSettings mutation.
+    # Only the Host Reviewer supplies this run-bound context for detached
+    # integration and the existing narrow ProjectSettings drift exception.
     [string]$ReviewRunId,
     [string[]]$ProtectedWorktrees = @('C:\Dev\sashimi-boy-unity','C:\Dev\sashimi-boy-unity-developer','C:\Dev\sashimi-boy-unity-reviewer'),
 
@@ -707,6 +707,57 @@ function Get-SashimiValidationAttributeControlState {
     return @($records.ToArray() | Sort-Object Path)
 }
 
+function Get-SashimiValidationHeadMode {
+    param(
+        [Parameter(Mandatory)][string]$ProjectRoot,
+        [Parameter(Mandatory)][string]$Head,
+        [Parameter(Mandatory)][object]$SymbolicResult,
+        [Parameter(Mandatory)][object]$BranchResult,
+        [AllowNull()][object]$ReviewContext,
+        [AllowEmptyString()][string]$RunId,
+        [AllowEmptyString()][string]$RunRoot
+    )
+
+    if ($Head -cnotmatch '^[0-9a-f]{40}$') { throw 'Unity validation observed an invalid HEAD.' }
+    foreach ($probe in @($SymbolicResult,$BranchResult)) {
+        if ([bool](Get-SashimiPropertyValue $probe 'TimedOut' $false) -or
+            [bool](Get-SashimiPropertyValue $probe 'Crashed' $false) -or
+            [bool](Get-SashimiPropertyValue $probe 'Cancelled' $false) -or
+            -not [bool](Get-SashimiPropertyValue $probe 'TerminationConfirmed' $true)) {
+            throw 'Git HEAD probe did not complete normally.'
+        }
+    }
+    $symbolic = ([string]$SymbolicResult.StdOut).Trim()
+    $branch = ([string]$BranchResult.StdOut).Trim()
+    if ($symbolic -or $branch) {
+        if (-not $SymbolicResult.Succeeded -or -not $BranchResult.Succeeded -or
+            $SymbolicResult.ExitCode -ne 0 -or $BranchResult.ExitCode -ne 0 -or
+            -not $branch -or $symbolic -cne "refs/heads/$branch") {
+            throw 'Unity validation observed an inconsistent branch HEAD.'
+        }
+        return 'Branch'
+    }
+
+    # --quiet reports a detached HEAD with exit 1 and no output. Other probe
+    # failures must never become permission to accept detached validation.
+    if ($SymbolicResult.ExitCode -ne 1 -or $BranchResult.ExitCode -ne 1 -or
+        -not [string]::IsNullOrWhiteSpace([string]$SymbolicResult.StdErr) -or
+        -not [string]::IsNullOrWhiteSpace([string]$BranchResult.StdErr)) {
+        throw 'Git HEAD probes did not establish a detached HEAD.'
+    }
+    if ([string]::IsNullOrWhiteSpace($RunId) -or $null -eq $ReviewContext -or
+        $ReviewContext.RunId -cne $RunId -or -not [string]::IsNullOrEmpty([string]$ReviewContext.Status)) {
+        throw 'Detached HEAD requires a validated, initially clean Reviewer run.'
+    }
+    $owned = Get-SashimiOwnedRun -RunPath (Split-Path -Parent $ProjectRoot) -RunRoot $RunRoot
+    if ($owned.RunId -cne $RunId -or
+        -not (Test-SashimiPathEqual $ProjectRoot (Join-Path $owned.RunPath 'Repository')) -or
+        (Get-FileHash -LiteralPath $owned.MarkerPath -Algorithm SHA256).Hash -cne $ReviewContext.MarkerSha256) {
+        throw 'Detached Reviewer HEAD is not bound to the original owned run marker.'
+    }
+    return 'DetachedReview'
+}
+
 function Get-SashimiUnityGitControlSnapshot {
     [CmdletBinding()]
     param(
@@ -723,9 +774,17 @@ function Get-SashimiUnityGitControlSnapshot {
             Assert-SashimiNoReparsePoint -Path $repositoryFull
             Assert-SashimiNoReparsePoint -Path $gitDirectory
         }
+        $readProcess = {
+            param([string]$Name,[string[]]$Arguments)
+            Invoke-SashimiValidationProcess -Name $Name -Kind Git -FilePath $script:gitExecutable -Arguments $Arguments -WorkingDirectory $repositoryFull -TimeoutSeconds $script:gitTimeout -Fixture $script:gitControlFixture -FixtureGroup GitControl -DryRun:$DryRun
+        }
         $read = {
             param([string]$Name,[string[]]$Arguments)
-            (Invoke-SashimiValidationProcess -Name $Name -Kind Git -FilePath $script:gitExecutable -Arguments $Arguments -WorkingDirectory $repositoryFull -TimeoutSeconds $script:gitTimeout -Fixture $script:gitControlFixture -FixtureGroup GitControl -DryRun:$DryRun).StdOut
+            $native = & $readProcess $Name $Arguments
+            if (-not $DryRun -and (-not $native.Succeeded -or $native.ExitCode -ne 0)) {
+                throw "Git control read '$Name' failed; exit=$($native.ExitCode)."
+            }
+            [string]$native.StdOut
         }
         $gitDirectoryToken = (& $read 'GitControlGitDirectory' @('-C',$repositoryFull,'rev-parse','--git-dir')).Trim().Replace('\','/')
         $gitCommonDirectoryToken = (& $read 'GitControlCommonDirectory' @('-C',$repositoryFull,'rev-parse','--git-common-dir')).Trim().Replace('\','/')
@@ -733,9 +792,16 @@ function Get-SashimiUnityGitControlSnapshot {
             throw 'Only the run-owned standalone .git directory may control Unity validation.'
         }
         $head = (& $read 'GitControlHead' @('-C',$repositoryFull,'rev-parse','HEAD')).Trim().ToLowerInvariant()
-        $symbolicHead = (& $read 'GitControlSymbolicHead' @('-C',$repositoryFull,'symbolic-ref','--quiet','HEAD')).Trim()
-        $branch = (& $read 'GitControlBranch' @('-C',$repositoryFull,'symbolic-ref','--quiet','--short','HEAD')).Trim()
-        $upstream = (& $read 'GitControlUpstream' @('-C',$repositoryFull,'for-each-ref','--format=%(upstream:short)',"refs/heads/$branch")).Trim()
+        $symbolicResult = & $readProcess 'GitControlSymbolicHead' @('-C',$repositoryFull,'symbolic-ref','--quiet','HEAD')
+        $branchResult = & $readProcess 'GitControlBranch' @('-C',$repositoryFull,'symbolic-ref','--quiet','--short','HEAD')
+        $symbolicHead = ([string]$symbolicResult.StdOut).Trim()
+        $branch = ([string]$branchResult.StdOut).Trim()
+        $headMode = if ($DryRun) { 'Planned' } else {
+            Get-SashimiValidationHeadMode -ProjectRoot $repositoryFull -Head $head -SymbolicResult $symbolicResult -BranchResult $branchResult -ReviewContext $reviewDriftContext -RunId $ReviewRunId -RunRoot ([string]$config.RunRoot)
+        }
+        $upstream = if ($headMode -ceq 'DetachedReview') { '' } else {
+            (& $read 'GitControlUpstream' @('-C',$repositoryFull,'for-each-ref','--format=%(upstream:short)',"refs/heads/$branch")).Trim()
+        }
         $originLines = @((& $read 'GitControlOriginUrls' @('-C',$repositoryFull,'remote','get-url','--all','origin')) -split '\r?\n' | Where-Object { $_ -match '\S' })
         $pushOriginLines = @((& $read 'GitControlPushUrls' @('-C',$repositoryFull,'remote','get-url','--push','--all','origin')) -split '\r?\n' | Where-Object { $_ -match '\S' })
         $hooks = (& $read 'GitControlHooksPath' @('-C',$repositoryFull,'config','--local','--get','core.hooksPath')).Trim()
@@ -750,7 +816,6 @@ function Get-SashimiUnityGitControlSnapshot {
         $remoteRecords = @($configRecords | Where-Object { $_ -match '^(?i)remote\.' } | Sort-Object)
 
         if (-not $DryRun) {
-            if ($head -cnotmatch '^[0-9a-f]{40}$' -or $symbolicHead -cne "refs/heads/$branch") { throw 'Unity validation observed an invalid or detached HEAD.' }
             if ($originLines.Count -ne 1 -or $originLines[0] -cne $script:canonicalRepositoryUrl) { throw 'origin fetch URLs do not equal the canonical repository URL.' }
             if ($pushOriginLines.Count -ne 1 -or $pushOriginLines[0] -cne $script:canonicalRepositoryUrl) { throw 'origin push URLs do not equal the canonical repository URL.' }
             if ($hooks -cne 'NUL') { throw 'Repository hooks are not disabled.' }
@@ -783,7 +848,7 @@ function Get-SashimiUnityGitControlSnapshot {
         return [pscustomobject][ordered]@{
             SchemaVersion=2; CanonicalWorkTree=$repositoryFull; CanonicalGitDirectory=$gitDirectory; CanonicalCommonDirectory=$gitDirectory
             GitDirectoryToken=$gitDirectoryToken; GitCommonDirectoryToken=$gitCommonDirectoryToken
-            Head=$head; SymbolicHead=$symbolicHead; Branch=$branch; Upstream=$upstream; ExpectedBranch=$branch; ExpectedUpstream=$upstream
+            Head=$head; HeadMode=$headMode; SymbolicHead=$symbolicHead; Branch=$branch; Upstream=$upstream; ExpectedBranch=$branch; ExpectedUpstream=$upstream
             OriginUrls=@($originLines); PushOriginUrls=@($pushOriginLines); HooksPath=$hooks
             RefsSha256=(Get-SashimiTextSha256 -Text ([string]$refs)); LocalConfigSha256=(Get-SashimiTextSha256 -Text ([string]$localConfig))
             RepositoryExtensionsSha256=(Get-SashimiTextSha256 -Text ([string]::Join("`0",$extensionRecords)))
