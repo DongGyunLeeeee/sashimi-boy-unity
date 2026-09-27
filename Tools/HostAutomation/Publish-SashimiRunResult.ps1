@@ -3,7 +3,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)][string]$ConfigPath,
-    [Parameter(Mandatory = $true)][ValidateSet('RevalidatePin', 'RevalidateIssue', 'Transition', 'Comment', 'CreateDraftPullRequest')][string]$Action,
+    [Parameter(Mandatory = $true)][ValidateSet('RevalidatePin', 'RevalidateIssue', 'Transition', 'Comment', 'CreateDraftPullRequest', 'UpdateDraftPullRequest')][string]$Action,
     [Parameter(Mandatory = $true)][ValidateSet('Developer', 'Reviewer')][string]$Role,
     [Parameter(Mandatory = $true)][ValidateRange(1, 2147483647)][int]$IssueNumber,
     [string]$ProjectItemId,
@@ -173,7 +173,7 @@ function ConvertFrom-PublishJson {
 }
 
 function Convert-PullRequestShape {
-    param([object]$Value)
+    param([object]$Value, [switch]$IncludeContent)
     $headRepositoryValue = Get-SashimiPropertyValue $Value 'HeadRepository' (Get-SashimiPropertyValue $Value 'headRepository' '')
     $headRepositoryName = if ($headRepositoryValue -is [string]) { [string]$headRepositoryValue } else { [string](Get-SashimiPropertyValue $headRepositoryValue 'nameWithOwner' '') }
     $baseRepositoryValue = Get-SashimiPropertyValue $Value 'BaseRepository' ([string]$script:publishConfig.Repository)
@@ -186,7 +186,7 @@ function Convert-PullRequestShape {
             -Title ([string](Get-SashimiPropertyValue $Value 'Title' (Get-SashimiPropertyValue $Value 'title' ''))) `
             -Body ([string](Get-SashimiPropertyValue $Value 'Body' (Get-SashimiPropertyValue $Value 'body' '')))
     }
-    return [pscustomobject][ordered]@{
+    $shape = [pscustomobject][ordered]@{
         Number = [int](Get-SashimiPropertyValue $Value 'Number' (Get-SashimiPropertyValue $Value 'number' 0))
         State = ([string](Get-SashimiPropertyValue $Value 'State' (Get-SashimiPropertyValue $Value 'state' ''))).ToUpperInvariant()
         IsDraft = [bool](Get-SashimiPropertyValue $Value 'IsDraft' (Get-SashimiPropertyValue $Value 'isDraft' $false))
@@ -200,14 +200,20 @@ function Convert-PullRequestShape {
         Url = [string](Get-SashimiPropertyValue $Value 'Url' (Get-SashimiPropertyValue $Value 'url' ''))
         ContentSha256 = $contentSha256.ToLowerInvariant()
     }
+    if ($IncludeContent) {
+        if (-not $hasTitle -or -not $hasBody) { throw 'PR evidence update requires the complete live title and body.' }
+        $shape | Add-Member -NotePropertyName Title -NotePropertyValue ([string](Get-SashimiPropertyValue $Value 'Title' ''))
+        $shape | Add-Member -NotePropertyName Body -NotePropertyValue ([string](Get-SashimiPropertyValue $Value 'Body' ''))
+    }
+    return $shape
 }
 
 function Get-LivePullRequest {
-    param([int]$Number)
+    param([int]$Number, [switch]$IncludeContent)
     if ($null -ne $script:publishFixture) {
         $value = Get-SashimiPropertyValue $script:publishFixture 'LivePullRequest' $null
         if ($null -eq $value) { throw 'Publish fixture has no LivePullRequest.' }
-        $shape = Convert-PullRequestShape $value
+        $shape = Convert-PullRequestShape $value -IncludeContent:$IncludeContent
         if ([string]$shape.ContentSha256 -cnotmatch '^[0-9a-f]{64}$' -and $PinnedPullRequestContentSha256 -cmatch '^[0-9a-f]{64}$') {
             # Compatibility for older self-contained fixtures that intentionally
             # omit prose. Live gh responses never use this fallback.
@@ -222,7 +228,7 @@ function Get-LivePullRequest {
         'pr', 'view', [string]$Number, '--repo', [string]$script:publishConfig.Repository,
         '--json', 'number,title,body,state,isDraft,baseRefName,headRefName,headRefOid,headRepository,isCrossRepository,author,url'
     )
-    $shape = Convert-PullRequestShape (ConvertFrom-PublishJson $result.StdOut 'Pull Request live pin query')
+    $shape = Convert-PullRequestShape (ConvertFrom-PublishJson $result.StdOut 'Pull Request live pin query') -IncludeContent:$IncludeContent
     if ([string]$shape.ContentSha256 -cnotmatch '^[0-9a-f]{64}$') { throw 'Pull Request live pin query omitted exact title/body content.' }
     return $shape
 }
@@ -390,11 +396,12 @@ function Assert-LiveRemoteBranchPin {
 }
 
 function Assert-LivePullRequestIdentityPin {
+    param([string]$ExpectedContentSha256 = $PinnedPullRequestContentSha256)
     if ($PullRequestNumber -lt 1 -or $PinnedHeadSha -notmatch '^[0-9a-fA-F]{40}$' -or [string]::IsNullOrWhiteSpace($PinnedHeadRef)) {
         throw 'A PR mutation requires its exact number, 40-character head SHA, and head ref.'
     }
     $live = Get-LivePullRequest -Number $PullRequestNumber
-    $effectiveContentPin = $PinnedPullRequestContentSha256
+    $effectiveContentPin = $ExpectedContentSha256
     if ($effectiveContentPin -cnotmatch '^[0-9a-f]{64}$') {
         if ($null -eq $script:publishFixture) { throw 'A PR mutation requires its exact lowercase SHA-256 title/body content pin.' }
         $effectiveContentPin = [string]$live.ContentSha256
@@ -563,6 +570,24 @@ function Test-IssuePin {
     $current = ([string]$Contract.IssueUpdatedAt -ceq $PinnedIssueUpdatedAt -and [string]$Contract.IssueBodySha256 -ceq $PinnedIssueBodySha256)
     if (-not $current) { $script:pinCurrent = $false }
     return $current
+}
+
+function Merge-HostPullRequestEvidence {
+    param([AllowEmptyString()][string]$ExistingBody, [string]$Evidence)
+
+    $start = '<!-- sashimi-boy-host-validation:start:v1 -->'
+    $end = '<!-- sashimi-boy-host-validation:end:v1 -->'
+    if ($Evidence.Contains($start) -or $Evidence.Contains($end)) { throw 'New evidence contains reserved Host validation markers.' }
+    $starts = [regex]::Matches($ExistingBody, [regex]::Escape($start))
+    $ends = [regex]::Matches($ExistingBody, [regex]::Escape($end))
+    if ($starts.Count -ne $ends.Count -or $starts.Count -gt 1 -or
+        ($starts.Count -eq 1 -and ($starts[0].Index -ne 0 -or $ends[0].Index -lt $start.Length))) {
+        throw 'Existing PR has ambiguous Host validation markers; body update was refused.'
+    }
+    # Replace only our leading block. Preserve the original description and
+    # human checklist verbatim apart from mandatory publication redaction.
+    $original = if ($starts.Count -eq 1) { $ExistingBody.Substring($ends[0].Index + $end.Length) } else { "`n`n$ExistingBody" }
+    return "$start`n## Latest Host validation`n`n$Evidence`n$end$original"
 }
 
 function Assert-CommentReadBack {
@@ -739,6 +764,59 @@ try {
                 if (-not $postIdentity.Current) { throw 'PR head/ref changed during comment publication; no later transition is allowed.' }
             }
             $resultData = [ordered]@{ Target = $CommentTarget; Url = $commentUrl; Planned = $DryRun -or $null -ne $script:publishFixture; ReadBack=($null -eq $script:publishFixture -and -not $DryRun); IssueUpdatedAt=[string]$afterCommentContract.IssueUpdatedAt; IssueBodySha256=[string]$afterCommentContract.IssueBodySha256; PullRequestContentSha256=if ($PullRequestNumber -gt 0) { [string]$postIdentity.Live.ContentSha256 } else { '' }; ConversationSha256=$afterConversationDigest }
+        }
+        'UpdateDraftPullRequest' {
+            if ($Role -cne 'Developer' -or $PullRequestNumber -lt 1 -or -not $ProjectItemId) { throw 'Only Developer resume with an exact linked Draft PR may update evidence.' }
+            $resolvedPrBodyPath = ConvertTo-SashimiPath -Path $BodyPath
+            if (-not (Test-SashimiPathWithin -Path $resolvedPrBodyPath -Root ([string]$script:publishConfig.RunRoot))) { throw 'Draft PR BodyPath must be inside the configured run root.' }
+            Assert-SashimiNoReparsePoint -Path $resolvedPrBodyPath
+            if (-not (Test-Path -LiteralPath $resolvedPrBodyPath -PathType Leaf) -or (Get-Item -LiteralPath $resolvedPrBodyPath).Length -gt 1048576) { throw 'Draft PR evidence is missing or exceeds the 1 MiB host limit.' }
+            $evidence = [IO.File]::ReadAllText($resolvedPrBodyPath,[Text.Encoding]::UTF8)
+            Assert-PublishTextContainsNoSensitiveContent -Text $evidence -Context 'Draft PR evidence'
+            if (-not [string]::Equals($evidence,(Protect-SashimiText $evidence),[StringComparison]::Ordinal)) { throw 'Draft PR evidence contains forbidden content.' }
+            $contract = Get-ProjectContract
+            if (-not (Test-IssuePin $contract) -or [string]$contract.CurrentStatus -cne 'In Progress' -or
+                [int]$contract.OpenPullRequestCount -ne 1 -or @($contract.OpenPullRequestNumbers).Count -ne 1 -or [int]$contract.OpenPullRequestNumbers[0] -ne $PullRequestNumber) { throw 'Resume evidence requires the exact In Progress Issue and its sole linked PR.' }
+            $pin = Assert-LivePin
+            if (-not $pin.Current) { throw 'PR or conversation changed before evidence update.' }
+            $liveContent = Get-LivePullRequest -Number $PullRequestNumber -IncludeContent
+            if ([string]$liveContent.ContentSha256 -cne [string]$pin.PullRequestContentSha256) { $script:pinCurrent=$false; throw 'PR content changed while reading the original description.' }
+            Assert-PublishTextContainsNoSensitiveContent -Text $liveContent.Body -Context 'Original Draft PR body'
+            $newBody = Merge-HostPullRequestEvidence -ExistingBody (Protect-SashimiText $liveContent.Body) -Evidence $evidence
+            Assert-PublishTextContainsNoSensitiveContent -Text $newBody -Context 'Updated Draft PR body'
+            if ([Text.Encoding]::UTF8.GetByteCount($newBody) -gt 1048576) { throw 'Updated Draft PR body exceeds the 1 MiB host limit.' }
+            $updatedContentSha = Get-SashimiPullRequestContentSha256 -Title $liveContent.Title -Body $newBody
+            Write-SashimiUtf8File -Path $resolvedPrBodyPath -Content $newBody
+            # Keep the exact reviewed body stable while gh reads --body-file.
+            $bodyLease = [IO.File]::Open($resolvedPrBodyPath,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::Read)
+            try {
+                if ([IO.File]::ReadAllText($resolvedPrBodyPath,[Text.Encoding]::UTF8) -cne $newBody) { throw 'PR body artifact changed before publication.' }
+                $args = @('pr','edit',[string]$PullRequestNumber,'--repo',[string]$script:publishConfig.Repository,'--body-file',$resolvedPrBodyPath)
+                $script:publicationContract = $contract
+                if ($null -ne $script:publishFixture) { Assert-PublishMutationBoundary }
+                if ($null -eq $script:publishFixture) {
+                    [void](Invoke-PublishGh -Operation 'Update existing Draft PR evidence' -Arguments $args -Mutation)
+                }
+                else {
+                    $commands.Add([pscustomobject]@{ Operation='Update existing Draft PR evidence'; FilePath=Protect-SashimiText ([string]$script:publishConfig.GitHubCli); Arguments=@($args | ForEach-Object { Protect-SashimiText $_ }); Mutation=$true })
+                    $afterPr = Get-SashimiPropertyValue $script:publishFixture 'LivePullRequestAfterMutation' $null
+                    if ($null -eq $afterPr) {
+                        $afterPr = $script:publishFixture.LivePullRequest | ConvertTo-Json -Depth 32 | ConvertFrom-Json
+                        $afterPr | Add-Member -NotePropertyName Body -NotePropertyValue $newBody -Force
+                    }
+                    $script:publishFixture.LivePullRequest = $afterPr
+                }
+                $afterIdentity = Assert-LivePullRequestIdentityPin -ExpectedContentSha256 $updatedContentSha
+                $afterConversation = Get-LiveConversationState -Number $PullRequestNumber -AfterHostMutation
+                $afterContract = Get-ProjectContract
+                if (-not $afterIdentity.Current -or [string]$afterConversation.Sha256 -cne [string]$pin.ConversationSha256 -or
+                    (ConvertTo-SashimiJson $afterContract) -cne (ConvertTo-SashimiJson $contract)) {
+                    $script:pinCurrent=$false
+                    throw 'Draft PR evidence read-back or its Issue/conversation pins changed; no later transition is allowed.'
+                }
+            }
+            finally { $bodyLease.Dispose() }
+            $resultData = [ordered]@{ Planned=$DryRun -or $null -ne $script:publishFixture; ReadBack=($null -eq $script:publishFixture -and -not $DryRun); IssueUpdatedAt=[string]$afterContract.IssueUpdatedAt; IssueBodySha256=[string]$afterContract.IssueBodySha256; PullRequestContentSha256=$updatedContentSha; ConversationSha256=[string]$afterConversation.Sha256 }
         }
         'CreateDraftPullRequest' {
             if ($Role -cne 'Developer' -or $PullRequestNumber -ne 0) { throw 'Only Developer NewWork without an existing PR may create a Draft PR.' }

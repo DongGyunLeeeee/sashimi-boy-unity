@@ -146,7 +146,13 @@ function Invoke-ReviewerScriptJson {
     $lines = @($native.StdOut -split '\r?\n' | Where-Object { $_ -match '^\s*\{' })
     if ($lines.Count -eq 0) { throw "$Stage returned no JSON; exit=$($native.ExitCode); stderr=$($native.StdErr)" }
     try { $json = $lines[-1] | ConvertFrom-Json -Depth 64 -DateKind String -ErrorAction Stop } catch { throw "$Stage returned invalid JSON: $($_.Exception.Message)" }
-    if (-not $native.Succeeded -or -not [bool](Get-SashimiPropertyValue $json 'Success' $false)) { throw "$Stage failed: $([string](Get-SashimiPropertyValue $json 'Error' $native.StdErr))" }
+    if (-not $native.Succeeded -or -not [bool](Get-SashimiPropertyValue $json 'Success' $false)) {
+        $failureCodes = @(@(Get-SashimiPropertyValue $json 'Failures' @()) | ForEach-Object {
+            $code = [string](Get-SashimiPropertyValue $_ 'Code' '')
+            if ($code -cmatch '^[A-Za-z][A-Za-z0-9]{0,63}$') { $code }
+        } | Select-Object -Unique -First 16)
+        throw "$Stage failed; exit=$($native.ExitCode); codes=$($failureCodes -join ','); error=$([string](Get-SashimiPropertyValue $json 'Error' $native.StdErr))"
+    }
     return $json
 }
 
@@ -477,8 +483,8 @@ try {
     else { $script:pinnedMainSha = '0000000000000000000000000000000000000000' }
     [void](Invoke-ReviewerGit 'Set explicit local Git author name' @('-C',$script:repositoryPath,'config','--local','user.name',[string]$script:reviewerConfig.GitAuthorName) $normalizedRun)
     [void](Invoke-ReviewerGit 'Set explicit local Git author email' @('-C',$script:repositoryPath,'config','--local','user.email',[string]$script:reviewerConfig.GitAuthorEmail) $normalizedRun)
-    [void](Invoke-ReviewerGit 'Checkout latest main detached' @('-C',$script:repositoryPath,'switch','--detach',$script:pinnedMainSha) $normalizedRun)
-    [void](Invoke-ReviewerGit 'Normal synthetic merge' @('-C',$script:repositoryPath,'merge','--no-ff','--no-edit',$script:pinnedHeadSha) $normalizedRun)
+    [void](Invoke-ReviewerGit 'Checkout latest main detached' @('-C',$script:repositoryPath,'switch','--detach',$script:pinnedMainSha) $normalizedRun @{ GIT_LFS_SKIP_SMUDGE='1' })
+    [void](Invoke-ReviewerGit 'Normal synthetic merge' @('-C',$script:repositoryPath,'merge','--no-ff','--no-edit',$script:pinnedHeadSha) $normalizedRun @{ GIT_LFS_SKIP_SMUDGE='1' })
     # Keep the command-scope hooksPath=NUL boundary while installing filters.
     [void](Invoke-ReviewerGitLfs 'Install Git LFS locally' @('install','--local','--skip-repo') $script:repositoryPath)
     [void](Invoke-ReviewerGit 'Disable repository hooks' @('-C',$script:repositoryPath,'config','core.hooksPath','NUL') $normalizedRun)

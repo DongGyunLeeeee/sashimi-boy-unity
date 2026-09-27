@@ -182,6 +182,16 @@ Move the Issue to `Review` only after all of the following are true:
    behavior contracts, exact commands and results, artifact paths, and a human
    verification checklist.
 
+The Windows Host publishes and reads back the latest executed validation
+evidence on the existing Draft PR before the resume transition. A leading
+Host-owned validation block records the delivery head, integrated main, run ID,
+native exits and test counts; later resumes replace only that block and
+preserve the original description and human checklist below it. Publication
+must preserve the PR title, identity, head/ref, exact Issue linkage and
+conversation. The verified new title/body digest becomes the pin for the
+transition and completion comment. Missing publication or mismatched read-back
+stops the run without moving the Issue to Review.
+
 Use `Tools/Automation/Set-GitHubProjectStatus.ps1` for the exact
 `In Progress -> Review` transition. For `ReviewFix` or `DeliveryResume` only,
 after that transition succeeds, post and read back the matching handoff

@@ -140,6 +140,9 @@ role:
 - local synthetic merge for Reviewer;
 - focused commit and normal push for Developer only;
 - Draft PR creation only for Developer New Work;
+- evidence-body update only for Developer resume on the exact linked open
+  Draft PR while the Issue remains In Progress, with all publication pins
+  rechecked and exact content/identity read-back before pin advancement;
 - evidence comments and exact allowed Project transitions.
 
 Configuration is strict UTF-8 under an exact recursive schema. Import rejects
@@ -371,6 +374,16 @@ confirms that its active-process count is zero, and only then trusts Git state.
 A missing root PID alone never proves the descendants stopped. Fallback cleanup
 keeps such ledger entries; both repository cleanup and retention refuse a
 nonempty or invalid ledger.
+
+Unity's Git-control gate distinguishes a branch from the Reviewer's detached
+synthetic integration. Detached validation requires the previously validated,
+initially clean Review context, exact run ID and Repository path, and unchanged
+run-marker hash. Both `symbolic-ref --quiet` probes must exit 1 with empty output
+and stderr; timeouts, cancellation, crashes, other exit codes, or unconfirmed
+termination fail closed. Developer detached HEAD remains forbidden. The
+snapshot pins the resolved commit and HEAD mode as well as all existing Git
+controls, and never treats a detached checkout as having every local branch's
+upstream. Every other Git-control read must actually succeed.
 
 The Developer snapshots complete Git control state before untrusted execution
 and compares it after every Codex/Unity boundary and immediately before commit,

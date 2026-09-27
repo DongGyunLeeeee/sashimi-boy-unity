@@ -27,8 +27,8 @@ param(
 
     [string]$CancellationMarkerPath,
 
-    # Only the Host Reviewer supplies this run-bound exception. Developer
-    # validation continues to reject every ProjectSettings mutation.
+    # Only the Host Reviewer supplies this run-bound context for detached
+    # integration and the existing narrow ProjectSettings drift exception.
     [string]$ReviewRunId,
     [string[]]$ProtectedWorktrees = @('C:\Dev\sashimi-boy-unity','C:\Dev\sashimi-boy-unity-developer','C:\Dev\sashimi-boy-unity-reviewer'),
 
@@ -59,10 +59,12 @@ $normalizedArtifactsPath = $null
 $rawValidationPath = $null
 $rawValidationFiles = @()
 $generatorWorkspace = $null
+$generatorGitControlBaseline = $null
 $script:rawValidationCleanupSafe = $true
 $script:gitControlSecurityFailure = $false
 $script:gitControlPassed = $false
 $script:gitControlBaseline = $null
+$script:reviewerGeneratorContext = $null
 $script:gitControlSnapshotSequence = 0
 $script:gitExecutable = ''
 $script:gitTimeout = 0
@@ -707,6 +709,110 @@ function Get-SashimiValidationAttributeControlState {
     return @($records.ToArray() | Sort-Object Path)
 }
 
+function New-SashimiReviewerGeneratorContext {
+    param(
+        [Parameter(Mandatory)][string]$PrimaryProjectRoot,
+        [Parameter(Mandatory)][object]$Workspace,
+        [Parameter(Mandatory)][object]$PrimaryGitControl
+    )
+    if ($PrimaryGitControl.HeadMode -cne 'DetachedReview' -or
+        $PrimaryGitControl.Head -cnotmatch '^[0-9a-f]{40}$') {
+        throw 'Reviewer generator context requires the original detached Git baseline.'
+    }
+    # Copy values from the workspace created by this validator. Neither a path
+    # prefix nor a copied run marker grants ownership of an arbitrary clone.
+    return [pscustomobject]@{
+        RunPath=(Split-Path -Parent $PrimaryProjectRoot)
+        StateRoot=[string]$Workspace.StateRoot
+        Parent=[string]$Workspace.Parent
+        Repository=[string]$Workspace.Repository
+        OwnerNonce=[string]$Workspace.OwnerNonce
+        Head=[string]$PrimaryGitControl.Head
+        HeadMode=[string]$PrimaryGitControl.HeadMode
+    }
+}
+
+function Get-SashimiValidationHeadMode {
+    param(
+        [Parameter(Mandatory)][string]$ProjectRoot,
+        [Parameter(Mandatory)][string]$Head,
+        [Parameter(Mandatory)][object]$SymbolicResult,
+        [Parameter(Mandatory)][object]$BranchResult,
+        [AllowNull()][object]$ReviewContext,
+        [AllowEmptyString()][string]$RunId,
+        [AllowEmptyString()][string]$RunRoot,
+        [AllowNull()][object]$GeneratorContext = $null
+    )
+
+    if ($Head -cnotmatch '^[0-9a-f]{40}$') { throw 'Unity validation observed an invalid HEAD.' }
+    foreach ($probe in @($SymbolicResult,$BranchResult)) {
+        if ([bool](Get-SashimiPropertyValue $probe 'TimedOut' $false) -or
+            [bool](Get-SashimiPropertyValue $probe 'Crashed' $false) -or
+            [bool](Get-SashimiPropertyValue $probe 'Cancelled' $false) -or
+            -not [bool](Get-SashimiPropertyValue $probe 'TerminationConfirmed' $true)) {
+            throw 'Git HEAD probe did not complete normally.'
+        }
+    }
+    $symbolic = ([string]$SymbolicResult.StdOut).Trim()
+    $branch = ([string]$BranchResult.StdOut).Trim()
+    $boundGenerator = $null -ne $GeneratorContext -and
+        (Test-SashimiPathEqual $ProjectRoot ([string]$GeneratorContext.Repository))
+    if ($symbolic -or $branch) {
+        if (-not $SymbolicResult.Succeeded -or -not $BranchResult.Succeeded -or
+            $SymbolicResult.ExitCode -ne 0 -or $BranchResult.ExitCode -ne 0 -or
+            -not $branch -or $symbolic -cne "refs/heads/$branch") {
+            throw 'Unity validation observed an inconsistent branch HEAD.'
+        }
+        if ($boundGenerator) { throw 'Reviewer generator changed the pinned detached HEAD mode.' }
+        return 'Branch'
+    }
+
+    # --quiet reports a detached HEAD with exit 1 and no output. Other probe
+    # failures must never become permission to accept detached validation.
+    if ($SymbolicResult.ExitCode -ne 1 -or $BranchResult.ExitCode -ne 1 -or
+        -not [string]::IsNullOrWhiteSpace([string]$SymbolicResult.StdErr) -or
+        -not [string]::IsNullOrWhiteSpace([string]$BranchResult.StdErr)) {
+        throw 'Git HEAD probes did not establish a detached HEAD.'
+    }
+    if ([string]::IsNullOrWhiteSpace($RunId) -or $null -eq $ReviewContext -or
+        $ReviewContext.RunId -cne $RunId -or -not [string]::IsNullOrEmpty([string]$ReviewContext.Status)) {
+        throw 'Detached HEAD requires a validated, initially clean Reviewer run.'
+    }
+    if ($boundGenerator) {
+        $owned = Get-SashimiOwnedRun -RunPath ([string]$GeneratorContext.RunPath) -RunRoot $RunRoot
+        $expectedState = Join-Path $owned.RunPath 'State'
+        $expectedParent = Join-Path $expectedState 'g'
+        $expectedRepository = Join-Path $expectedParent 'r'
+        if (-not (Test-SashimiPathEqual ([string]$GeneratorContext.StateRoot) $expectedState) -or
+            -not (Test-SashimiPathEqual ([string]$GeneratorContext.Parent) $expectedParent) -or
+            -not (Test-SashimiPathEqual $ProjectRoot $expectedRepository) -or
+            $GeneratorContext.OwnerNonce -cnotmatch '^[0-9a-f]{32}$' -or
+            $GeneratorContext.HeadMode -cne 'DetachedReview' -or
+            $Head -cne $GeneratorContext.Head) {
+            throw 'Detached generator is not bound to the original Reviewer workspace and commit.'
+        }
+        $generatorMarker = Join-Path $expectedParent '.generator-owner'
+        Assert-SashimiNoReparsePoint -Path $ProjectRoot
+        Assert-SashimiNoReparsePoint -Path $generatorMarker
+        if (-not (Test-Path -LiteralPath $generatorMarker -PathType Leaf) -or
+            (Get-Item -LiteralPath $generatorMarker).Length -ne 32 -or
+            [IO.File]::ReadAllText($generatorMarker) -cne $GeneratorContext.OwnerNonce) {
+            throw 'Reviewer generator ownership nonce changed or is missing.'
+        }
+    }
+    else {
+        $owned = Get-SashimiOwnedRun -RunPath (Split-Path -Parent $ProjectRoot) -RunRoot $RunRoot
+        if (-not (Test-SashimiPathEqual $ProjectRoot (Join-Path $owned.RunPath 'Repository'))) {
+            throw 'Detached Reviewer HEAD is not the original owned Repository.'
+        }
+    }
+    if ($owned.RunId -cne $RunId -or
+        (Get-FileHash -LiteralPath $owned.MarkerPath -Algorithm SHA256).Hash -cne $ReviewContext.MarkerSha256) {
+        throw 'Detached Reviewer HEAD is not bound to the original owned run marker.'
+    }
+    return 'DetachedReview'
+}
+
 function Get-SashimiUnityGitControlSnapshot {
     [CmdletBinding()]
     param(
@@ -723,9 +829,17 @@ function Get-SashimiUnityGitControlSnapshot {
             Assert-SashimiNoReparsePoint -Path $repositoryFull
             Assert-SashimiNoReparsePoint -Path $gitDirectory
         }
+        $readProcess = {
+            param([string]$Name,[string[]]$Arguments)
+            Invoke-SashimiValidationProcess -Name $Name -Kind Git -FilePath $script:gitExecutable -Arguments $Arguments -WorkingDirectory $repositoryFull -TimeoutSeconds $script:gitTimeout -Fixture $script:gitControlFixture -FixtureGroup GitControl -DryRun:$DryRun
+        }
         $read = {
             param([string]$Name,[string[]]$Arguments)
-            (Invoke-SashimiValidationProcess -Name $Name -Kind Git -FilePath $script:gitExecutable -Arguments $Arguments -WorkingDirectory $repositoryFull -TimeoutSeconds $script:gitTimeout -Fixture $script:gitControlFixture -FixtureGroup GitControl -DryRun:$DryRun).StdOut
+            $native = & $readProcess $Name $Arguments
+            if (-not $DryRun -and (-not $native.Succeeded -or $native.ExitCode -ne 0)) {
+                throw "Git control read '$Name' failed; exit=$($native.ExitCode)."
+            }
+            [string]$native.StdOut
         }
         $gitDirectoryToken = (& $read 'GitControlGitDirectory' @('-C',$repositoryFull,'rev-parse','--git-dir')).Trim().Replace('\','/')
         $gitCommonDirectoryToken = (& $read 'GitControlCommonDirectory' @('-C',$repositoryFull,'rev-parse','--git-common-dir')).Trim().Replace('\','/')
@@ -733,9 +847,16 @@ function Get-SashimiUnityGitControlSnapshot {
             throw 'Only the run-owned standalone .git directory may control Unity validation.'
         }
         $head = (& $read 'GitControlHead' @('-C',$repositoryFull,'rev-parse','HEAD')).Trim().ToLowerInvariant()
-        $symbolicHead = (& $read 'GitControlSymbolicHead' @('-C',$repositoryFull,'symbolic-ref','--quiet','HEAD')).Trim()
-        $branch = (& $read 'GitControlBranch' @('-C',$repositoryFull,'symbolic-ref','--quiet','--short','HEAD')).Trim()
-        $upstream = (& $read 'GitControlUpstream' @('-C',$repositoryFull,'for-each-ref','--format=%(upstream:short)',"refs/heads/$branch")).Trim()
+        $symbolicResult = & $readProcess 'GitControlSymbolicHead' @('-C',$repositoryFull,'symbolic-ref','--quiet','HEAD')
+        $branchResult = & $readProcess 'GitControlBranch' @('-C',$repositoryFull,'symbolic-ref','--quiet','--short','HEAD')
+        $symbolicHead = ([string]$symbolicResult.StdOut).Trim()
+        $branch = ([string]$branchResult.StdOut).Trim()
+        $headMode = if ($DryRun) { 'Planned' } else {
+            Get-SashimiValidationHeadMode -ProjectRoot $repositoryFull -Head $head -SymbolicResult $symbolicResult -BranchResult $branchResult -ReviewContext $reviewDriftContext -RunId $ReviewRunId -RunRoot ([string]$config.RunRoot) -GeneratorContext $script:reviewerGeneratorContext
+        }
+        $upstream = if ($headMode -ceq 'DetachedReview') { '' } else {
+            (& $read 'GitControlUpstream' @('-C',$repositoryFull,'for-each-ref','--format=%(upstream:short)',"refs/heads/$branch")).Trim()
+        }
         $originLines = @((& $read 'GitControlOriginUrls' @('-C',$repositoryFull,'remote','get-url','--all','origin')) -split '\r?\n' | Where-Object { $_ -match '\S' })
         $pushOriginLines = @((& $read 'GitControlPushUrls' @('-C',$repositoryFull,'remote','get-url','--push','--all','origin')) -split '\r?\n' | Where-Object { $_ -match '\S' })
         $hooks = (& $read 'GitControlHooksPath' @('-C',$repositoryFull,'config','--local','--get','core.hooksPath')).Trim()
@@ -750,7 +871,6 @@ function Get-SashimiUnityGitControlSnapshot {
         $remoteRecords = @($configRecords | Where-Object { $_ -match '^(?i)remote\.' } | Sort-Object)
 
         if (-not $DryRun) {
-            if ($head -cnotmatch '^[0-9a-f]{40}$' -or $symbolicHead -cne "refs/heads/$branch") { throw 'Unity validation observed an invalid or detached HEAD.' }
             if ($originLines.Count -ne 1 -or $originLines[0] -cne $script:canonicalRepositoryUrl) { throw 'origin fetch URLs do not equal the canonical repository URL.' }
             if ($pushOriginLines.Count -ne 1 -or $pushOriginLines[0] -cne $script:canonicalRepositoryUrl) { throw 'origin push URLs do not equal the canonical repository URL.' }
             if ($hooks -cne 'NUL') { throw 'Repository hooks are not disabled.' }
@@ -783,7 +903,7 @@ function Get-SashimiUnityGitControlSnapshot {
         return [pscustomobject][ordered]@{
             SchemaVersion=2; CanonicalWorkTree=$repositoryFull; CanonicalGitDirectory=$gitDirectory; CanonicalCommonDirectory=$gitDirectory
             GitDirectoryToken=$gitDirectoryToken; GitCommonDirectoryToken=$gitCommonDirectoryToken
-            Head=$head; SymbolicHead=$symbolicHead; Branch=$branch; Upstream=$upstream; ExpectedBranch=$branch; ExpectedUpstream=$upstream
+            Head=$head; HeadMode=$headMode; SymbolicHead=$symbolicHead; Branch=$branch; Upstream=$upstream; ExpectedBranch=$branch; ExpectedUpstream=$upstream
             OriginUrls=@($originLines); PushOriginUrls=@($pushOriginLines); HooksPath=$hooks
             RefsSha256=(Get-SashimiTextSha256 -Text ([string]$refs)); LocalConfigSha256=(Get-SashimiTextSha256 -Text ([string]$localConfig))
             RepositoryExtensionsSha256=(Get-SashimiTextSha256 -Text ([string]::Join("`0",$extensionRecords)))
@@ -2508,6 +2628,10 @@ try {
                     $generatorInputSnapshot = @(Get-SashimiGeneratorSourceManifest -ProjectRoot $normalizedProjectPath)
                     $generatorWorkspace = New-SashimiGeneratorBaseline -ProjectRoot $normalizedProjectPath -StateRoot $script:unityArtifactStateRoot -ExpectedManifest $generatorInputSnapshot
                     $secondGeneratorProject = $generatorWorkspace.Repository
+                    if ($null -ne $reviewDriftContext) {
+                        $script:reviewerGeneratorContext = New-SashimiReviewerGeneratorContext -PrimaryProjectRoot $normalizedProjectPath -Workspace $generatorWorkspace -PrimaryGitControl $script:gitControlBaseline
+                    }
+                    $generatorGitControlBaseline = Get-SashimiUnityGitControlSnapshot -ProjectRoot $secondGeneratorProject -Boundary 'independent generator before first generation'
                     Write-SashimiBoundedUnityTextArtifact -Path (Join-Path $normalizedArtifactsPath 'GeneratorInputs.snapshot.json') -Content (ConvertTo-SashimiJson $generatorInputSnapshot)
                 }
                 $stages.GeneratorRun1 = Invoke-SashimiUnityValidationStage -Name GeneratorRun1 -Arguments $generatorRun1Arguments -LogPath $generatorRun1Log -RawLogPath $generatorRun1RawLog -UnityExecutable $unityExecutable -ProjectRoot $normalizedProjectPath -TimeoutSeconds $generatorTimeout -Fixture $fixture -Compile
@@ -2526,7 +2650,8 @@ try {
                     $firstGitBaseline = $script:gitControlBaseline
                     try {
                         if ($null -eq $fixture) {
-                            $script:gitControlBaseline = Get-SashimiUnityGitControlSnapshot -ProjectRoot $secondGeneratorProject -Boundary 'independent generator baseline'
+                            $script:gitControlBaseline = $generatorGitControlBaseline
+                            Assert-SashimiUnityGitControlUnchanged -ProjectRoot $secondGeneratorProject -Boundary 'before Unity stage GeneratorRun2'
                         }
                         $secondArguments = @($generatorRun2Arguments | ForEach-Object { if ($_ -ceq $normalizedProjectPath) { $secondGeneratorProject } else { $_ } })
                         $stages.GeneratorRun2 = Invoke-SashimiUnityValidationStage -Name GeneratorRun2 -Arguments $secondArguments -LogPath $generatorRun2Log -RawLogPath $generatorRun2RawLog -UnityExecutable $unityExecutable -ProjectRoot $secondGeneratorProject -TimeoutSeconds $generatorTimeout -Fixture $fixture -Compile

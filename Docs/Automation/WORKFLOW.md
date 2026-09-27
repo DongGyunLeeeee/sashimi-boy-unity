@@ -322,6 +322,20 @@ Automation rule.
   retained outside Repository. The Reviewer independently verifies the final
   file hash, unchanged Git control state and every other source byte. This
   exception never applies to Developer delivery and adds no approved setting.
+- Host Unity validation accepts the Reviewer's detached synthetic integration
+  only with the validated initially clean Review context, exact run ID,
+  Repository path, unchanged ownership marker, and successful native evidence
+  of detached HEAD. Developer validation still requires a branch. Resolved
+  commit, HEAD mode, refs, index, and every other Git control remain pinned
+  across all Unity stages; a detached probe failure cannot authorize execution.
+- For a generator's independent second run, the Host binds only its freshly
+  created `RunRoot/<run-id>/State/g/r` copy to that original Review context,
+  exact detached commit, and in-memory ownership nonce. It rechecks the run
+  marker and the exact nonce marker, and rejects reparse paths. The complete
+  child Git baseline is captured before the first generator runs; both the
+  pre-Run2 and post-Run2 checks compare against that same baseline. The original
+  Repository baseline is restored in `finally` for all later Unity stages.
+  A copied marker or path prefix alone never authorizes another workspace.
 - `Set-GitHubProjectStatus.ps1` validates an existing Project item and an
   allowed role transition before editing the existing `Status` field. It
   supports `-WhatIf` and never creates schema.
@@ -369,6 +383,9 @@ Each role still creates a standalone clone, pins its integration commit, and
 verifies materialized asset bytes. Cache availability is not an acceptance
 gate; missing objects use the existing canonical remote. Required asset
 download or integrity failures stop the run without changing Project state.
+Both roles defer implicit LFS smudge during Git checkout and integration
+(`GIT_LFS_SKIP_SMUDGE=1`), including Reviewer detached checkout and synthetic
+merge, until the verified cache restore and explicit materialization boundary.
 
 Host Git/LFS processes also pin Basic authentication for only the canonical
 HTTPS LFS endpoint in command scope. This prevents Git LFS from caching a new
