@@ -472,8 +472,41 @@ public static class SashimiHostFakeTool
 
         if (isLfs && Has(args, "ls-files") && Has(args, "--json"))
         {
-            Console.WriteLine("{\"files\":[]}");
+            string manifestPath = Env("SASHIMI_FAKE_LFS_MANIFEST");
+            Console.WriteLine(String.IsNullOrWhiteSpace(manifestPath) ? "{\"files\":[]}" : File.ReadAllText(manifestPath));
             return 0;
+        }
+
+        // Canonical LFS can attempt a network download too: no malicious
+        // .lfsconfig is necessary. Model a non-empty pointer manifest.
+        if (!String.IsNullOrWhiteSpace(Env("SASHIMI_FAKE_LFS_MANIFEST")))
+        {
+            string repository = ValueAfter(args, "-C");
+            if (String.IsNullOrWhiteSpace(repository)) repository = Directory.GetCurrentDirectory();
+            if (!isLfs && (Has(args, "switch") || Has(args, "merge")) &&
+                !String.Equals(Env("GIT_LFS_SKIP_SMUDGE"), "1", StringComparison.Ordinal))
+            {
+                WriteSentinel("SASHIMI_FAKE_LFS_EARLY_SMUDGE", "canonical smudge before cache restore");
+                Console.Error.WriteLine("fixture LFS budget exceeded before cache restore");
+                return 128;
+            }
+            if (isLfs && Has(args, "pull"))
+            {
+                Console.Error.WriteLine("fixture canonical LFS budget exceeded");
+                return 2;
+            }
+            if (isLfs && Has(args, "checkout"))
+            {
+                string oid = Env("SASHIMI_FAKE_LFS_OID");
+                string source = Path.Combine(repository, ".git", "lfs", "objects", oid.Substring(0, 2), oid.Substring(2, 2), oid);
+                string target = Path.Combine(repository, "Assets", "FixtureLfs.bin");
+                Directory.CreateDirectory(Path.GetDirectoryName(target));
+                string mode = Env("SASHIMI_FAKE_LFS_CHECKOUT");
+                if (mode == "Pointer") File.WriteAllText(target, "version https://git-lfs.github.com/spec/v1\n");
+                else if (mode == "Corrupt") File.WriteAllBytes(target, Enumerable.Repeat((byte)'x', File.ReadAllBytes(source).Length).ToArray());
+                else File.Copy(source, target, false);
+                return 0;
+            }
         }
 
         if (Has(args, "clone"))
@@ -576,7 +609,7 @@ public static class SashimiHostFakeTool
     private static int RunGh(string[] args)
     {
         string query = ValueWithPrefix(args, "query=");
-        bool mutation = (args.Length > 1 && args[0] == "pr" && (args[1] == "create" || args[1] == "comment")) ||
+        bool mutation = (args.Length > 1 && args[0] == "pr" && (args[1] == "create" || args[1] == "comment" || args[1] == "edit")) ||
             (args.Length > 1 && args[0] == "issue" && args[1] == "comment") ||
             query.IndexOf("mutation", StringComparison.OrdinalIgnoreCase) >= 0;
         WriteAudit("gh", args, mutation);
@@ -632,8 +665,32 @@ public static class SashimiHostFakeTool
             {
                 string statePath = Env("SASHIMI_FAKE_PUSH_STATE");
                 bool pushed = !String.IsNullOrWhiteSpace(statePath) && File.Exists(statePath);
-                Console.Write(ReadScenario(pushed ? "pr-after.json" : "pr-before.json"));
+                string json = ReadScenario(pushed ? "pr-after.json" : "pr-before.json");
+                string bodyState = Path.Combine(Env("SASHIMI_FAKE_SCENARIO_ROOT"), "pr-body.txt");
+                string editMode = Env("SASHIMI_FAKE_PR_EDIT_MODE");
+                if (File.Exists(bodyState) && editMode != "StaleReadBack")
+                {
+                    string body = File.ReadAllText(bodyState, new UTF8Encoding(false));
+                    json = System.Text.RegularExpressions.Regex.Replace(json, @"""body""\s*:\s*""(?:\\.|[^""\\])*""",
+                        match => "\"body\":" + JsonString(body));
+                    if (editMode == "ConcurrentHead")
+                        json = System.Text.RegularExpressions.Regex.Replace(json, @"""headRefOid""\s*:\s*""[a-f0-9]{40}""",
+                            "\"headRefOid\":\"" + new string('f', 40) + "\"");
+                }
+                Console.Write(json);
             }
+            return 0;
+        }
+        if (args.Length > 1 && args[0] == "pr" && args[1] == "edit")
+        {
+            if (Env("SASHIMI_FAKE_PR_EDIT_MODE") == "Fail")
+            {
+                Console.Error.WriteLine("fixture body publication unavailable");
+                return 1;
+            }
+            string body = File.ReadAllText(ValueAfter(args, "--body-file"), new UTF8Encoding(false));
+            File.WriteAllText(Path.Combine(Env("SASHIMI_FAKE_SCENARIO_ROOT"), "pr-body.txt"), body, new UTF8Encoding(false));
+            Console.WriteLine("https://github.com/DongGyunLeeeee/sashimi-boy-unity/pull/" + args[2]);
             return 0;
         }
         if (args.Length > 1 && args[0] == "pr" && args[1] == "comment")
@@ -3080,9 +3137,13 @@ if (`$lease.Acquired) { Exit-SashimiHostMutex `$lease }
             }
             $cases[$name]=@{LivePullRequest=$prCopy}
         }
-        foreach ($action in @('Comment','Transition')) {
+        foreach ($action in @('Comment','Transition','UpdateDraftPullRequest')) {
             foreach ($entry in $cases.GetEnumerator()) {
                 $fixture=($baseFixture | ConvertTo-Json -Depth 32 | ConvertFrom-Json -AsHashtable)
+                if ($action -ceq 'UpdateDraftPullRequest') {
+                    $fixture.CurrentStatus='In Progress'
+                    $fixture.LivePullRequest.Title='Pinned PR'; $fixture.LivePullRequest.Body='Pinned change'
+                }
                 $fixture.BeforeMutationOverrides=$entry.Value
                 $fixturePath=Join-Path $script:temporaryRoot ("final-publish-$action-$($entry.Key).json")
                 Write-HostTestFile $fixturePath ($fixture | ConvertTo-Json -Depth 32)
@@ -3093,6 +3154,10 @@ if (`$lease.Acquired) { Exit-SashimiHostMutex `$lease }
                     PinnedIssueUpdatedAt=$baseFixture.IssueUpdatedAt; PinnedIssueBodySha256=$bodySha
                     PinnedConversationSha256=$conversationSha; FromStatus='Review'; ToStatus='In Progress'
                     BodyPath=$bodyPath; FixturePath=$fixturePath
+                }
+                if ($action -ceq 'UpdateDraftPullRequest') {
+                    $parameters.Role='Developer'; $parameters.FromStatus='In Progress'
+                    Write-HostTestFile $bodyPath 'Confirmed latest validation.'
                 }
                 $execution=Invoke-HostTestScript -ScriptPath (Join-Path $hostRoot 'Publish-SashimiRunResult.ps1') -Parameters $parameters
                 $result=ConvertFrom-LastHostJson $execution.StdOut
@@ -5140,6 +5205,7 @@ wire_api = "responses"
     }
 
     Invoke-HostTestCase 'ValidationOnlyResumeReusesExactExistingBranchAndNoNewPr' {
+        . (Join-Path $PSScriptRoot 'ResumeDelivery.Fixtures.ps1')
         foreach ($mode in @('ReviewFix', 'DeliveryResume')) {
             $issue = if ($mode -ceq 'ReviewFix') { 5270 } else { 5271 }
             $pr = $issue + 1000
@@ -5218,6 +5284,7 @@ wire_api = "responses"
             Assert-HostTest (@($resumeCalls | Where-Object { $_.Tool -eq 'gh' -and @($_.Arguments) -contains 'create' }).Count -eq 0) "$mode validation-only fake-boundary run invoked PR creation."
             $exactFetch = @($resumeCalls | Where-Object { $_.Tool -eq 'git' -and (@($_.Arguments) -join ' ') -match [regex]::Escape("+refs/heads/$($bundle.Selection.PullRequestHeadRef):refs/remotes/origin/sashimi-pinned") })
             Assert-HostTest ($exactFetch.Count -eq 1) "$mode fake-boundary run did not fetch the exact existing PR branch."
+            Assert-HostResumeEvidence -Bundle $bundle -Calls $resumeCalls
         }
 
         foreach ($mode in @('ReviewFix', 'DeliveryResume')) {
@@ -5261,6 +5328,7 @@ wire_api = "responses"
                 [string]$lfsPushes[0].Arguments[2] -ceq $delivery) `
                 "$mode changed fake-boundary run did not LFS-push the exact delivery commit through the fixed canonical remote."
             Assert-HostTest (@($resumeCalls | Where-Object { $_.Tool -eq 'gh' -and @($_.Arguments) -contains 'create' }).Count -eq 0) "$mode changed fake-boundary run invoked PR creation."
+            Assert-HostResumeEvidence -Bundle $bundle -Calls $resumeCalls
         }
     }
 
@@ -5472,6 +5540,29 @@ wire_api = "responses"
     Invoke-HostTestCase 'RolloutReviewerReceivesCompletePinnedDiffAndRejectsIncompleteInput' {
         . (Join-Path $PSScriptRoot 'Rollout.ReadinessFixtures.ps1')
         Invoke-HostRolloutReviewerDiffRegression
+    }
+
+    Invoke-HostTestCase 'ResumeEvidencePreservesManualContentAndRejectsAmbiguousMarkers' {
+        $merge = Get-HostTestFunctionScriptBlock -ScriptPath (Join-Path $hostRoot 'Publish-SashimiRunResult.ps1') -FunctionName 'Merge-HostPullRequestEvidence'
+        $original="Closes #5410`r`n`r`n- [x] Owner approved checklist item.`r`n- [ ] Music and save flow."
+        $first=& $merge -ExistingBody $original -Evidence 'first-run'
+        $second=& $merge -ExistingBody $first -Evidence 'second-run'
+        Assert-HostTest ($second.EndsWith($original) -and $second.Contains('second-run') -and -not $second.Contains('first-run')) 'Managed PR evidence replacement lost human content or retained the old run.'
+        $start='<!-- sashimi-boy-host-validation:start:v1 -->'; $end='<!-- sashimi-boy-host-validation:end:v1 -->'
+        foreach ($bad in @("$start only", "$end only", "$end$start", "$start$start$end$end", "prefix$start$end")) {
+            Assert-HostThrows { & $merge -ExistingBody $bad -Evidence 'safe' } 'ambiguous'
+        }
+        Assert-HostThrows { & $merge -ExistingBody $original -Evidence "$start injected" } 'reserved'
+    }
+
+    Invoke-HostTestCase 'ResumeEvidenceFailurePreventsReviewAndCompletion' {
+        . (Join-Path $PSScriptRoot 'ResumeDelivery.Fixtures.ps1')
+        Invoke-HostResumeEvidenceFailureRegression
+    }
+
+    Invoke-HostTestCase 'ReviewerDefersSmudgeUntilVerifiedCacheMaterialization' {
+        . (Join-Path $PSScriptRoot 'ResumeDelivery.Fixtures.ps1')
+        Invoke-HostReviewerCachedLfsRegression
     }
 
     Invoke-HostTestCase 'ReviewerDecisionControlsRealRunnerTransitions' {

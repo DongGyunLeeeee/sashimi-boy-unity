@@ -369,6 +369,9 @@ Each role still creates a standalone clone, pins its integration commit, and
 verifies materialized asset bytes. Cache availability is not an acceptance
 gate; missing objects use the existing canonical remote. Required asset
 download or integrity failures stop the run without changing Project state.
+Both roles defer implicit LFS smudge during Git checkout and integration
+(`GIT_LFS_SKIP_SMUDGE=1`), including Reviewer detached checkout and synthetic
+merge, until the verified cache restore and explicit materialization boundary.
 
 Host Git/LFS processes also pin Basic authentication for only the canonical
 HTTPS LFS endpoint in command scope. This prevents Git LFS from caching a new

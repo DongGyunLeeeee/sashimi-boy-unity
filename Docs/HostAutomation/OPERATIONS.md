@@ -606,6 +606,13 @@ One task invocation performs these phases:
    and stops before any later delivery push or status transition if the live
    main ref advances.
 10. Publish sanitized evidence and only the role-authorized transition.
+    Developer resume first updates the existing Draft PR's leading Host-owned
+    validation block, preserving its original description and manual checklist.
+    Exact head/main/run and executed stage exits/test counts replace old run
+    evidence. All pins are rechecked at the write boundary; exact title/body,
+    identity, Issue linkage and unchanged conversation are read back before
+    advancing the content pin and transitioning to Review. Failed publication
+    or read-back stops before transition and handoff completion.
 11. Record the terminal state and clean run-owned processes and eligible
     temporary resources in `finally`.
 
@@ -781,6 +788,11 @@ Git config, refs, index, hooks and credentials are never shared.
 Both roles install local LFS filters with `--skip-repo` because hooks remain
 disabled with `core.hooksPath=NUL`. The Host retains explicit LFS push for
 the exact Developer delivery commit; this change does not enable hooks.
+
+Git preparation defers implicit smudge with `GIT_LFS_SKIP_SMUDGE=1`, including
+the Reviewer's detached main checkout and synthetic merge. A warm cache must
+be restored before either role attempts asset downloads. The later explicit
+checkout/pull, working-file SHA/size verification and fsck remain mandatory.
 
 All Host Git/LFS processes pin `lfs.<canonical-endpoint>.access=basic` in
 command scope for the exact HTTPS endpoint above. Git LFS otherwise learns

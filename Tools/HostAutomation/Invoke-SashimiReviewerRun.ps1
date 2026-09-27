@@ -477,8 +477,8 @@ try {
     else { $script:pinnedMainSha = '0000000000000000000000000000000000000000' }
     [void](Invoke-ReviewerGit 'Set explicit local Git author name' @('-C',$script:repositoryPath,'config','--local','user.name',[string]$script:reviewerConfig.GitAuthorName) $normalizedRun)
     [void](Invoke-ReviewerGit 'Set explicit local Git author email' @('-C',$script:repositoryPath,'config','--local','user.email',[string]$script:reviewerConfig.GitAuthorEmail) $normalizedRun)
-    [void](Invoke-ReviewerGit 'Checkout latest main detached' @('-C',$script:repositoryPath,'switch','--detach',$script:pinnedMainSha) $normalizedRun)
-    [void](Invoke-ReviewerGit 'Normal synthetic merge' @('-C',$script:repositoryPath,'merge','--no-ff','--no-edit',$script:pinnedHeadSha) $normalizedRun)
+    [void](Invoke-ReviewerGit 'Checkout latest main detached' @('-C',$script:repositoryPath,'switch','--detach',$script:pinnedMainSha) $normalizedRun @{ GIT_LFS_SKIP_SMUDGE='1' })
+    [void](Invoke-ReviewerGit 'Normal synthetic merge' @('-C',$script:repositoryPath,'merge','--no-ff','--no-edit',$script:pinnedHeadSha) $normalizedRun @{ GIT_LFS_SKIP_SMUDGE='1' })
     # Keep the command-scope hooksPath=NUL boundary while installing filters.
     [void](Invoke-ReviewerGitLfs 'Install Git LFS locally' @('install','--local','--skip-repo') $script:repositoryPath)
     [void](Invoke-ReviewerGit 'Disable repository hooks' @('-C',$script:repositoryPath,'config','core.hooksPath','NUL') $normalizedRun)

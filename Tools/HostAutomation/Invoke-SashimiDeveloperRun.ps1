@@ -251,7 +251,7 @@ function Invoke-PublishAction {
 
     $actionIndex = [Array]::IndexOf($Arguments, '-Action')
     $action = if ($actionIndex -ge 0 -and ($actionIndex + 1) -lt $Arguments.Count) { [string]$Arguments[$actionIndex + 1] } else { '' }
-    if ($action -in @('Comment','Transition','CreateDraftPullRequest')) {
+    if ($action -in @('Comment','Transition','CreateDraftPullRequest','UpdateDraftPullRequest')) {
         if ($script:gitControlSecurityFailure) {
             throw 'A terminal Git-control security failure suppresses every later comment, PR, and Project mutation.'
         }
@@ -1128,12 +1128,17 @@ try {
         $manualItems = @((Get-SashimiPropertyValue $codexPayload 'manualVerification' @()) | ForEach-Object { "- [ ] $(Protect-SashimiText ([string]$_))" })
         if ($manualItems.Count -eq 0) { $manualItems = @('- [ ] Perform the Issue-specific visual, audio, input, save, and feel checks that apply.') }
         $checkCount = @((Get-SashimiPropertyValue $validationResult 'Checks' @())).Count
-        $validationCommands = @((Get-SashimiPropertyValue $validationResult 'Commands' @()) | ForEach-Object {
-            $commandName = [string](Get-SashimiPropertyValue $_ 'Name' (Get-SashimiPropertyValue $_ 'Stage' 'Host validation command'))
-            $nativeExit = [string](Get-SashimiPropertyValue $_ 'ExitCode' 'planned')
-            "- $(Protect-SashimiText $commandName): exit $nativeExit"
+        $validationCommands = @(foreach ($stageProperty in $validationResult.Stages.PSObject.Properties) {
+            $stage = $stageProperty.Value
+            if ([bool]$stage.Planned -or -not [bool]$stage.Success -or [int]$stage.NativeExitCode -ne 0) { throw 'PR evidence requires inspected, executed, successful validation stages.' }
+            $line = "- $(Protect-SashimiText ([string]$stageProperty.Name)): PASS (native exit $($stage.NativeExitCode))"
+            $xml = Get-SashimiPropertyValue $stage 'XmlSummary' $null
+            if ($null -ne $xml) {
+                $line += "; tests $($xml.Passed)/$($xml.Total), failed=$($xml.Failed), skipped=$($xml.Skipped), inconclusive=$($xml.Inconclusive), native/XML agreement=$($stage.NativeXmlAgreement)"
+            }
+            $line
         })
-        if ($validationCommands.Count -eq 0) { $validationCommands = @('- Host validation command list: see Artifacts/Unity/UnityValidation.Summary.json') }
+        if ($validationCommands.Count -eq 0) { throw 'PR evidence has no executed validation stages.' }
         $bodyText = @"
 Closes #$issueNumber
 
@@ -1151,6 +1156,9 @@ $([string]::Join("`n", $changedFiles))
 - Host Unity/repository validation: PASS ($checkCount checks; Artifacts/Unity/UnityValidation.Summary.json)
 - git diff --check: PASS
 - Delivery mode: $mode
+- Validated delivery head: $deliveryHead
+- Integrated main: $($script:pinnedMainSha)
+- Host run: $runId
 
 $([string]::Join("`n", $validationCommands))
 
@@ -1173,6 +1181,9 @@ Run-local evidence is retained under Artifacts/ and contains no credentials or s
             $script:pullRequestContentSha256 = [string](Get-SashimiPropertyValue $createdResult.Result 'PullRequestContentSha256' '')
             if ($script:pullRequestContentSha256 -cnotmatch '^[0-9a-f]{64}$') { throw 'Created Draft PR did not return an exact title/body content pin.' }
         }
+    }
+    else {
+        [void](Invoke-PublishAction -Stage 'Update existing Draft PR evidence' -Arguments @('-Action','UpdateDraftPullRequest','-Role','Developer','-IssueNumber',[string]$issueNumber,'-PullRequestNumber',[string]$prNumber,'-PinnedHeadSha',$prHeadSha,'-PinnedHeadRef',$prHeadRef,'-BodyPath',$prBodyPath))
     }
 
     $transitionArgs = @('-Action','Transition','-Role','Developer','-IssueNumber',[string]$issueNumber,'-ProjectItemId',[string]$selection.ProjectItemId,'-FromStatus','In Progress','-ToStatus','Review')
