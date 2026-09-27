@@ -4717,6 +4717,16 @@ wire_api = "responses"
         Invoke-HostReviewerStructuredFailureRegression
     }
 
+    Invoke-HostTestCase 'ReviewerDetachedGeneratorCopiesAndChecksBothWorkspaceBoundaries' {
+        . (Join-Path $PSScriptRoot 'Reviewer.DetachedFixtures.ps1')
+        Invoke-HostReviewerDetachedSnapshotRegression -IncludeGenerator
+    }
+
+    Invoke-HostTestCase 'ReviewerDetachedProductionPipelinePinsChildBeforeRun1AndRestoresPrimary' {
+        . (Join-Path $PSScriptRoot 'Reviewer.DetachedFixtures.ps1')
+        Invoke-HostReviewerDetachedPipelineRegression
+    }
+
     Invoke-HostTestCase 'ReviewerUnityDefaultDriftRequiresOwnedRunAndExactContent' {
         . (Join-Path $PSScriptRoot 'Reviewer.DriftFixtures.ps1')
         Invoke-HostReviewerDriftRegression

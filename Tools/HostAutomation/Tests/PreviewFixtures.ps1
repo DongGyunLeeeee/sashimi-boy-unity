@@ -255,6 +255,7 @@ Invoke-HostTestCase 'PreviewUnityOrchestrationPinsOriginalAndRejectsLateWrites' 
     $pipeline=[scriptblock]::Create($blocks[0].Extent.Text)
     function Assert-SashimiValidationNotCancelled {}
     function Get-SashimiUnityGitControlSnapshot { return [pscustomobject]@{Control='unchanged'} }
+    function Assert-SashimiUnityGitControlUnchanged {}
     function Add-SashimiValidationCheck {}
     function Add-SashimiValidationFailure { param($Code) $recordedFailures.Add($Code) }
     function Write-SashimiBoundedUnityTextArtifact {}
@@ -283,6 +284,7 @@ Invoke-HostTestCase 'PreviewUnityOrchestrationPinsOriginalAndRejectsLateWrites' 
         [IO.File]::WriteAllBytes((Join-Path $normalizedProjectPath $previewPath),$zero)
         [IO.File]::WriteAllText((Join-Path $normalizedProjectPath 'Existing.cs'),'original')
         $preUnityScopePassed=$true; $fixture=$null; $validationDefinition=[pscustomobject]@{Id='pure-local-preview'}
+        $reviewDriftContext=$null
         $ReviewRunId='pure-local-review'; $IssueNumber=20
         $determinismPaths=@($previewPath); $screenshotPaths=@(); $previewPaths=@($previewPath)
         $unityExecutable='mock-unity'; $unityTimeout=1; $generatorTimeout=1
