@@ -28,6 +28,7 @@ namespace SashimiBoy
         public BossDemoPresenter bossDemo;
         public ProceduralSalmonView salmon;
         public KnifeVisualController playerKnife;
+        public Stage01ButcheryPresenter butchery;
 
         [Header("World Cue")]
         public GameObject cueRoot;
@@ -89,15 +90,23 @@ namespace SashimiBoy
 
         private void Update()
         {
-            if (timing == null || salmon == null ||
-                timing.CurrentSection == Stage01SalmonSection.Result ||
-                salmon.IsTransitioning)
+            if (timing == null || (salmon == null && butchery == null))
             {
                 HideImmediate();
                 return;
             }
 
             double songSec = timing.SongTimeSeconds;
+            // Validation can reject a run while presentation components remain enabled.
+            // Check the live timing values too: public fields may change before RetryStage.
+            if (!CanPresentTiming(songSec) ||
+                timing.CurrentSection == Stage01SalmonSection.Result ||
+                (butchery == null && salmon.IsTransitioning))
+            {
+                HideImmediate();
+                return;
+            }
+
             if (!ResolveUpcomingNotes(songSec) || upcomingTimes.Count == 0)
             {
                 if (timing.CurrentSection == Stage01SalmonSection.Gameplay)
@@ -110,6 +119,15 @@ namespace SashimiBoy
                 }
 
                 return;
+            }
+
+            for (int i = 0; i < upcomingTimes.Count; i++)
+            {
+                if (!IsFinite(upcomingTimes[i]))
+                {
+                    HideImmediate();
+                    return;
+                }
             }
 
             CurrentTargetTimeSeconds = upcomingTimes[0];
@@ -130,8 +148,10 @@ namespace SashimiBoy
                 timing.BeatLengthSeconds * restThresholdBeats;
             int baseCutIndex = showingDemoPattern
                 ? CurrentTargetOrdinal
-                : salmon.SuccessfulCuts;
-            Vector3 cutWorld = salmon.GetCutWorldPosition(baseCutIndex);
+                : butchery != null ? CurrentTargetOrdinal : salmon.SuccessfulCuts;
+            Vector3 cutWorld = butchery != null
+                ? butchery.GetCueWorldPosition(baseCutIndex)
+                : salmon.GetCutWorldPosition(baseCutIndex);
             if (cueRoot != null)
             {
                 cueRoot.transform.position = cutWorld;
@@ -174,7 +194,7 @@ namespace SashimiBoy
                 (gameplay || showingDemoPattern));
             SetTextVisible(restPromptText, IsResting);
 
-            if (playerKnife != null)
+            if (butchery == null && playerKnife != null)
             {
                 bool knifeVisible = gameplay && !IsResting;
                 playerKnife.SetVisible(knifeVisible);
@@ -186,6 +206,28 @@ namespace SashimiBoy
             }
 
             SetVisible(true, !IsResting);
+        }
+
+        private bool CanPresentTiming(double songSec)
+        {
+            double beatLength = timing.BeatLengthSeconds;
+            return timing.SemanticValidation.IsValid &&
+                !timing.PhasePerformance.Failed &&
+                IsFinite(timing.bpm) && timing.bpm > 0f &&
+                IsFinite(beatLength) && beatLength > 0d &&
+                IsFinite(songSec) &&
+                IsFinite(timing.firstDownbeatSec) && timing.firstDownbeatSec >= 0d &&
+                IsFinite(timing.gameplayStartSec) &&
+                timing.gameplayStartSec >= timing.firstDownbeatSec &&
+                IsFinite(timing.gameplayEndSec) &&
+                timing.gameplayEndSec > timing.gameplayStartSec &&
+                IsFinite(timing.manualAudioOffsetMs) &&
+                IsFinite(timing.manualInputLatencyMs);
+        }
+
+        private static bool IsFinite(double value)
+        {
+            return !double.IsNaN(value) && !double.IsInfinity(value);
         }
 
         public void Bind(
@@ -209,7 +251,10 @@ namespace SashimiBoy
         public void HideImmediate()
         {
             SetVisible(false);
-            playerKnife?.SetVisible(false);
+            if (butchery == null) playerKnife?.SetVisible(false);
+            CurrentTargetTimeSeconds = 0d;
+            CurrentTargetOrdinal = -1;
+            CurrentApproach01 = 0f;
             IsResting = false;
             VisibleUpcomingCount = 0;
             HideGhostGuides();
@@ -373,12 +418,14 @@ namespace SashimiBoy
                 }
 
                 int futureCutIndex = baseCutIndex + i + 1;
-                if (!showingDemoPattern)
+                if (!showingDemoPattern && butchery == null)
                 {
                     futureCutIndex %= Mathf.Max(1, salmon.cutsPerFish);
                 }
 
-                ghost.position = salmon.GetCutWorldPosition(futureCutIndex);
+                ghost.position = butchery != null
+                    ? butchery.GetCueWorldPosition(futureCutIndex)
+                    : salmon.GetCutWorldPosition(futureCutIndex);
                 if (i < ghostBaseScales.Length)
                 {
                     ghost.localScale = ghostBaseScales[i] *

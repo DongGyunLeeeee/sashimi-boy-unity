@@ -1316,6 +1316,7 @@ namespace SashimiBoy.EditorTools
                     ? catalog.variants[0].variantId
                     : string.Empty;
             EditorUtility.SetDirty(catalog);
+            SashimiBoy.EditorTools.KevinEmbodimentAuthoring.ReapplyCatalog();
             return catalog;
         }
 

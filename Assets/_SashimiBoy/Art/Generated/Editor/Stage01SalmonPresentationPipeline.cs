@@ -665,6 +665,7 @@ namespace SashimiBoy.EditorTools
             timing.presentationController = presentation;
             timing.notePatternProvider = patternProvider;
             timing.activeNoteTracker = noteTracker;
+            Stage01ApprovedPhaseChartAuthoring.BindExistingChart(timing);
             timing.createDebugUiIfMissing = false;
             timing.hudText = null;
             timing.judgeText = null;
@@ -707,6 +708,7 @@ namespace SashimiBoy.EditorTools
             EditorUtility.SetDirty(patternProvider);
             EditorUtility.SetDirty(noteTracker);
             EditorSceneManager.MarkSceneDirty(scene);
+            Stage01PlayableAuthoring.ReapplyIfAuthored(scene);
             EditorSceneManager.SaveScene(scene, StageScenePath);
         }
 

@@ -312,7 +312,7 @@ namespace SashimiBoy.Tests
         }
 
         [UnityTest]
-        public IEnumerator Stage01ExistingStartPath_StartsAudioClock()
+        public IEnumerator Stage01ValidatedStartPath_StartsAudioClock()
         {
             AsyncOperation load = SceneManager.LoadSceneAsync(
                 "Stage01_Salmon",
@@ -320,6 +320,10 @@ namespace SashimiBoy.Tests
             yield return load;
             yield return null;
 
+            Component timing = RuntimeReflection.FindActiveComponent("SashimiBoy.Stage01SalmonTimingScaffold");
+            ScriptableObject fixture = SemanticTestFixture.Configure(timing);
+            Assert.That(RuntimeReflection.Invoke(timing, "StartStagePlayback"), Is.EqualTo(true));
+            UnityEngine.Object.Destroy(fixture); // running chart is a validated snapshot
             Component clock = RuntimeReflection.FindActiveComponent(
                 "SashimiBoy.AudioClock");
             Assert.That(clock, Is.Not.Null);

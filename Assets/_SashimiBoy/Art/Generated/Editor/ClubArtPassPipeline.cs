@@ -141,6 +141,8 @@ namespace SashimiBoy.EditorTools
                 scene,
                 catalog,
                 clusters);
+            if (scene.GetRootGameObjects().Any(g => g.name == "DayWorld_Integration" && g.transform.Find("VenueAssets") != null))
+                DayWorldVenueAuthoring.ApplyClubPlacement(scene);
             ValidateArtPass(scene, snapshot, stats);
 
             string sceneStateAfter = CaptureSceneState(scene);

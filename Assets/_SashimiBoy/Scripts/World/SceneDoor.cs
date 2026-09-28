@@ -7,11 +7,17 @@ namespace SashimiBoy
         public string prompt = "들어가기";
         public string sceneName;
         public GameLocation destinationLocation = GameLocation.Unknown;
+        public string destinationSpawn = "Entry";
 
         public string Prompt => prompt;
 
         public void Interact(GameObject actor)
         {
+            if (DayWorldFlow.Active)
+            {
+                if (!DayWorldFlow.InputSuppressed) DayWorldFlow.Instance.LoadWorld(sceneName, destinationSpawn);
+                return;
+            }
             if (GameFlowManager.Instance != null && destinationLocation != GameLocation.Unknown)
             {
                 GameFlowManager.Instance.SetLocation(destinationLocation);

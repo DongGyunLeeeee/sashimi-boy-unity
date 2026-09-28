@@ -56,6 +56,7 @@ namespace SashimiBoy
         private bool externalUiBlocked;
         private bool externalLookEnabled = true;
         private static bool duplicateListenerWarningIssued;
+        private KevinBodyRig embodiedBody;
 
         public bool IsInputBlocked =>
             manualCursorRelease || IsUiBlockingInput() ||
@@ -134,6 +135,17 @@ namespace SashimiBoy
             ApplyControlState();
         }
 
+        public void RestoreStageEntryView(float localYaw, float localPitch)
+        {
+            yaw = NormalizeAngle(localYaw);
+            pitch = Mathf.Clamp(NormalizeAngle(localPitch), minimumPitch, maximumPitch);
+            smoothedLookInput = Vector2.zero;
+            manualCursorRelease = externalUiBlocked = startWithUiOpen = false;
+            externalLookEnabled = true;
+            ApplyViewRotation();
+            ApplyControlState();
+        }
+
         public void RefreshVisualPresentation()
         {
             ResolveReferences();
@@ -145,6 +157,14 @@ namespace SashimiBoy
         {
             if (visualLoader == null)
             {
+                return;
+            }
+
+            var embodied = visualLoader.visualRoot != null
+                ? visualLoader.visualRoot.GetComponentInChildren<KevinBodyRig>(true) : null;
+            if (embodied != null)
+            {
+                embodied.SetHeadHidden(hidden);
                 return;
             }
 
@@ -315,6 +335,16 @@ namespace SashimiBoy
                 return;
             }
 
+            if (embodiedBody == null && visualLoader != null && visualLoader.visualRoot != null)
+                embodiedBody = visualLoader.visualRoot.GetComponentInChildren<KevinBodyRig>(true);
+            if (embodiedBody != null && embodiedBody.eyeAnchor != null)
+            {
+                SetRigLocalHeight(transform.InverseTransformPoint(embodiedBody.eyeAnchor.position).y);
+                // Place the eyes in front of the neck, so looking down reveals arms/legs without the chest covering the view.
+                if (pitchRoot != null) pitchRoot.localPosition = new Vector3(0f,0f,.20f/Mathf.Max(.0001f,Mathf.Abs(transform.lossyScale.z)));
+                return;
+            }
+
             if (deriveEyeHeightFromVisual &&
                 TryGetVisualBounds(out Bounds visualBounds))
             {
@@ -438,6 +468,9 @@ namespace SashimiBoy
             {
                 pitchRoot.localRotation = Quaternion.Euler(pitch, 0f, 0f);
             }
+
+            if (embodiedBody != null && yawRoot != null && !embodiedBody.working)
+                embodiedBody.transform.rotation = Quaternion.Euler(0f,yawRoot.eulerAngles.y,0f);
         }
 
         private void ApplyControlState()

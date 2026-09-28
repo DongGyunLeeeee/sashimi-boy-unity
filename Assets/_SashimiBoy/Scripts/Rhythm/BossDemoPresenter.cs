@@ -13,6 +13,7 @@ namespace SashimiBoy
         public GameObject bossSilhouetteRoot;
         public KnifeVisualController bossKnife;
         public Stage01SalmonHUD hud;
+        public Stage01ButcheryPresenter butchery;
 
         private readonly List<Stage01RuntimeNote> sourceNotes =
             new List<Stage01RuntimeNote>(DemoNoteCount);
@@ -47,10 +48,10 @@ namespace SashimiBoy
 
             bool knifeVisible = demoVisible &&
                 songSec < timing.CountdownStartSeconds;
-            SetBossVisible(demoVisible, knifeVisible);
+            SetBossVisible(butchery == null && demoVisible, butchery == null && knifeVisible);
             RefreshCountdown(songSec);
 
-            if (!knifeVisible || bossKnife == null ||
+            if (!knifeVisible || (bossKnife == null && butchery == null) ||
                 demoNoteTimes.Count == 0)
             {
                 return;
@@ -64,6 +65,7 @@ namespace SashimiBoy
                     lastTriggeredDemoOrdinal < i)
                 {
                     lastTriggeredDemoOrdinal = i;
+                    if (butchery != null) { butchery.PlayDemonstrationStroke(); continue; }
                     if (salmon != null)
                     {
                         bossKnife.SetTargetWorld(
@@ -79,7 +81,7 @@ namespace SashimiBoy
                 }
             }
 
-            if (nextDemoOrdinal >= 0)
+            if (nextDemoOrdinal >= 0 && butchery == null)
             {
                 double nextSec = demoNoteTimes[nextDemoOrdinal];
                 if (salmon != null)

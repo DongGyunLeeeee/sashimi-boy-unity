@@ -268,6 +268,7 @@ namespace SashimiBoy
 
         public void LeaveShop()
         {
+            if (DayWorldFlow.Active) { FindAnyObjectByType<DayWorldSceneDirector>()?.CloseShop(); return; }
             if (SceneTransitionService.Instance != null)
             {
                 SceneTransitionService.Instance.LoadScene(streetSceneName);

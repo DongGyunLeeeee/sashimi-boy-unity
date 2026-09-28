@@ -200,12 +200,31 @@ namespace SashimiBoy.Tests
 
             Assert.That(InvokeBool("ResumeAt", 10d), Is.True);
             AssertState("Scheduled");
-            Assert.That(GetPrivateDouble("startDspTime"),
+            double resumedStart = GetPrivateDouble("startDspTime");
+            Assert.That(resumedStart,
                 Is.EqualTo(10.04d).Within(0.0001d));
             Tick(10.02d, false);
             AssertState("Scheduled");
-            Tick(10.04d, true);
+
+            // The preserved -40 ms was calculated from the live DSP origin.
+            // Its reconstructed deadline can differ from the literal 10.04d.
+            // Keep the independent lead-time assertion above, then test the
+            // exact stored boundary instead of rounding it to a new literal.
+            double immediatelyBeforeStart = BitConverter.Int64BitsToDouble(
+                BitConverter.DoubleToInt64Bits(resumedStart) - 1L);
+            Assert.That(immediatelyBeforeStart, Is.LessThan(resumedStart));
+            Tick(immediatelyBeforeStart, false);
+            AssertState("Scheduled");
+            Assert.That(CaptureAt(immediatelyBeforeStart), Is.LessThan(0d));
+
+            Tick(resumedStart, true);
             AssertState("Playing");
+            Assert.That(CaptureAt(resumedStart), Is.Zero);
+
+            Tick(resumedStart + 0.02d, true);
+            AssertState("Playing");
+            Assert.That(CaptureAt(resumedStart + 0.02d),
+                Is.EqualTo(20d).Within(0.01d));
         }
 
         [Test]

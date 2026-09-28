@@ -1,0 +1,31 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6f8e1886210069b4295e6b6f05e17795, type: 3}
+  m_Name: KevinFaceCatalog
+  m_EditorClassIdentifier: Assembly-CSharp::SashimiBoy.KevinFaceCatalog
+  choices:
+  - id: CuteFace
+    displayName: "\uADC0\uC5EC\uC6B4 \uC5BC\uAD74"
+    mesh: {fileID: 4300000, guid: 1a16210ba523d774093694f9e84702bc, type: 2}
+    material: {fileID: 2100000, guid: f8df644d9091b254b9128b01960c39ca, type: 2}
+  - id: PlainFace
+    displayName: "\uC218\uC218\uD55C \uC5BC\uAD74"
+    mesh: {fileID: 4300000, guid: b1fdda66dde89da469fe2baa2dfc1cc4, type: 2}
+    material: {fileID: 2100000, guid: c090f49be78098947ac8840c26571b87, type: 2}
+  - id: AmbiguousFace
+    displayName: "\uBB18\uD55C \uC5BC\uAD74"
+    mesh: {fileID: 4300000, guid: 4afc3c856a769984a97fe43d73ff6e41, type: 2}
+    material: {fileID: 2100000, guid: 404b33cd6758b1a4c85e87e8ca741a73, type: 2}
+  - id: WesternFace
+    displayName: "\uC11C\uAD6C\uC801\uC778 \uC5BC\uAD74"
+    mesh: {fileID: 4300000, guid: 73ac510e583240e4cb1e3679cdfaedc5, type: 2}
+    material: {fileID: 2100000, guid: 768554e8e33f1484ebc6860ef3bfd0d1, type: 2}

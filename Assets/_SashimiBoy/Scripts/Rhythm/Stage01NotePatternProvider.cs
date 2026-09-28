@@ -94,7 +94,7 @@ namespace SashimiBoy
                 1,
                 pattern.manualBarCount);
             int repeatBarCount = pattern.manualBarCount - repeatStart + 1;
-            int playbackBarOffset = pattern.manualBarCount;
+            long playbackBarOffset = pattern.manualBarCount;
             while (timing.IsGameplayNotePlayable(
                 PatternStartTimeSeconds +
                 playbackBarOffset * stepsPerBar * stepLength))
@@ -123,7 +123,7 @@ namespace SashimiBoy
             List<Stage01PatternNote> ordered,
             int firstSourceBar,
             int lastSourceBar,
-            int playbackBarDelta,
+            long playbackBarDelta,
             bool repeated,
             int stepsPerBar,
             double stepLength)
@@ -137,8 +137,8 @@ namespace SashimiBoy
                     continue;
                 }
 
-                int playbackBar = source.barIndex + playbackBarDelta;
-                int globalStep = (playbackBar - 1) * stepsPerBar +
+                long playbackBar = source.barIndex + playbackBarDelta;
+                long globalStep = (playbackBar - 1) * stepsPerBar +
                     source.eighthStepInBar;
                 double songTime = PatternStartTimeSeconds +
                     globalStep * stepLength;
@@ -149,7 +149,7 @@ namespace SashimiBoy
 
                 runtimeNotes.Add(new Stage01RuntimeNote
                 {
-                    playbackBarIndex = playbackBar,
+                    playbackBarIndex = checked((int)playbackBar),
                     sourceBarIndex = source.barIndex,
                     eighthStepInBar = source.eighthStepInBar,
                     songTimeSeconds = songTime,

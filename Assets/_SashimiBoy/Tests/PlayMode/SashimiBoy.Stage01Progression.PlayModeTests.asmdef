@@ -2,7 +2,7 @@
     "name": "SashimiBoy.Stage01Progression.PlayModeTests",
     "rootNamespace": "SashimiBoy.Tests",
     "references": [
-        "SashimiBoy.ReflectionTestSupport"
+        "SashimiBoy.ReflectionTestSupport", "SashimiBoy.Semantics"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

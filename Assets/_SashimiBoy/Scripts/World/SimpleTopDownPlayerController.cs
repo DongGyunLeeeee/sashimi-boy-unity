@@ -14,7 +14,7 @@ namespace SashimiBoy
         private CharacterController controller;
         private bool inputEnabled = true;
 
-        public bool InputEnabled => inputEnabled;
+        public bool InputEnabled => inputEnabled && !DayWorldFlow.AwaitingWake;
 
         private void Awake()
         {
@@ -28,7 +28,7 @@ namespace SashimiBoy
                 return;
             }
 
-            if (!inputEnabled)
+            if (!InputEnabled)
             {
                 controller.SimpleMove(Vector3.zero);
                 return;

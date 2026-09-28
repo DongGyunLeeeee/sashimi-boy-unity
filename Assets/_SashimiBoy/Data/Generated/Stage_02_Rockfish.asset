@@ -17,9 +17,9 @@ MonoBehaviour:
   order: 2
   fishType: 1
   hiphopGenre: Boom bap
-  bpm: 88
+  bpm: 90
   defaultDifficulty: 1
-  sceneName: FishStageTemplate
+  sceneName: Stage02_Rockfish
   requiredPreviousStageId: STAGE_01_SALMON
   nextStageId: STAGE_03_SOLE
   rewardEquipment: 1
