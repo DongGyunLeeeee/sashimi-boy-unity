@@ -89,6 +89,7 @@ namespace SashimiBoy.EditorTools
             ApplyStreet(theme, materials);
             ApplyFishShop(theme, materials);
             ApplyEquipmentShop(theme, materials);
+            EquipmentShopArtPassPipeline.ApplyEquipmentShopArtToMainSceneBatch();
             ClubArtPassPipeline.ApplyClubArtToMainSceneBatch();
             ApplyClub(theme, materials);
 
