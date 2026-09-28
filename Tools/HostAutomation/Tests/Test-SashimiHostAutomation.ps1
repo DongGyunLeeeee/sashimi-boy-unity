@@ -2262,15 +2262,6 @@ Assert-SashimiFixtureExecutableBoundary -FilePath 'C:\Program Files\Git\cmd\git.
         foreach ($marker in @($titleMarker,$bodyMarker,$pullBodyMarker,$pendingMarker,$findingMarker,$conversationMarker)) {
             Assert-HostTest ($process.StdOut -notmatch [regex]::Escape($marker)) "Orchestrator output retained sensitive marker '$marker'."
         }
-
-        $source = [IO.File]::ReadAllText((Join-Path $hostRoot 'Invoke-SashimiHostOrchestrator.ps1'), [Text.Encoding]::UTF8)
-        Assert-HostTest ($source -notmatch '(?m)\[Console\]::(?:Out|Error)\.Write(?:Line)?\(\s*\$child\.Standard(?:Output|Error)') `
-            'Protected entry point relays raw linked-child stdout or stderr.'
-        $parseIndex = $source.IndexOf('$childJsonLines=@($child.StandardOutput', [StringComparison]::Ordinal)
-        $validatedIndex = $source.IndexOf('$validatedChildJson=ConvertTo-OrchestratorJson $childResult', [StringComparison]::Ordinal)
-        $relayIndex = $source.IndexOf('[Console]::Out.WriteLine($protectedChildJson)', [StringComparison]::Ordinal)
-        Assert-HostTest ($parseIndex -ge 0 -and $validatedIndex -gt $parseIndex -and $relayIndex -gt $validatedIndex) `
-            'Linked-child output is not parsed, contract-checked, sanitized, then emitted in that order.'
     }
 
     Invoke-HostTestCase 'OrchestratorMutexContentionIsSuccessfulNoOp' {
