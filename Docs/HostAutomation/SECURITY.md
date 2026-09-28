@@ -64,16 +64,18 @@ runtime authority. A changed companion changes the distribution and bundle IDs
 and therefore requires a new matching Owner-approved preview. Legacy one-file
 distributions remain untouched and cannot satisfy schema version 2.
 
-The task's `HighestAvailable` parent is an integrity bootstrap only. Before
-loading `HostAutomation.Common.ps1`, parsing `Config.json`, or invoking any
-configured executable, it verifies the stable PowerShell installation and the
-installed bundle's location, ACL, manifest, lengths, and hashes. An elevated
-parent must relaunch the same protected entry point with its linked
-non-elevated token. The child must have the same SID, must prove that its token
-is not elevated, and repeats the complete integrity verification. Missing or
-invalid manifest evidence, a missing linked token, SID mismatch, an elevated
-child, relaunch failure, or an invalid child result stops the run. The elevated
-parent never runs Git, GitHub CLI, Codex, Unity, or repository content.
+The task uses `InteractiveToken` and `LeastPrivilege` for the exact Owner
+account. Windows supplies its standard user token directly. Before loading
+`HostAutomation.Common.ps1`, parsing `Config.json`, or invoking any configured
+executable, the entry point verifies the stable PowerShell installation and
+the installed bundle's location, ACL, manifest, lengths, and hashes, and reads
+`TokenElevation` from its current process token. Elevated execution is rejected
+with `PrivilegeBoundary.Reason=ElevatedTokenRejected`; failure to inspect the
+token also stops the run. No linked token is used and no elevated parent launches
+runtime children. This check also applies to preview and fixture execution.
+Missing or invalid integrity evidence still fails closed. Installation and
+protected task maintenance require administrator approval; recurring runtime
+execution never runs Git, GitHub CLI, Codex, Unity, or repository content elevated.
 
 Installer and uninstaller initialization does not trust ambient module search
 paths. It binds the running process, main module, and `PSHOME` to the stable
@@ -431,8 +433,8 @@ All process stdout/stderr capture is bounded at 16 MiB/1 MiB with strict UTF-8
 decoding. Non-Codex output is checked for recognizable credentials before
 redaction; Git/GitHub output also checks removed secret environment values.
 Disclosure is a failed invocation.
-The linked-token launcher and Owner installer launcher also use bounded byte
-capture and deadlines instead of unbounded text reads.
+The Owner installer launcher also uses bounded byte capture and deadlines
+instead of unbounded text reads.
 
 While Unity or Codex is active, the process boundary checks its capture roots
 every 250 ms and after termination: at most 512 entries, 8 MiB per log,
@@ -578,7 +580,7 @@ runs identify Codex by the protected executable's SHA-256 instead of launching
 an ambient-config-capable version probe.
 Top-level `RunResult.json` and orchestrator output retain only allowlisted
 selection/runner metadata; they omit Issue/PR bodies and titles, conversations,
-findings, `pendingCommand`, and raw linked-child streams.
+findings, `pendingCommand`, and raw child-process streams.
 
 ## Scheduler security
 
@@ -587,7 +589,7 @@ The installed task contract is fixed:
 - task name `SASHIMI BOY Host Orchestrator`;
 - current user `02031`;
 - `InteractiveToken`, run only while the user is logged on;
-- highest available privileges;
+- least privileges (`LeastPrivilege` in XML, `Limited` in ScheduledTasks CIM);
 - stable PowerShell 7 executable;
 - no stored password;
 - repeat every 15 minutes, start when available, wake to run;
@@ -644,10 +646,11 @@ inert production checkpoint function has no config/environment callback hook.
 Exception injection is not an fsync, crash-restart, elevated installation, or
 machine-wide security attestation. Live permissions and task readback remain
 Owner rollout gates.
-The bootstrap suite validates this privilege boundary with parser/static order,
-source-tree fail-closed, fixture, and DryRun checks. It deliberately does not
-register the task or execute a real elevated-parent/linked-token relaunch;
-that behavior requires Owner observation during the later reviewed install.
+The bootstrap suite validates native token inspection and elevated-token
+rejection as well as parser/static order, source-tree fail-closed, fixture,
+and DryRun checks. It deliberately does not register a real task. Later Owner
+rollout must execute the reviewed task through Windows Task Scheduler and
+inspect its actual non-elevated token and result, in addition to manual pilots.
 
 ## Fixture and DryRun isolation
 

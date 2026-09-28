@@ -11,7 +11,6 @@ param(
     [string]$MutexName,
     [switch]$Once,
     [ValidateRange(0,2147483647)][int]$IssueNumber = 0,
-    [Parameter(DontShow = $true)][switch]$UnelevatedChild,
     [switch]$DryRun
 )
 
@@ -465,457 +464,74 @@ function Import-OrchestratorTrustedCoreModules {
 }
 
 function Initialize-OrchestratorTokenNative {
-    if ('SashimiBoyAutomation.LinkedTokenProcess' -as [type]) { return }
+    if ('SashimiBoyAutomation.HostToken' -as [type]) { return }
     Microsoft.PowerShell.Utility\Add-Type -TypeDefinition @'
 using System;
 using System.ComponentModel;
-using System.IO;
 using System.Runtime.InteropServices;
-using System.Security.Principal;
-using System.Text;
-using System.Threading.Tasks;
-using Microsoft.Win32.SafeHandles;
 
 namespace SashimiBoyAutomation
 {
-    public sealed class LinkedTokenProcessResult
-    {
-        public int ExitCode { get; set; }
-        public string StandardOutput { get; set; } = "";
-        public string StandardError { get; set; } = "";
-    }
-
-    public static class LinkedTokenProcess
+    public static class HostToken
     {
         private const UInt32 TOKEN_QUERY = 0x0008;
-        private const int TokenLinkedToken = 19;
         private const int TokenElevation = 20;
-        private const UInt32 STARTF_USESTDHANDLES = 0x00000100;
-        private const UInt32 HANDLE_FLAG_INHERIT = 0x00000001;
-        private const UInt32 LOGON_WITH_PROFILE = 0x00000001;
-        private const UInt32 CREATE_SUSPENDED = 0x00000004;
-        private const UInt32 CREATE_NO_WINDOW = 0x08000000;
-        private const UInt32 WAIT_OBJECT_0 = 0x00000000;
-        private const UInt32 WAIT_TIMEOUT = 0x00000102;
-        private const UInt32 WAIT_FAILED = 0xffffffff;
-        private const UInt32 RESUME_FAILED = 0xffffffff;
-        private const int JobObjectExtendedLimitInformation = 9;
-        private const UInt32 JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x00002000;
-        private const UInt32 LINKED_CHILD_TIMEOUT_MS = 11u * 60u * 60u * 1000u;
-        private const UInt32 TERMINATION_CONFIRM_TIMEOUT_MS = 10000u;
-        private const int PIPE_DRAIN_TIMEOUT_MS = 10000;
-        private const UInt32 FORCED_TERMINATION_EXIT_CODE = 0x53415348;
-
-        [StructLayout(LayoutKind.Sequential)]
-        private struct SECURITY_ATTRIBUTES
-        {
-            public int nLength;
-            public IntPtr lpSecurityDescriptor;
-            [MarshalAs(UnmanagedType.Bool)] public bool bInheritHandle;
-        }
-
-        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
-        private struct STARTUPINFO
-        {
-            public int cb;
-            public string lpReserved;
-            public string lpDesktop;
-            public string lpTitle;
-            public UInt32 dwX;
-            public UInt32 dwY;
-            public UInt32 dwXSize;
-            public UInt32 dwYSize;
-            public UInt32 dwXCountChars;
-            public UInt32 dwYCountChars;
-            public UInt32 dwFillAttribute;
-            public UInt32 dwFlags;
-            public UInt16 wShowWindow;
-            public UInt16 cbReserved2;
-            public IntPtr lpReserved2;
-            public IntPtr hStdInput;
-            public IntPtr hStdOutput;
-            public IntPtr hStdError;
-        }
-
-        [StructLayout(LayoutKind.Sequential)]
-        private struct PROCESS_INFORMATION
-        {
-            public IntPtr hProcess;
-            public IntPtr hThread;
-            public UInt32 dwProcessId;
-            public UInt32 dwThreadId;
-        }
-
-        [StructLayout(LayoutKind.Sequential)]
-        private struct JOBOBJECT_BASIC_LIMIT_INFORMATION
-        {
-            public long PerProcessUserTimeLimit;
-            public long PerJobUserTimeLimit;
-            public UInt32 LimitFlags;
-            public UIntPtr MinimumWorkingSetSize;
-            public UIntPtr MaximumWorkingSetSize;
-            public UInt32 ActiveProcessLimit;
-            public UIntPtr Affinity;
-            public UInt32 PriorityClass;
-            public UInt32 SchedulingClass;
-        }
-
-        [StructLayout(LayoutKind.Sequential)]
-        private struct IO_COUNTERS
-        {
-            public UInt64 ReadOperationCount;
-            public UInt64 WriteOperationCount;
-            public UInt64 OtherOperationCount;
-            public UInt64 ReadTransferCount;
-            public UInt64 WriteTransferCount;
-            public UInt64 OtherTransferCount;
-        }
-
-        [StructLayout(LayoutKind.Sequential)]
-        private struct JOBOBJECT_EXTENDED_LIMIT_INFORMATION
-        {
-            public JOBOBJECT_BASIC_LIMIT_INFORMATION BasicLimitInformation;
-            public IO_COUNTERS IoInfo;
-            public UIntPtr ProcessMemoryLimit;
-            public UIntPtr JobMemoryLimit;
-            public UIntPtr PeakProcessMemoryUsed;
-            public UIntPtr PeakJobMemoryUsed;
-        }
 
         [DllImport("kernel32.dll")]
         private static extern IntPtr GetCurrentProcess();
+
+        [DllImport("advapi32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool OpenProcessToken(IntPtr process, UInt32 access, out IntPtr token);
+
+        [DllImport("advapi32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool GetTokenInformation(IntPtr token, int informationClass,
+            out int information, int informationLength, out int returnLength);
 
         [DllImport("kernel32.dll", SetLastError = true)]
         [return: MarshalAs(UnmanagedType.Bool)]
         private static extern bool CloseHandle(IntPtr handle);
 
-        [DllImport("kernel32.dll", SetLastError = true)]
-        [return: MarshalAs(UnmanagedType.Bool)]
-        private static extern bool CreatePipe(out IntPtr readPipe, out IntPtr writePipe, ref SECURITY_ATTRIBUTES attributes, UInt32 size);
-
-        [DllImport("kernel32.dll", SetLastError = true)]
-        [return: MarshalAs(UnmanagedType.Bool)]
-        private static extern bool SetHandleInformation(IntPtr handle, UInt32 mask, UInt32 flags);
-
-        [DllImport("kernel32.dll", SetLastError = true)]
-        private static extern UInt32 WaitForSingleObject(IntPtr handle, UInt32 milliseconds);
-
-        [DllImport("kernel32.dll", SetLastError = true)]
-        [return: MarshalAs(UnmanagedType.Bool)]
-        private static extern bool GetExitCodeProcess(IntPtr process, out UInt32 exitCode);
-
-        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
-        private static extern IntPtr CreateJobObject(IntPtr jobAttributes, string name);
-
-        [DllImport("kernel32.dll", SetLastError = true)]
-        [return: MarshalAs(UnmanagedType.Bool)]
-        private static extern bool SetInformationJobObject(IntPtr job, int informationClass, IntPtr information, UInt32 informationLength);
-
-        [DllImport("kernel32.dll", SetLastError = true)]
-        [return: MarshalAs(UnmanagedType.Bool)]
-        private static extern bool AssignProcessToJobObject(IntPtr job, IntPtr process);
-
-        [DllImport("kernel32.dll", SetLastError = true)]
-        private static extern UInt32 ResumeThread(IntPtr thread);
-
-        [DllImport("kernel32.dll", SetLastError = true)]
-        [return: MarshalAs(UnmanagedType.Bool)]
-        private static extern bool TerminateJobObject(IntPtr job, UInt32 exitCode);
-
-        [DllImport("kernel32.dll", SetLastError = true)]
-        [return: MarshalAs(UnmanagedType.Bool)]
-        private static extern bool TerminateProcess(IntPtr process, UInt32 exitCode);
-
-        [DllImport("advapi32.dll", SetLastError = true)]
-        [return: MarshalAs(UnmanagedType.Bool)]
-        private static extern bool OpenProcessToken(IntPtr process, UInt32 desiredAccess, out IntPtr token);
-
-        [DllImport("advapi32.dll", SetLastError = true)]
-        [return: MarshalAs(UnmanagedType.Bool)]
-        private static extern bool GetTokenInformation(IntPtr token, int informationClass, IntPtr information, UInt32 informationLength, out UInt32 returnLength);
-
-        [DllImport("advapi32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
-        [return: MarshalAs(UnmanagedType.Bool)]
-        private static extern bool CreateProcessWithTokenW(
-            IntPtr token,
-            UInt32 logonFlags,
-            string applicationName,
-            StringBuilder commandLine,
-            UInt32 creationFlags,
-            IntPtr environment,
-            string currentDirectory,
-            ref STARTUPINFO startupInfo,
-            out PROCESS_INFORMATION processInformation);
-
-        private static Win32Exception Error(string operation)
-        {
-            return new Win32Exception(Marshal.GetLastWin32Error(), operation + " failed");
-        }
-
-        private static void CloseNativeHandle(ref IntPtr handle)
-        {
-            if (handle == IntPtr.Zero) return;
-            CloseHandle(handle);
-            handle = IntPtr.Zero;
-        }
-
-        private static void DisposeQuietly(IDisposable resource)
-        {
-            if (resource == null) return;
-            try { resource.Dispose(); }
-            catch { }
-        }
-
-        private static IntPtr CreateKillOnCloseJob()
-        {
-            IntPtr job = CreateJobObject(IntPtr.Zero, null);
-            if (job == IntPtr.Zero) throw Error("CreateJobObject");
-            IntPtr buffer = IntPtr.Zero;
-            try
-            {
-                JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits = new JOBOBJECT_EXTENDED_LIMIT_INFORMATION();
-                limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
-                UInt32 size = (UInt32)Marshal.SizeOf<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>();
-                buffer = Marshal.AllocHGlobal((int)size);
-                Marshal.StructureToPtr(limits, buffer, false);
-                if (!SetInformationJobObject(job, JobObjectExtendedLimitInformation, buffer, size))
-                    throw Error("SetInformationJobObject");
-                return job;
-            }
-            catch
-            {
-                CloseHandle(job);
-                throw;
-            }
-            finally
-            {
-                if (buffer != IntPtr.Zero) Marshal.FreeHGlobal(buffer);
-            }
-        }
-
-        private static void RequestProcessTreeTermination(ref IntPtr job, IntPtr process, bool jobAssigned)
-        {
-            if (jobAssigned && job != IntPtr.Zero)
-            {
-                // Closing the only non-inheritable job handle is the second,
-                // kernel-enforced kill path if explicit termination fails.
-                TerminateJobObject(job, FORCED_TERMINATION_EXIT_CODE);
-                CloseNativeHandle(ref job);
-                return;
-            }
-            if (process != IntPtr.Zero) TerminateProcess(process, FORCED_TERMINATION_EXIT_CODE);
-            CloseNativeHandle(ref job);
-        }
-
-        private static IntPtr OpenCurrentToken()
-        {
-            IntPtr token;
-            if (!OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, out token)) throw Error("OpenProcessToken");
-            return token;
-        }
-
-        private static bool IsTokenElevated(IntPtr token)
-        {
-            IntPtr buffer = Marshal.AllocHGlobal(sizeof(int));
-            try
-            {
-                UInt32 returned;
-                if (!GetTokenInformation(token, TokenElevation, buffer, sizeof(int), out returned)) throw Error("GetTokenInformation(TokenElevation)");
-                return Marshal.ReadInt32(buffer) != 0;
-            }
-            finally { Marshal.FreeHGlobal(buffer); }
-        }
-
-        private static IntPtr GetLinkedToken(IntPtr token)
-        {
-            IntPtr buffer = Marshal.AllocHGlobal(IntPtr.Size);
-            try
-            {
-                UInt32 returned;
-                if (!GetTokenInformation(token, TokenLinkedToken, buffer, (UInt32)IntPtr.Size, out returned)) throw Error("GetTokenInformation(TokenLinkedToken)");
-                return Marshal.ReadIntPtr(buffer);
-            }
-            finally { Marshal.FreeHGlobal(buffer); }
-        }
-
         public static bool IsCurrentProcessElevated()
         {
-            IntPtr token = IntPtr.Zero;
-            try { token = OpenCurrentToken(); return IsTokenElevated(token); }
-            finally { if (token != IntPtr.Zero) CloseHandle(token); }
-        }
-
-        private static async Task<byte[]> ReadBoundedAsync(Stream stream, int maximumBytes)
-        {
-            using (var capture = new MemoryStream())
-            {
-                var buffer = new byte[8192];
-                while (true)
-                {
-                    int count = await stream.ReadAsync(buffer, 0, buffer.Length).ConfigureAwait(false);
-                    if (count == 0) return capture.ToArray();
-                    if (capture.Length + count > maximumBytes) throw new InvalidDataException("HOST_OUTPUT_LIMIT");
-                    capture.Write(buffer, 0, count);
-                }
-            }
-        }
-
-        public static LinkedTokenProcessResult RunUnelevated(string executable, string commandLine, string workingDirectory)
-        {
-            IntPtr currentToken = IntPtr.Zero;
-            IntPtr linkedToken = IntPtr.Zero;
-            IntPtr job = IntPtr.Zero;
-            IntPtr stdoutRead = IntPtr.Zero, stdoutWrite = IntPtr.Zero;
-            IntPtr stderrRead = IntPtr.Zero, stderrWrite = IntPtr.Zero;
-            IntPtr stdinRead = IntPtr.Zero, stdinWrite = IntPtr.Zero;
-            PROCESS_INFORMATION process = new PROCESS_INFORMATION();
-            bool processCreated = false;
-            bool jobAssigned = false;
-            bool processTerminated = false;
-            bool terminationAttempted = false;
-            SafeFileHandle stdoutHandle = null, stderrHandle = null;
-            FileStream stdoutStream = null, stderrStream = null;
-            StreamReader stdoutReader = null, stderrReader = null;
+            IntPtr token;
+            if (!OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, out token))
+                throw new Win32Exception(Marshal.GetLastWin32Error(), "OpenProcessToken failed.");
             try
             {
-                currentToken = OpenCurrentToken();
-                if (!IsTokenElevated(currentToken)) throw new InvalidOperationException("The relaunch parent token is not elevated.");
-                linkedToken = GetLinkedToken(currentToken);
-                if (linkedToken == IntPtr.Zero || IsTokenElevated(linkedToken)) throw new InvalidOperationException("The linked token is missing or still elevated.");
-                string currentSid = WindowsIdentity.GetCurrent().User.Value;
-                using (WindowsIdentity linkedIdentity = new WindowsIdentity(linkedToken))
-                {
-                    if (!String.Equals(currentSid, linkedIdentity.User.Value, StringComparison.Ordinal)) throw new InvalidOperationException("The linked token belongs to a different Windows account.");
-                }
-
-                SECURITY_ATTRIBUTES attributes = new SECURITY_ATTRIBUTES();
-                attributes.nLength = Marshal.SizeOf<SECURITY_ATTRIBUTES>();
-                attributes.bInheritHandle = true;
-                if (!CreatePipe(out stdoutRead, out stdoutWrite, ref attributes, 0)) throw Error("CreatePipe(stdout)");
-                if (!CreatePipe(out stderrRead, out stderrWrite, ref attributes, 0)) throw Error("CreatePipe(stderr)");
-                if (!CreatePipe(out stdinRead, out stdinWrite, ref attributes, 0)) throw Error("CreatePipe(stdin)");
-                if (!SetHandleInformation(stdoutRead, HANDLE_FLAG_INHERIT, 0) ||
-                    !SetHandleInformation(stderrRead, HANDLE_FLAG_INHERIT, 0) ||
-                    !SetHandleInformation(stdinWrite, HANDLE_FLAG_INHERIT, 0)) throw Error("SetHandleInformation");
-
-                STARTUPINFO startup = new STARTUPINFO();
-                startup.cb = Marshal.SizeOf<STARTUPINFO>();
-                startup.dwFlags = STARTF_USESTDHANDLES;
-                startup.hStdInput = stdinRead;
-                startup.hStdOutput = stdoutWrite;
-                startup.hStdError = stderrWrite;
-                job = CreateKillOnCloseJob();
-                if (!CreateProcessWithTokenW(linkedToken, LOGON_WITH_PROFILE, executable, new StringBuilder(commandLine), CREATE_NO_WINDOW | CREATE_SUSPENDED, IntPtr.Zero, workingDirectory, ref startup, out process)) throw Error("CreateProcessWithTokenW");
-                processCreated = true;
-                if (!AssignProcessToJobObject(job, process.hProcess)) throw Error("AssignProcessToJobObject");
-                jobAssigned = true;
-
-                CloseNativeHandle(ref stdoutWrite);
-                CloseNativeHandle(ref stderrWrite);
-                CloseNativeHandle(ref stdinRead);
-                CloseNativeHandle(ref stdinWrite);
-
-                stdoutHandle = new SafeFileHandle(stdoutRead, true); stdoutRead = IntPtr.Zero;
-                stderrHandle = new SafeFileHandle(stderrRead, true); stderrRead = IntPtr.Zero;
-                stdoutStream = new FileStream(stdoutHandle, FileAccess.Read);
-                stderrStream = new FileStream(stderrHandle, FileAccess.Read);
-                Task<byte[]> stdoutTask = ReadBoundedAsync(stdoutStream, 16 * 1024 * 1024);
-                Task<byte[]> stderrTask = ReadBoundedAsync(stderrStream, 1024 * 1024);
-
-                if (ResumeThread(process.hThread) == RESUME_FAILED) throw Error("ResumeThread");
-                CloseNativeHandle(ref process.hThread);
-
-                var deadline = System.Diagnostics.Stopwatch.StartNew();
-                UInt32 waitResult;
-                do
-                {
-                    waitResult = WaitForSingleObject(process.hProcess, 50);
-                    if (stdoutTask.IsFaulted || stderrTask.IsFaulted)
-                        throw new InvalidDataException("HOST_OUTPUT_CAPTURE_FAILED");
-                }
-                while (waitResult == WAIT_TIMEOUT && deadline.ElapsedMilliseconds < LINKED_CHILD_TIMEOUT_MS);
-                if (waitResult == WAIT_TIMEOUT)
-                {
-                    terminationAttempted = true;
-                    RequestProcessTreeTermination(ref job, process.hProcess, jobAssigned);
-                    UInt32 confirmation = WaitForSingleObject(process.hProcess, TERMINATION_CONFIRM_TIMEOUT_MS);
-                    processTerminated = confirmation == WAIT_OBJECT_0;
-                    if (!processTerminated)
-                        throw new TimeoutException("The unelevated host child exceeded its fixed deadline; termination could not be confirmed.");
-                    throw new TimeoutException("The unelevated host child exceeded its fixed deadline and was terminated.");
-                }
-                if (waitResult == WAIT_FAILED) throw Error("WaitForSingleObject");
-                if (waitResult != WAIT_OBJECT_0) throw new InvalidOperationException("The unelevated host child returned an unexpected wait result.");
-                processTerminated = true;
-
-                // End any descendants before draining pipes; descendants cannot
-                // retain inherited stdout/stderr handles beyond this boundary.
-                CloseNativeHandle(ref job);
-                if (!Task.WaitAll(new Task[] { stdoutTask, stderrTask }, PIPE_DRAIN_TIMEOUT_MS))
-                    throw new InvalidOperationException("The unelevated host child output channels did not close after termination.");
-                string stdout = new UTF8Encoding(false, true).GetString(stdoutTask.GetAwaiter().GetResult());
-                string stderr = new UTF8Encoding(false, true).GetString(stderrTask.GetAwaiter().GetResult());
-                UInt32 nativeExitCode;
-                if (!GetExitCodeProcess(process.hProcess, out nativeExitCode)) throw Error("GetExitCodeProcess");
-                return new LinkedTokenProcessResult { ExitCode = unchecked((int)nativeExitCode), StandardOutput = stdout, StandardError = stderr };
+                int elevated, returned;
+                if (!GetTokenInformation(token, TokenElevation, out elevated, sizeof(int), out returned))
+                    throw new Win32Exception(Marshal.GetLastWin32Error(), "GetTokenInformation(TokenElevation) failed.");
+                if (returned != sizeof(int))
+                    throw new InvalidOperationException("Unexpected TokenElevation result length.");
+                return elevated != 0;
             }
-            finally
-            {
-                if (processCreated && !processTerminated && !terminationAttempted)
-                {
-                    terminationAttempted = true;
-                    RequestProcessTreeTermination(ref job, process.hProcess, jobAssigned);
-                    WaitForSingleObject(process.hProcess, TERMINATION_CONFIRM_TIMEOUT_MS);
-                }
-                CloseNativeHandle(ref job);
-                DisposeQuietly(stdoutReader);
-                DisposeQuietly(stderrReader);
-                DisposeQuietly(stdoutStream);
-                DisposeQuietly(stderrStream);
-                DisposeQuietly(stdoutHandle);
-                DisposeQuietly(stderrHandle);
-                CloseNativeHandle(ref process.hThread);
-                CloseNativeHandle(ref process.hProcess);
-                CloseNativeHandle(ref stdinRead);
-                CloseNativeHandle(ref stdinWrite);
-                CloseNativeHandle(ref stdoutRead);
-                CloseNativeHandle(ref stdoutWrite);
-                CloseNativeHandle(ref stderrRead);
-                CloseNativeHandle(ref stderrWrite);
-                CloseNativeHandle(ref linkedToken);
-                CloseNativeHandle(ref currentToken);
-            }
+            finally { CloseHandle(token); }
         }
     }
 }
-'@ -ErrorAction Stop
+'@
 }
 
 function Test-OrchestratorTokenElevated {
     Initialize-OrchestratorTokenNative
-    return [SashimiBoyAutomation.LinkedTokenProcess]::IsCurrentProcessElevated()
+    return [SashimiBoyAutomation.HostToken]::IsCurrentProcessElevated()
 }
 
-function ConvertTo-OrchestratorNativeArgument {
-    param([Parameter(Mandatory = $true)][AllowEmptyString()][string]$Value)
-    if ($Value.IndexOfAny([char[]]@([char]0,'"',"`r","`n")) -ge 0 -or $Value.EndsWith('\',[StringComparison]::Ordinal)) { throw 'An orchestrator relaunch argument contains an unsafe character or trailing separator.' }
-    return '"' + $Value + '"'
-}
-
-function Invoke-OrchestratorUnelevated {
-    param()
-    $executable='C:\Program Files\PowerShell\7\pwsh.exe'
-    $arguments=[Collections.Generic.List[string]]::new()
-    foreach ($value in @('-NoLogo','-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',$PSCommandPath,'-ConfigPath',$ConfigPath,'-IntegrityManifestPath',$IntegrityManifestPath,'-UnelevatedChild')) { $arguments.Add((ConvertTo-OrchestratorNativeArgument ([string]$value))) }
-    if (-not [string]::IsNullOrWhiteSpace($MutexName)) { $arguments.Add((ConvertTo-OrchestratorNativeArgument '-MutexName')); $arguments.Add((ConvertTo-OrchestratorNativeArgument $MutexName)) }
-    if ($Once) { $arguments.Add((ConvertTo-OrchestratorNativeArgument '-Once')) }
-    if ($IssueNumber -gt 0) { $arguments.Add((ConvertTo-OrchestratorNativeArgument '-IssueNumber')); $arguments.Add((ConvertTo-OrchestratorNativeArgument ([string]$IssueNumber))) }
-    $commandLine=(ConvertTo-OrchestratorNativeArgument $executable)+' '+[string]::Join(' ',$arguments)
-    Initialize-OrchestratorTokenNative
-    # The protected identity is rehashed at the last external-launch boundary;
-    # the unelevated child independently repeats full bundle verification.
-    [void](Assert-OrchestratorExecutableIdentity -Path (Join-Path $PSScriptRoot $script:ExecutableIdentityName))
-    return [SashimiBoyAutomation.LinkedTokenProcess]::RunUnelevated($executable,$commandLine,$PSScriptRoot)
+function Assert-OrchestratorStandardUserToken {
+    param(
+        [Parameter(Mandatory = $true)][bool]$Elevated,
+        [Parameter(Mandatory = $true)][bool]$ProtectedRuntime
+    )
+    $script:privilegeBoundaryResult = [pscustomobject]@{
+        Required=$ProtectedRuntime; Verified=(-not $Elevated)
+        CurrentProcessElevated=$Elevated; Relaunched=$false
+        Reason=if ($Elevated) { 'ElevatedTokenRejected' } elseif ($ProtectedRuntime) { 'UnelevatedTokenVerified' } else { 'DryRunOrHarnessProbeOnly' }
+    }
+    if ($Elevated) {
+        throw 'Host runtime requires a standard user token. Use the reviewed LeastPrivilege scheduled task or a non-elevated PowerShell session.'
+    }
 }
 
 function Assert-OrchestratorBundlePayload {
@@ -1112,44 +728,11 @@ try {
     $script:integrityResult = Assert-OrchestratorRuntimeIntegrity -ConfigurationPath $ConfigPath -ManifestPath $IntegrityManifestPath
     $currentProcessElevated=Test-OrchestratorTokenElevated
     if ($IssueNumber -gt 0 -and -not $Once) { throw 'An explicit IssueNumber requires -Once; no other issue will be selected.' }
-    if ($DryRun -and -not $QueueFixturePath -and $currentProcessElevated) { throw 'Run live read-only preview from a non-elevated PowerShell session.' }
+    Assert-OrchestratorStandardUserToken -Elevated $currentProcessElevated -ProtectedRuntime ([bool]($script:integrityResult.Verified -and -not $DryRun))
     if ($script:integrityResult.Verified -and -not $DryRun) {
-        $script:privilegeBoundaryResult=[pscustomobject]@{ Required=$true; Verified=(-not $currentProcessElevated); CurrentProcessElevated=$currentProcessElevated; Relaunched=[bool]$UnelevatedChild; Reason=if ($currentProcessElevated) { 'ElevatedParentMustRelaunch' } else { 'UnelevatedTokenVerified' } }
         $fixtureArguments=@($QueueFixturePath,$CodexFixturePath,$UnityFixturePath,$PublishFixturePath)
         if (@($fixtureArguments | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) }).Count -gt 0) { throw 'Protected production bundle runs cannot use fixture adapters.' }
         if (-not [string]::IsNullOrWhiteSpace($MutexName) -and $MutexName -cne 'Global\SashimiBoyHostOrchestrator') { throw 'Protected production bundle runs cannot override the global mutex.' }
-        if ($currentProcessElevated) {
-            if ($UnelevatedChild) { throw 'The linked-token child is still elevated; refusing to load host runtime code.' }
-            $child=Invoke-OrchestratorUnelevated
-            # Never relay arbitrary child stdout/stderr. Parse the single
-            # structured result first and require proof that the protected
-            # same-SID child actually crossed the privilege boundary.
-            $childJsonLines=@($child.StandardOutput -split '\r?\n' | Where-Object { $_ -match '^\s*\{' })
-            if ($childJsonLines.Count -eq 0) { throw 'The unelevated host child returned no result JSON object.' }
-            try { $childResult=$childJsonLines[-1] | ConvertFrom-Json -Depth 64 -DateKind String -ErrorAction Stop } catch { throw 'The unelevated host child returned invalid result JSON.' }
-            $childPrivilege=Get-OrchestratorPropertyValue $childResult 'PrivilegeBoundary' $null
-            $childIntegrity=Get-OrchestratorPropertyValue $childResult 'Integrity' $null
-            if ([int](Get-OrchestratorPropertyValue $childResult 'SchemaVersion' 0) -ne 1 -or
-                [string](Get-OrchestratorPropertyValue $childResult 'Tool' '') -cne 'Invoke-SashimiHostOrchestrator' -or
-                -not [bool](Get-OrchestratorPropertyValue $childIntegrity 'Verified' $false) -or
-                [int](Get-OrchestratorPropertyValue $childIntegrity 'ExecutablesVerified' 0) -ne $script:ExecutableProperties.Count -or
-                [bool](Get-OrchestratorPropertyValue $childPrivilege 'CurrentProcessElevated' $true) -or
-                -not [bool](Get-OrchestratorPropertyValue $childPrivilege 'Verified' $false) -or
-                -not [bool](Get-OrchestratorPropertyValue $childPrivilege 'Required' $false) -or
-                -not [bool](Get-OrchestratorPropertyValue $childPrivilege 'Relaunched' $false)) {
-                throw 'The unelevated host child did not prove the required integrity and privilege boundary.'
-            }
-            if ([int]$child.ExitCode -eq 0 -and -not [bool](Get-OrchestratorPropertyValue $childResult 'Success' $false)) { throw 'The unelevated host child exit/result states disagree.' }
-            $validatedChildJson=ConvertTo-OrchestratorJson $childResult
-            $protectedChildJson=Protect-OrchestratorText $validatedChildJson
-            [Console]::Out.WriteLine($protectedChildJson)
-            exit ([int]$child.ExitCode)
-        }
-    }
-    else {
-        if ($UnelevatedChild) { throw 'UnelevatedChild is valid only for an integrity-verified installed runtime.' }
-        if ($currentProcessElevated) { throw 'Dry-run and test-harness source-tree execution is forbidden from an elevated host process.' }
-        $script:privilegeBoundaryResult=[pscustomobject]@{ Required=$false; Verified=(-not $currentProcessElevated); CurrentProcessElevated=$currentProcessElevated; Relaunched=$false; Reason='DryRunOrHarnessProbeOnly' }
     }
     . (Join-Path $PSScriptRoot 'HostAutomation.Common.ps1')
     $script:commonLoaded = $true

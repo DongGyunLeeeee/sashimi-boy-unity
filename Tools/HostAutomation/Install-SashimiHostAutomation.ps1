@@ -1486,7 +1486,7 @@ function New-SashimiScheduledTaskXml {
 <Task version="1.4" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
   <RegistrationInfo><Author>$escapedAuthor</Author><Description>Runs one unattended SASHIMI BOY Developer or Reviewer host pipeline from an integrity-verified bundle.</Description></RegistrationInfo>
   <Triggers><CalendarTrigger><Repetition><Interval>PT15M</Interval><Duration>P1D</Duration><StopAtDurationEnd>false</StopAtDurationEnd></Repetition><StartBoundary>$boundaryText</StartBoundary><Enabled>true</Enabled><ScheduleByDay><DaysInterval>1</DaysInterval></ScheduleByDay></CalendarTrigger></Triggers>
-  <Principals><Principal id="Author"><UserId>$escapedUser</UserId><LogonType>InteractiveToken</LogonType><RunLevel>HighestAvailable</RunLevel></Principal></Principals>
+  <Principals><Principal id="Author"><UserId>$escapedUser</UserId><LogonType>InteractiveToken</LogonType><RunLevel>LeastPrivilege</RunLevel></Principal></Principals>
   <Settings>
     <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy><DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries><StopIfGoingOnBatteries>false</StopIfGoingOnBatteries><AllowHardTerminate>true</AllowHardTerminate><StartWhenAvailable>true</StartWhenAvailable><RunOnlyIfNetworkAvailable>false</RunOnlyIfNetworkAvailable>
     <IdleSettings><StopOnIdleEnd>false</StopOnIdleEnd><RestartOnIdle>false</RestartOnIdle></IdleSettings><AllowStartOnDemand>true</AllowStartOnDemand><Enabled>false</Enabled><Hidden>false</Hidden><RunOnlyIfIdle>false</RunOnlyIfIdle><WakeToRun>true</WakeToRun><ExecutionTimeLimit>PT12H</ExecutionTimeLimit><Priority>7</Priority>
@@ -1498,7 +1498,7 @@ function New-SashimiScheduledTaskXml {
 
 $result = [ordered]@{
     Tool='Install-SashimiHostAutomation'; Success=$false; ExitCode=1; DryRun=[bool]$DryRun; Changed=$false; Staged=$false; TaskEnabled=$false
-    TaskName=$script:TaskName; UserId=$null; LogonType='InteractiveToken'; RunLevel='HighestAvailable'; MultipleInstances='IgnoreNew'; RepetitionInterval='PT15M'
+    TaskName=$script:TaskName; UserId=$null; LogonType='InteractiveToken'; RunLevel='LeastPrivilege'; MultipleInstances='IgnoreNew'; RepetitionInterval='PT15M'
     PowerShellPath=$script:PowerShellPath; MinimumPowerShellVersion=$script:MinimumPowerShellVersion.ToString(); DetectedPowerShellVersion=$null
     InstallRoot=$script:InstallRoot; BundleId=$null; ExpectedBundleId=$ExpectedBundleId; BundleAuthorizationRequired=$null; BundleAuthorizationMatched=$false
     ManifestSha256=$null; InstallerBootstrapSha256=$null; ExpectedInstallerSha256=$ExpectedInstallerSha256; InstallerAuthorizationMatched=$false
