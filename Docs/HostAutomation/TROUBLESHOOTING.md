@@ -98,9 +98,22 @@ $Task.Settings | Format-List StartWhenAvailable, WakeToRun, MultipleInstances
 Export-ScheduledTask -TaskName 'SASHIMI BOY Host Orchestrator'
 ```
 
-Expected values are user `02031`, `InteractiveToken`, `HighestAvailable`,
+Expected values are user `02031`, `InteractiveToken` and `LeastPrivilege`
+(ScheduledTasks CIM displays `Interactive` and `Limited`),
 `StartWhenAvailable=True`, `WakeToRun=True`, `IgnoreNew`, a 15-minute repeat,
 and action executable `C:\Program Files\PowerShell\7\pwsh.exe`.
+`RunLevel` can be absent from exported XML because least privilege is the
+default; read back the effective principal (`Limited` / COM value `0`).
+
+If an older `HighestAvailable` task fails before creating a run directory with
+`CreateProcessWithTokenW` error 5, inspect the linked-token type. On the rollout
+host, Windows returned an impersonation token (type 2), and duplicating it to
+a primary token failed with error 1346. A successful manual standard-user pilot
+did not exercise that failing scheduler path. The reviewed replacement installs
+a `LeastPrivilege` task and rejects elevated runtime entry. Reinstall through
+the normal preview/review/Owner gate; do not edit the protected task or weaken
+integrity checks by hand. For `ElevatedTokenRejected`, close the elevated
+runtime session and use the reviewed task or standard-user PowerShell.
 
 The task action must point to one staged orchestrator, staged config, and
 `HostIntegrity.json` below the same content-addressed Program Files bundle. If

@@ -176,16 +176,14 @@ The source checkout and source config are installation inputs, not the mutable
 runtime authority. Updating either requires a new installer run and a new
 content-addressed bundle; never edit the installed copy in place.
 
-`HighestAvailable` may initially give the protected entry point an elevated
-token. That parent verifies the fixed PowerShell installation and the complete
-bundle manifest, ACL, lengths, and hashes before loading the common library,
-parsing configuration, or starting a configured tool. If elevated, it launches
-the same protected entry point through the current account's linked
-non-elevated token. The child proves the same SID, proves it is not elevated,
-and repeats the full integrity check. A missing linked token, SID mismatch,
-still-elevated child, missing manifest, or invalid child result fails closed;
-the elevated parent never invokes Git, GitHub CLI, Codex, or Unity.
-Before loading Common or configuration, both parent and child also rehash all
+`InteractiveToken` with `LeastPrivilege` starts the protected entry point directly
+under the signed-in owner's standard token. Before Common, configuration, or any
+configured tool is loaded, the entry point verifies the fixed PowerShell
+installation and complete bundle manifest, ACL, lengths, and hashes, then reads
+its actual token elevation. An elevated token is rejected; there is no linked-token
+relaunch. Installation and protected task maintenance still require administrator
+approval; the recurring runtime never invokes Git, GitHub CLI, Codex, or Unity
+elevated. The entry point also rehashes all
 six exact executable paths against the protected identity. Codex additionally
 must be exactly `CodexDistributions\<distribution-sha256>\codex.exe` with its
 bound code-mode host as the only sibling; every path
@@ -412,7 +410,8 @@ and performs the final transition to `Done`.
   [SECURITY.md](SECURITY.md). Alpha, dimensions, metadata, other assets and
   Git control state stay exact. Both independent runs and both Reviewer
   committed comparisons must pass; human visual verification still applies.
-- Bootstrap validation exercises the privilege boundary through parser, static
-  ordering, source-tree fail-closed, fixture, and DryRun checks only. It does
-  not register the task or execute a real elevated-parent/linked-token relaunch;
-  that remains an Owner-observed installation check after review.
+- Bootstrap validation exercises native token inspection, elevated-token
+  rejection, trust ordering, source-tree fail-closed, fixture, and DryRun checks.
+  It does not register a real task. Owner rollout must also start the reviewed
+  task through Windows Task Scheduler and inspect its token and result;
+  a manual PowerShell run alone does not prove the scheduled entry point.

@@ -532,12 +532,20 @@ Read-only inspection commands are:
 Get-ScheduledTask -TaskName 'SASHIMI BOY Host Orchestrator' |
   Select-Object TaskName, State
 
+(Get-ScheduledTask -TaskName 'SASHIMI BOY Host Orchestrator').Principal |
+  Select-Object UserId, LogonType, RunLevel
+
 Export-ScheduledTask -TaskName 'SASHIMI BOY Host Orchestrator'
 ```
 
-The exported definition should show `InteractiveToken`, `HighestAvailable`,
-`PT15M`, `StartWhenAvailable`, `WakeToRun`, and `IgnoreNew`, with
-`Task/Settings/Enabled=false`. Run the installed orchestrator manually for the
+The principal must be the exact Owner with `InteractiveToken` and
+`LeastPrivilege` (ScheduledTasks CIM reports `LogonType=Interactive` and
+`RunLevel=Limited`; Task Scheduler COM reports `RunLevel=0`). Windows can omit
+`RunLevel` from exported XML because least privilege is the default; confirm
+its effective value through the principal readback instead of requiring an
+explicit XML element. The definition must retain `PT15M`, `StartWhenAvailable`,
+`WakeToRun`, and `IgnoreNew`, with `Task/Settings/Enabled=false`.
+Run the installed orchestrator from a non-elevated PowerShell session for the
 DryRun and #20 / PR #47 pilot while the task remains disabled. Only after the
 real functional smoke and Developer → Review → Reviewer → Verification pilot
 pass, the Owner enables the reviewed task:
@@ -547,6 +555,12 @@ Enable-ScheduledTask -TaskName 'SASHIMI BOY Host Orchestrator'
 Get-ScheduledTask -TaskName 'SASHIMI BOY Host Orchestrator' |
   Select-Object TaskName, State
 ```
+
+Observe an actual Task Scheduler invocation and inspect its result:
+`Integrity.Verified=true`, `PrivilegeBoundary.Verified=true`,
+`CurrentProcessElevated=false`, and `Relaunched=false`. The scheduler must
+report exit code 0. Manual pilots do not substitute for this task-entry check.
+If task startup fails, disable the task and preserve diagnostics before retrying.
 
 Use the exact `ConfigPath` from the reviewed installed bundle for each manual
 pilot invocation:

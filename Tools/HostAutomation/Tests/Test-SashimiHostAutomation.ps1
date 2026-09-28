@@ -2262,15 +2262,6 @@ Assert-SashimiFixtureExecutableBoundary -FilePath 'C:\Program Files\Git\cmd\git.
         foreach ($marker in @($titleMarker,$bodyMarker,$pullBodyMarker,$pendingMarker,$findingMarker,$conversationMarker)) {
             Assert-HostTest ($process.StdOut -notmatch [regex]::Escape($marker)) "Orchestrator output retained sensitive marker '$marker'."
         }
-
-        $source = [IO.File]::ReadAllText((Join-Path $hostRoot 'Invoke-SashimiHostOrchestrator.ps1'), [Text.Encoding]::UTF8)
-        Assert-HostTest ($source -notmatch '(?m)\[Console\]::(?:Out|Error)\.Write(?:Line)?\(\s*\$child\.Standard(?:Output|Error)') `
-            'Protected entry point relays raw linked-child stdout or stderr.'
-        $parseIndex = $source.IndexOf('$childJsonLines=@($child.StandardOutput', [StringComparison]::Ordinal)
-        $validatedIndex = $source.IndexOf('$validatedChildJson=ConvertTo-OrchestratorJson $childResult', [StringComparison]::Ordinal)
-        $relayIndex = $source.IndexOf('[Console]::Out.WriteLine($protectedChildJson)', [StringComparison]::Ordinal)
-        Assert-HostTest ($parseIndex -ge 0 -and $validatedIndex -gt $parseIndex -and $relayIndex -gt $validatedIndex) `
-            'Linked-child output is not parsed, contract-checked, sanitized, then emitted in that order.'
     }
 
     Invoke-HostTestCase 'OrchestratorMutexContentionIsSuccessfulNoOp' {
@@ -2640,58 +2631,46 @@ Assert-SashimiFixtureExecutableBoundary -FilePath 'C:\Program Files\Git\cmd\git.
         }
     }
 
-    Invoke-HostTestCase 'ProtectedEntrypointDropsElevationBeforeRuntimeTrust' {
+    Invoke-HostTestCase 'ProtectedEntrypointRequiresStandardUserBeforeRuntimeTrust' {
         $orchestratorPath = Join-Path $hostRoot 'Invoke-SashimiHostOrchestrator.ps1'
         $source = [IO.File]::ReadAllText($orchestratorPath, [Text.Encoding]::UTF8)
         $integrityIndex = $source.IndexOf('$script:integrityResult = Assert-OrchestratorRuntimeIntegrity', [StringComparison]::Ordinal)
         $tokenIndex = $source.IndexOf('$currentProcessElevated=Test-OrchestratorTokenElevated', [StringComparison]::Ordinal)
-        $relaunchIndex = $source.IndexOf('$child=Invoke-OrchestratorUnelevated', [StringComparison]::Ordinal)
+        $guardIndex = $source.IndexOf('Assert-OrchestratorStandardUserToken -Elevated $currentProcessElevated', [StringComparison]::Ordinal)
         $commonIndex = $source.IndexOf(". (Join-Path `$PSScriptRoot 'HostAutomation.Common.ps1')", [StringComparison]::Ordinal)
         $configIndex = $source.IndexOf('$script:orchestratorConfig = Import-SashimiHostConfig', [StringComparison]::Ordinal)
         $executableIdentityIndex = $source.IndexOf('$verifiedExecutableCount=Assert-OrchestratorExecutableIdentity -Path $expectedExecutableIdentity', [StringComparison]::Ordinal)
-        Assert-HostTest ($integrityIndex -ge 0 -and $tokenIndex -gt $integrityIndex -and $relaunchIndex -gt $tokenIndex -and
+        Assert-HostTest ($integrityIndex -ge 0 -and $tokenIndex -gt $integrityIndex -and $guardIndex -gt $tokenIndex -and
             $executableIdentityIndex -ge 0 -and $executableIdentityIndex -lt $integrityIndex -and
-            $commonIndex -gt $relaunchIndex -and $configIndex -gt $commonIndex) `
-            'Integrity, linked-token relaunch, Common import, and configuration import are not in the required trust order.'
+            $commonIndex -gt $guardIndex -and $configIndex -gt $commonIndex) `
+            'Integrity and native token rejection must precede Common and configuration import.'
         Assert-HostTest ($source.Contains("'ExecutableIdentity.json'") -and $source.Contains('ExecutablesVerified=$verifiedExecutableCount')) `
             'The protected manifest gate no longer binds and reports executable identity verification.'
-        Assert-HostTest ($source.Contains('TokenLinkedToken = 19') -and
-            $source.Contains('linkedToken == IntPtr.Zero || IsTokenElevated(linkedToken)') -and
-            $source.Contains('WindowsIdentity.GetCurrent().User.Value') -and
-            $source.Contains('linkedIdentity.User.Value')) `
-            'The elevated-parent relaunch does not visibly require a non-elevated linked token for the same SID.'
-        Assert-HostTest ($source.Contains("'-IntegrityManifestPath',`$IntegrityManifestPath,'-UnelevatedChild'")) `
-            'The linked-token child is not forced to revalidate the exact installed manifest.'
-        $powerShellRecheckIndex = $source.IndexOf('[void](Assert-OrchestratorExecutableIdentity -Path (Join-Path $PSScriptRoot $script:ExecutableIdentityName))', [StringComparison]::Ordinal)
-        $linkedLaunchIndex = $source.IndexOf('[SashimiBoyAutomation.LinkedTokenProcess]::RunUnelevated', [StringComparison]::Ordinal)
-        Assert-HostTest ($powerShellRecheckIndex -ge 0 -and $linkedLaunchIndex -gt $powerShellRecheckIndex) `
-            'The stable PowerShell identity is not rehashed immediately before the linked-token launch.'
 
-        $suspendedCreateIndex = $source.IndexOf('CREATE_NO_WINDOW | CREATE_SUSPENDED', [StringComparison]::Ordinal)
-        $jobAssignIndex = $source.IndexOf('AssignProcessToJobObject(job, process.hProcess)', [StringComparison]::Ordinal)
-        $resumeIndex = $source.IndexOf('ResumeThread(process.hThread)', [StringComparison]::Ordinal)
-        Assert-HostTest ($suspendedCreateIndex -ge 0 -and $jobAssignIndex -gt $suspendedCreateIndex -and $resumeIndex -gt $jobAssignIndex) `
-            'The linked-token child is not created suspended, assigned to its job, and only then resumed.'
-        Assert-HostTest ($source.Contains('JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE') -and
-            $source.Contains('LINKED_CHILD_TIMEOUT_MS = 11u * 60u * 60u * 1000u') -and
-            $source.Contains('TERMINATION_CONFIRM_TIMEOUT_MS = 10000u') -and
-            $source.Contains('PIPE_DRAIN_TIMEOUT_MS = 10000') -and
-            $source.Contains('TerminateJobObject(job, FORCED_TERMINATION_EXIT_CODE)') -and
-            $source.Contains('CloseNativeHandle(ref job)')) `
-            'The elevated parent no longer enforces the fixed deadline and kill-on-close process-tree contract.'
-        Assert-HostTest (-not $source.Contains('WaitForSingleObject(process.hProcess, INFINITE)')) `
-            'The linked-token launcher contains an unbounded child wait.'
-        $timeoutStartIndex = $source.IndexOf('if (waitResult == WAIT_TIMEOUT)', [StringComparison]::Ordinal)
-        $timeoutEndIndex = $source.IndexOf('if (waitResult == WAIT_FAILED)', $timeoutStartIndex, [StringComparison]::Ordinal)
-        Assert-HostTest ($timeoutStartIndex -ge 0 -and $timeoutEndIndex -gt $timeoutStartIndex) `
-            'The linked-token timeout branch is missing or malformed.'
-        $timeoutBlock = $source.Substring($timeoutStartIndex, $timeoutEndIndex - $timeoutStartIndex)
-        Assert-HostTest ($timeoutBlock.Contains('RequestProcessTreeTermination') -and
-            $timeoutBlock.Contains('WaitForSingleObject(process.hProcess, TERMINATION_CONFIRM_TIMEOUT_MS)') -and
-            -not $timeoutBlock.Contains('GetAwaiter().GetResult()') -and
-            -not $timeoutBlock.Contains('StandardOutput') -and
-            -not $timeoutBlock.Contains('StandardError')) `
-            'The linked-token timeout path does not terminate and confirm within a bound without draining or relaying child output.'
+        $functionNames = @('Initialize-OrchestratorTokenNative','Test-OrchestratorTokenElevated','Assert-OrchestratorStandardUserToken')
+        try {
+            foreach ($name in $functionNames) {
+                Set-Item -LiteralPath ("Function:\$name") -Value (Get-HostTestFunctionScriptBlock -ScriptPath $orchestratorPath -FunctionName $name)
+            }
+            Assert-HostTest (-not (Test-OrchestratorTokenElevated)) 'Fixture suite must run under an actual non-elevated Windows token.'
+            foreach ($protected in @($true,$false)) {
+                Assert-HostThrows { Assert-OrchestratorStandardUserToken -Elevated $true -ProtectedRuntime $protected } 'standard user token'
+                Assert-HostTest (-not $script:privilegeBoundaryResult.Verified -and
+                    $script:privilegeBoundaryResult.CurrentProcessElevated -and
+                    -not $script:privilegeBoundaryResult.Relaunched -and
+                    $script:privilegeBoundaryResult.Reason -ceq 'ElevatedTokenRejected') `
+                    'Elevated production, preview, or fixture execution did not retain fail-closed token evidence.'
+                Assert-OrchestratorStandardUserToken -Elevated $false -ProtectedRuntime $protected
+                Assert-HostTest ($script:privilegeBoundaryResult.Verified -and
+                    -not $script:privilegeBoundaryResult.CurrentProcessElevated -and
+                    -not $script:privilegeBoundaryResult.Relaunched -and
+                    $script:privilegeBoundaryResult.Required -eq $protected) `
+                    'A standard user token did not pass with the correct protected-runtime evidence.'
+            }
+        }
+        finally {
+            foreach ($name in $functionNames) { Remove-Item -LiteralPath ("Function:\$name") -Force -ErrorAction SilentlyContinue }
+        }
 
         $productionProbe = Invoke-HostTestScript -ScriptPath $orchestratorPath -Parameters @{
             ConfigPath = $script:configPath
@@ -6209,7 +6188,7 @@ wire_api = "responses"
             'DryRun scheduler fixture did not record the exact production registration boundary.'
         Assert-HostTest ([string]$json.TaskName -ceq 'SASHIMI BOY Host Orchestrator') 'Installer task name changed.'
         Assert-HostTest ([string]$json.UserId -match '(?:^|\\)02031$') 'Installer task identity is not user 02031.'
-        Assert-HostTest ([string]$json.LogonType -ceq 'InteractiveToken' -and [string]$json.RunLevel -ceq 'HighestAvailable') 'Installer principal contract changed.'
+        Assert-HostTest ([string]$json.LogonType -ceq 'InteractiveToken' -and [string]$json.RunLevel -ceq 'LeastPrivilege') 'Installer principal contract changed.'
         Assert-HostTest ([string]$json.MultipleInstances -ceq 'IgnoreNew' -and [string]$json.RepetitionInterval -ceq 'PT15M') 'Installer IgnoreNew/repetition contract changed.'
         Assert-HostTest ([string]$json.PowerShellPath -ceq 'C:\Program Files\PowerShell\7\pwsh.exe') 'Installer does not use stable PowerShell 7.'
         Assert-HostTest ([int]$json.BoundExecutableCount -eq 6) 'Installer did not bind exactly six executable identities.'
@@ -6227,7 +6206,7 @@ wire_api = "responses"
         $xml = [string]$json.TaskXml
         [xml]$taskDocument = $xml
         Assert-HostTest ([string]$taskDocument.Task.Settings.Enabled -ceq 'false' -and -not $json.TaskEnabled) 'Installer enabled scheduling before the Owner pilot gate.'
-        foreach ($fragment in @('<LogonType>InteractiveToken</LogonType>', '<RunLevel>HighestAvailable</RunLevel>', '<Interval>PT15M</Interval>', '<StartWhenAvailable>true</StartWhenAvailable>', '<WakeToRun>true</WakeToRun>', '<MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>')) {
+        foreach ($fragment in @('<LogonType>InteractiveToken</LogonType>', '<RunLevel>LeastPrivilege</RunLevel>', '<Interval>PT15M</Interval>', '<StartWhenAvailable>true</StartWhenAvailable>', '<WakeToRun>true</WakeToRun>', '<MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>')) {
             Assert-HostTest ($xml.Contains($fragment)) "Task XML is missing $fragment."
         }
         Assert-HostTest ($xml -notmatch '(?i)<Password>|/RP\s|--password') 'Task XML contains a password contract.'
