@@ -166,10 +166,21 @@ namespace SashimiBoy.EditorTools
                     PrefabUtility.RecordPrefabInstancePropertyModifications(visual);
                 }
             door.position = target;
+            SyncReturnDoorAnchor(scene, door);
             var director = transforms.Select(t => t.GetComponent<DayWorldSceneDirector>()).First(d => d != null);
             var entry = director.FindSpawn("Entry");
             entry.SetPositionAndRotation(new Vector3(0f, entry.position.y, -halfDepth + 1.2f), Quaternion.identity);
             EditorUtility.SetDirty(door); EditorUtility.SetDirty(entry);
+        }
+
+        internal static void SyncReturnDoorAnchor(Scene scene, Transform door)
+        {
+            var anchor = scene.GetRootGameObjects()
+                .SelectMany(g => g.GetComponentsInChildren<Transform>(true))
+                .SingleOrDefault(t => t.name == "ReturnDoor_Anchor");
+            if (anchor == null) return;
+            anchor.SetPositionAndRotation(door.position, door.rotation);
+            EditorUtility.SetDirty(anchor);
         }
 
         static void Wall(Transform parent,string name,Vector3 start,Vector3 end,float height,Material wall,Material panel,Material trim)

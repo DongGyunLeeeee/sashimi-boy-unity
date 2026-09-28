@@ -121,7 +121,9 @@ namespace SashimiBoy.EditorTools
             }
             else if (scene.name != "KevinHome")
             {
-                AttachDoor(worldRoot, All(scene).Single(t => t.name == "Door_To_Street"), scene.name == "FishShopDialogue" ? "FishShop" : scene.name, true);
+                var retainedDoor = All(scene).Single(t => t.name == "Door_To_Street");
+                AttachDoor(worldRoot, retainedDoor, scene.name == "FishShopDialogue" ? "FishShop" : scene.name, true);
+                DayWorldInteriorAuthoring.SyncReturnDoorAnchor(scene, retainedDoor);
                 var transom = worldRoot.Find("InteriorShell/DoorTransom");
                 if (transom != null) transom.gameObject.SetActive(false);
                 foreach(var legacy in All(scene).Where(t=>t.name=="DoorGlow" || t.name.StartsWith("DoorFrame_") || t.name=="club_door_frame"))

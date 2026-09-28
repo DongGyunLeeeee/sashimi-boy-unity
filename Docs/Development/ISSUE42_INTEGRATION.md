@@ -16,9 +16,11 @@ start another gameplay issue, merge a GitHub PR, or declare final human approval
   Eight generated meshes over GitHub's ordinary-file size limit use LFS. Keeping
   the old oversized Git blobs as delivery ancestors would still prevent upload;
   the original local branches and commits remain available unchanged.
-- The two salmon-preview source/test files match PR #47 head
+- The salmon-preview source/test fixes come from PR #47 head
   `d6f72a8fc9e5455ba8d9e71e51f97b4d443d8c8d`, retaining its preview-scene isolation
-  and metadata normalization regression coverage. Other open PRs are not merged.
+  and metadata normalization regression coverage. Normal asset generation no
+  longer creates unused preview directories; capture still creates its output
+  directory when requested. Other open PRs are not merged.
 - Source FBX/textures/audio, note timing, judgement windows, `.meta` GUIDs, the
   user's dirty settings/recovery/previews, and existing save profiles are retained.
   The automation implementation remains at SPEC 1.0.18 from main (version blob
@@ -70,3 +72,21 @@ procedure is not a PASS record.
 Final Owner verification covers actual keyboard/mouse input, camera and hand
 appearance, music sync/readability, both daily loops, and save/exit/continue.
 Independent review and Owner acceptance remain separate from Developer tests.
+
+## Integration regressions repaired
+
+The initial full EditMode run found four failures in the older FishShop and
+Club art contracts. FishShop regeneration reapplies the complete existing
+DayWorld dining/kitchen layout, and meal centering measures from a fixed origin
+to avoid repeated floating-point drift. Club regeneration keeps the superseded
+side door frame hidden and synchronizes its retained anchor with the current
+central exit. The strict position and route checks now describe these existing
+DayWorld locations; both scene generators still must preserve exact scene bytes
+on their first and second run.
+
+Only FishShopDialogue and Club are resaved through their authoritative generators.
+Their changes are the stale Club anchor, its missing null customization field,
+and deterministic float serialization of existing FishShop placements. Generated
+scene IDs, source assets, audio, and gameplay rules remain intact. The Club
+idempotence test also restores its captured input in cleanup after recording the
+actual outputs, so a failed run cannot contaminate later tests or hide drift.

@@ -1394,7 +1394,6 @@ namespace SashimiBoy.EditorTools
             EnsureFolder(SalmonPrefabsRoot);
             EnsureFolder(SharedPrefabsRoot);
             EnsureFolder(ReportsRoot);
-            EnsureFolder(PreviewRoot);
         }
 
         private static void EnsureFolder(string folderPath)

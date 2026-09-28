@@ -338,8 +338,10 @@ namespace SashimiBoy.EditorTools
             }
 
             HideLegacyFishShopPresentation(scene);
-            if (scene.GetRootGameObjects().Any(g => g.name == "DayWorld_Integration" && g.transform.Find("VenueAssets") != null))
-                DayWorldVenueAuthoring.ApplyFishPlacement(scene);
+            var worldRoot = scene.GetRootGameObjects().SingleOrDefault(
+                g => g.name == "DayWorld_Integration" && g.transform.Find("VenueAssets") != null);
+            if (worldRoot != null)
+                DayWorldVenueAuthoring.Apply(scene, worldRoot.transform);
             ValidatePrefabSource(display, displayInsidePrefab);
             ValidatePrefabSource(tableLeft, sashimiTablePrefab);
             ValidatePrefabSource(tableRight, sashimiTablePrefab);

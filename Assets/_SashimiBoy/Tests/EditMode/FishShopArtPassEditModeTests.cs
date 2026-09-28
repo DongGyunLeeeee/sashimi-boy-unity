@@ -108,11 +108,11 @@ namespace SashimiBoy.Tests
                 AssertPosition(
                     scene,
                     "StartStage01_Placeholder",
-                    new Vector3(-2.1f, 0.5f, -1.8f));
+                    new Vector3(-4f, 0.5f, 2.7f));
                 AssertPosition(
                     scene,
                     "Door_To_Street",
-                    new Vector3(4.8f, 0.8f, -2.8f));
+                    new Vector3(0f, 0.8f, -3.9f));
                 AssertPosition(
                     scene,
                     "PlayerSpawnPoint",

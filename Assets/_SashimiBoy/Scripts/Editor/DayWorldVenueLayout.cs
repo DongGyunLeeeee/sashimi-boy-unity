@@ -114,7 +114,14 @@ namespace SashimiBoy.EditorTools
             PrefabUtility.RecordPrefabInstancePropertyModifications(customer.transform);
             var plate = Named(scene, "CheolsuMealPlate"); plate.transform.position = new Vector3(3.45f, .82f, -2.1f);
             foreach (var meal in root.parent.Cast<Transform>().Where(t => t.name.ToLowerInvariant().Contains("salmonpiece")))
-            { meal.position += new Vector3(3.45f - Geometry(meal.gameObject).center.x, 0f, -2.1f - Geometry(meal.gameObject).center.z); PrefabUtility.RecordPrefabInstancePropertyModifications(meal); }
+            {
+                // Measure from a fixed origin so repeated centering cannot accumulate float rounding.
+                float height = meal.position.y;
+                meal.position = new Vector3(0f, height, 0f);
+                Bounds bounds = Geometry(meal.gameObject);
+                meal.position = new Vector3(3.45f - bounds.center.x, height, -2.1f - bounds.center.z);
+                PrefabUtility.RecordPrefabInstancePropertyModifications(meal);
+            }
         }
 
         public static void ApplyStreetDisplay(Scene scene, Transform worldRoot)
