@@ -278,7 +278,7 @@ namespace SashimiBoy.EditorTools
             EditorUtility.UnloadUnusedAssetsImmediate();
             GC.Collect();
             string dir="Builds/DayWorldValidation-"+DateTime.UtcNow.ToString("yyyyMMdd-HHmmss");Directory.CreateDirectory(dir);
-            var report=BuildPipeline.BuildPlayer(new BuildPlayerOptions{scenes=EditorBuildSettings.scenes.Where(s=>s.enabled).Select(s=>s.path).ToArray(),locationPathName=dir+"/SashimiBoyDayWorld.exe",target=BuildTarget.StandaloneWindows64,options=BuildOptions.Development});
+            var report=BuildPipeline.BuildPlayer(new BuildPlayerOptions{scenes=EditorBuildSettings.scenes.Where(s=>s.enabled).Select(s=>s.path).ToArray(),locationPathName=dir+"/SashimiBoyDayWorld.exe",target=BuildTarget.StandaloneWindows64,options=BuildOptions.Development | BuildOptions.CompressWithLz4});
             if(report.summary.result!=BuildResult.Succeeded)throw new InvalidOperationException("DayWorld build: "+report.summary.result);
             Debug.Log("[DayWorld] Windows build: "+Path.GetFullPath(dir+"/SashimiBoyDayWorld.exe"));
         }
