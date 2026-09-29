@@ -94,11 +94,12 @@ namespace SashimiBoy.Tests
         IEnumerator NewGame()
         {
             yield return ChooseNewGameFace();
-            yield return WaitScene("KevinHome");Assert.That(Beat,Is.EqualTo("Wake"));Capture("home-wake-interaction-test");
-            var sensor=Find("InteractionSensor");Call(sensor,"FindCurrent");
-            Assert.That(Call(sensor,"get_Current"),Is.Not.Null,"The normal spawn view must let E target the bed, even under the shared world root.");
-            Assert.That(Call(Call(sensor,"get_Current"),"get_Prompt").ToString(),Does.Contain("일어나기"));
-            yield return UseBed();Assert.That(Beat,Is.EqualTo("MorningConversation"));
+            yield return WaitScene("KevinHome");
+            Assert.That(Beat,Is.EqualTo("MorningConversation"));
+            Assert.That(Call(Find("SimpleTopDownPlayerController"),"get_InputEnabled"),Is.EqualTo(true));
+            var bed=All("DayWorldInteractable").Single(c=>Field(c,"kind").ToString()=="Bed");
+            Assert.That(Call(bed,"get_IsAvailable"),Is.EqualTo(false));
+            Capture("home-morning-without-wake-button");
         }
 
         IEnumerator ChooseNewGameFace(int choice = 0)
@@ -138,12 +139,12 @@ namespace SashimiBoy.Tests
             Assert.That(File.ReadAllText(path), Is.EqualTo(before), "Browsing/cancelling must not reset saved progress.");
             Assert.That(SceneManager.GetActiveScene().name, Is.EqualTo("Bootstrap"));
             yield return ChooseNewGameFace(3); yield return WaitScene("KevinHome");
-            Assert.That(Day, Is.EqualTo(1)); Assert.That(Beat, Is.EqualTo("Wake"));
+            Assert.That(Day, Is.EqualTo(1)); Assert.That(Beat, Is.EqualTo("MorningConversation"));
             Assert.That(Field(Current, "kevinFaceId"), Is.EqualTo("WesternFace"));
             Assert.That(Call(Find("KevinAppearance"), "get_SelectedFaceId"), Is.EqualTo("WesternFace"));
             RoundTrip(); yield return ContinueSaved("KevinHome");
             Assert.That(Call(Find("KevinAppearance"), "get_SelectedFaceId"), Is.EqualTo("WesternFace"));
-            yield return UseBed(); yield return Door("Street"); yield return Talk("misuk");
+            yield return Door("Street"); yield return Talk("misuk");
             Assert.That(Call(Find("KevinAppearance"), "get_SelectedFaceId"), Is.EqualTo("WesternFace"));
             yield return Door("FishShopDialogue");
             // Actual physical route from the entry through the hall into the kitchen.
@@ -167,7 +168,7 @@ namespace SashimiBoy.Tests
         }
 
         [UnityTest]
-        public IEnumerator Wake_BlocksWalkingAndExit_UntilBedInteraction_OnBothDaysAndLegacyResume()
+        public IEnumerator StandingStart_AndLegacyWakeResume_DoNotRequireBedInteraction()
         {
             yield return ChooseNewGameFace();
             yield return WaitScene("KevinHome");
@@ -175,7 +176,6 @@ namespace SashimiBoy.Tests
             {
                 if(day==2)
                 {
-                    // Reproduce the old bug's save: still asleep, but its checkpoint had reached Street.
                     RuntimeReflection.SetField(Progress,"day",2);
                     RuntimeReflection.SetField(Progress,"beat",Enum.Parse(RuntimeReflection.RuntimeType("SashimiBoy.DayWorldBeat"),"Wake"));
                     RuntimeReflection.SetField(Progress,"checkpointScene","Street");
@@ -186,18 +186,14 @@ namespace SashimiBoy.Tests
                     yield return WaitScene("KevinHome");
                 }
                 var player=Find("SimpleTopDownPlayerController");
-                Call(player,"SetInputEnabled",true);
                 yield return new WaitForSecondsRealtime(.4f);
-                Assert.That(Call(player,"get_InputEnabled"),Is.EqualTo(false),"Camera/UI refresh cannot unlock sleeping movement.");
-                var sensor=Find("InteractionSensor");Call(sensor,"FindCurrent");
-                Assert.That(Call(Call(sensor,"get_Current"),"get_Prompt").ToString(),Does.Contain("일어나기"));
-                var exit=All("SceneDoor").Single(c=>(string)Field(c,"sceneName")=="Street");
-                Call(exit,"Interact",Actor);yield return new WaitForSecondsRealtime(.6f);
-                Assert.That(SceneManager.GetActiveScene().name,Is.EqualTo("KevinHome"));
-                Assert.That(Beat,Is.EqualTo("Wake"));Capture("owner-wake-locked-day"+day);
-                yield return UseBed();
-                Assert.That(Beat,Is.EqualTo("MorningConversation"));
                 Assert.That(Call(player,"get_InputEnabled"),Is.EqualTo(true));
+                Assert.That(Beat,Is.EqualTo("MorningConversation"));
+                Assert.That((string)RuntimeReflection.InvokeStatic("SashimiBoy.DayWorldRules","Objective",Current),Does.Not.Contain("일어나기"));
+                var bed=All("DayWorldInteractable").Single(c=>Field(c,"kind").ToString()=="Bed");
+                Assert.That(Call(bed,"get_IsAvailable"),Is.EqualTo(false));
+                Assert.That(((IList)Field(Current,"clearedStageIds")).Count,Is.Zero);
+                Capture("standing-morning-day"+day);
                 yield return Door("Street");
             }
         }
@@ -283,8 +279,41 @@ namespace SashimiBoy.Tests
             yield return new WaitForSecondsRealtime(4f);Assert.That(Beat,Is.EqualTo("Sleep"));
             Assert.That(station.transform.Find("StationName").gameObject.activeSelf,Is.False);
             Assert.That(((GameObject)Field(station,"equipmentVisual")).activeSelf,Is.True,"Finished practice keeps the purchased instrument.");
-            yield return UseBed();yield return WaitScene("KevinHome");RoundTrip();
-            yield return ContinueSaved("KevinHome");
+            int clearedDay=Day;
+            yield return UseBed();
+            var complete=Find("DayWorldStageClearScreen");
+            Assert.That(complete,Is.Not.Null);
+            Assert.That(((Text)Field(complete,"title")).text,Is.EqualTo(clearedDay+"스테이지 클리어"));
+            Assert.That(Call(flow,"get_Busy"),Is.EqualTo(true));
+            Assert.That(Call(Find("SimpleTopDownPlayerController"),"get_InputEnabled"),Is.EqualTo(false));
+            Assert.That(Call(complete,"SaveCheckpointForExit"),Is.EqualTo(true));
+            string actualPath=(string)Field(save,"validationSavePath");
+            try
+            {
+                RuntimeReflection.SetField(save,"validationSavePath",Path.GetDirectoryName(actualPath));
+                Assert.That(Call(complete,"SaveCheckpointForExit"),Is.EqualTo(false));
+                Assert.That(complete.gameObject.activeInHierarchy,Is.True,"Saving failure must keep the screen open.");
+                string pendingBefore=JsonUtility.ToJson(Current);
+                ((Button)Field(complete,"continueButton")).onClick.Invoke();
+                Assert.That(JsonUtility.ToJson(Current),Is.EqualTo(pendingBefore),"Failed save must preserve the clear checkpoint for retry.");
+                Assert.That(complete.gameObject.activeInHierarchy,Is.True);
+                Capture("stage-clear-save-failure-day"+clearedDay);
+            }
+            finally { RuntimeReflection.SetField(save,"validationSavePath",actualPath); }
+            Assert.That(Call(complete,"SaveCheckpointForExit"),Is.EqualTo(true));
+            Capture("stage-clear-screen-day"+clearedDay);
+            RoundTrip();yield return ContinueSaved("KevinHome");
+            complete=Find("DayWorldStageClearScreen");
+            Assert.That(complete,Is.Not.Null,"Saved pending clear must resume before advancing.");
+            Assert.That(Call(Find("SimpleTopDownPlayerController"),"get_InputEnabled"),Is.EqualTo(false));
+            Assert.That(Cursor.lockState,Is.EqualTo(CursorLockMode.None));
+            ((Button)Field(complete,"continueButton")).onClick.Invoke();
+            yield return new WaitForSecondsRealtime(.8f);yield return WaitScene("KevinHome");
+            Assert.That(Field(Progress,"pendingStageClear"),Is.EqualTo(0));
+            Assert.That(Field(Progress,"nightsSlept"),Is.EqualTo(clearedDay));
+            Assert.That(Call(flow,"get_Busy"),Is.EqualTo(false));
+            Assert.That(RuntimeReflection.InvokeStatic("SashimiBoy.DayWorldRules","ContinueAfterStageClear",Current),Is.EqualTo(false));
+            RoundTrip();
         }
         IEnumerator ContinueSaved(string destination)
         {
@@ -333,9 +362,9 @@ namespace SashimiBoy.Tests
             Assert.That(Call(Find("StageStarterInteractable"),"get_IsAvailable"),Is.EqualTo(false));
             yield return Talk("cheolsu");Assert.That(Beat,Is.EqualTo("Purchase"));
             yield return Door("Street");yield return BuyAndGoHome("SamplePackDrumKit");yield return PlaceAndPractice("SamplePackDrumKit");
-            Assert.That(Day,Is.EqualTo(2));Assert.That(Beat,Is.EqualTo("Wake"));
+            Assert.That(Day,Is.EqualTo(2));Assert.That(Beat,Is.EqualTo("MorningConversation"));
             Assert.That(((IList)Field(Progress,"placedEquipment")).Contains("SamplePackDrumKit"),Is.True);
-            yield return UseBed();yield return Door("Street");
+            yield return Door("Street");
             var seongho=All("DayWorldNpc").Single(c=>(string)Field(c,"npcId")=="seongho");Assert.That(Field(seongho,"motorcycle"),Is.Not.Null,"The supplied Seongho FBX includes the motorcycle.");
             yield return Talk("seongho");yield return Door("FishShopDialogue");
             Assert.That(Call(Find("StageStarterInteractable"),"get_Prompt"),Is.EqualTo("우럭 손질 시작"));

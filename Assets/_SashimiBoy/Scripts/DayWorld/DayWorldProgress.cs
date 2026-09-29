@@ -17,6 +17,7 @@ namespace SashimiBoy
         public List<string> placedEquipment = new List<string>();
         public List<int> practicedDays = new List<int>();
         public int nightsSlept;
+        public int pendingStageClear;
         // Kept for old saves; arrival at the former endpoint no longer blocks Stage2.
         public bool reachedStageTwoBoundary;
 
@@ -46,7 +47,7 @@ namespace SashimiBoy
             save.dayWorld.day == day && !string.IsNullOrEmpty(npcId) && RequiredNpc(save) == npcId &&
             !save.dayWorld.completedDialogues.Contains(day + ":" + npcId);
         public static bool BedAvailable(SaveData save) => Active(save) &&
-            (save.dayWorld.beat == DayWorldBeat.Wake || save.dayWorld.beat == DayWorldBeat.Sleep);
+            save.dayWorld.beat == DayWorldBeat.Sleep && save.dayWorld.pendingStageClear == 0;
         public static bool ShopAvailable(SaveData save) => Active(save) && CanPurchase(save, StageId(save));
         public static bool EquipmentAvailable(SaveData save, EquipmentId equipment) => Active(save) &&
             Equipment(save) == equipment && save.HasEquipment(equipment) &&
@@ -106,10 +107,18 @@ namespace SashimiBoy
             if (!Active(save) || save.dayWorld.beat != DayWorldBeat.Sleep || !save.dayWorld.practicedDays.Contains(save.dayWorld.day) ||
                 !save.dayWorld.placedEquipment.Contains(Equipment(save).ToString()) || save.dayWorld.nightsSlept >= save.dayWorld.day) return false;
             save.dayWorld.nightsSlept = save.dayWorld.day;
+            save.dayWorld.pendingStageClear = save.dayWorld.day;
             save.dayWorld.checkpointScene = Home;
             save.dayWorld.checkpointSpawn = "Wake";
             if (save.dayWorld.day == 1) { save.dayWorld.day = 2; save.dayWorld.beat = DayWorldBeat.Wake; }
             else save.dayWorld.beat = DayWorldBeat.Complete;
+            return true;
+        }
+        public static bool ContinueAfterStageClear(SaveData save)
+        {
+            if (!Active(save) || save.dayWorld.pendingStageClear <= 0) return false;
+            save.dayWorld.pendingStageClear = 0;
+            Wake(save);
             return true;
         }
         public static string Objective(SaveData save)
@@ -117,7 +126,7 @@ namespace SashimiBoy
             if (!Active(save)) return "";
             switch (save.dayWorld.beat)
             {
-                case DayWorldBeat.Wake: return "침대에서 일어나기";
+                case DayWorldBeat.Wake: return "새로운 하루를 시작합니다";
                 case DayWorldBeat.MorningConversation: return save.dayWorld.day == 1 ? "집 앞에서 미숙과 대화하기" : "출근길에서 성호와 대화하기";
                 case DayWorldBeat.Work: return save.dayWorld.day == 1 ? "횟집에서 연어 손질을 마치기" : "횟집에서 우럭 손질을 마치기";
                 case DayWorldBeat.AfterWorkConversation: return save.dayWorld.day == 1 ? "횟집 손님 자리의 철수와 대화하기" : "악기 상점 앞에서 민재와 대화하기";
@@ -125,7 +134,7 @@ namespace SashimiBoy
                 case DayWorldBeat.Placement: return "집으로 돌아가 구매한 장비 배치하기";
                 case DayWorldBeat.Practice: return "배치한 장비 앞에서 짧게 연습하기";
                 case DayWorldBeat.Sleep: return "침대에서 잠들기";
-                default: return "이틀의 이야기를 마쳤습니다";
+                default: return "현재 준비된 스테이지를 모두 마쳤습니다";
             }
         }
     }

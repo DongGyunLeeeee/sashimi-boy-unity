@@ -1,0 +1,102 @@
+using System;
+using System.Collections;
+using System.Linq;
+using NUnit.Framework;
+using UnityEditor;
+using UnityEditor.SceneManagement;
+using UnityEngine;
+
+namespace SashimiBoy.Tests
+{
+    public sealed class CurrentGameRevisionEditModeTests
+    {
+        [Test]
+        public void Home_HoldsTenExistingSizeInstruments_WithSeparateBedAndCenterAisle()
+        {
+            var scene=EditorSceneManager.OpenScene("Assets/_SashimiBoy/Scenes/KevinHome.unity",OpenSceneMode.Single);
+            var root=scene.GetRootGameObjects().Single(g=>g.name=="DayWorld_Integration").transform;
+            var slots=root.Find("HomeEquipmentSlots").Cast<Transform>().ToArray();
+            Assert.That(slots.Length,Is.EqualTo(10));
+            var floor=root.Find("HomeFloor").GetComponent<Renderer>().bounds;
+            var bed=root.Find("Bed").GetComponent<Collider>().bounds;
+            var footprints=slots.Select(s=>new Bounds(s.position+Vector3.up*.8f,
+                Mathf.Abs(s.forward.x)>.5f ? new Vector3(1.6f,1.6f,2f) : new Vector3(2f,1.6f,1.6f))).ToArray();
+            for(int i=0;i<footprints.Length;i++)
+            {
+                var b=footprints[i];
+                Assert.That(b.min.x,Is.GreaterThan(floor.min.x+.15f));Assert.That(b.max.x,Is.LessThan(floor.max.x-.15f));
+                Assert.That(b.min.z,Is.GreaterThan(floor.min.z+.1f));Assert.That(b.max.z,Is.LessThan(floor.max.z-.1f));
+                Assert.That(b.Intersects(bed),Is.False,"Instrument reserve intersects bed: "+i);
+                for(int j=i+1;j<footprints.Length;j++)Assert.That(b.Intersects(footprints[j]),Is.False,"Instrument reserves overlap: "+i+","+j);
+                Vector3 approach=slots[i].position-slots[i].forward*1.3f+Vector3.up*.9f;
+                Assert.That(footprints.Where((_,j)=>j!=i).Any(other=>other.Contains(approach)),Is.False,"Approach blocked by another instrument.");
+            }
+            foreach(string name in new[]{"ElectronicDrumKit","MidiKeyboardController","ModularSynthesizer","EffectsPedals","GuitarPedal","Loudspeaker","SpeakerBox","StageSpotlight","StackedSpeaker","StereoSpeaker","VintageSpeaker"})
+            {
+                var asset=AssetDatabase.LoadAssetAtPath<GameObject>("Assets/_SashimiBoy/Art/Generated/DayWorld/Venues/PF_"+name+".prefab");
+                var bounds=(Bounds)RuntimeReflection.InvokeStatic("SashimiBoy.EditorTools.DayWorldAssetAuthoring","HomeGeometryBounds",asset);
+                Assert.That(bounds.size.x,Is.LessThan(2f),name);Assert.That(bounds.size.z,Is.LessThan(1.6f),name);
+            }
+            for(float z=-4.4f;z<2f;z+=.25f)
+                Assert.That(footprints.Any(b=>b.Contains(new Vector3(0,.8f,z))),Is.False,"Center entrance aisle must stay clear.");
+        }
+
+        [Test]
+        public void Street_UsesOriginalFacadeEntrances_WithoutAnExtraDoorInFront()
+        {
+            var scene=EditorSceneManager.OpenScene("Assets/_SashimiBoy/Scenes/Street.unity",OpenSceneMode.Single);
+            var root=scene.GetRootGameObjects().Single(g=>g.name=="DayWorld_Integration").transform;
+            Assert.That(root.Find("MatchingDoors").gameObject.activeInHierarchy,Is.False);
+            foreach(string id in new[]{"FishShop","EquipmentShop","Club"})
+            {
+                Assert.That(root.Find("PF_"+id).gameObject.activeInHierarchy,Is.True);
+                string room=id=="FishShop"?"FishShopDialogue":id;
+                var door=root.Find("Door_To_"+room+"_DayWorld");
+                Assert.That(door.GetComponent<Renderer>().enabled,Is.False);
+                Assert.That(door.GetComponent<Collider>().enabled,Is.True);
+            }
+        }
+
+        [TestCase("FishShopDialogue","FishShop")]
+        [TestCase("EquipmentShop","EquipmentShop")]
+        [TestCase("Club","Club")]
+        public void InteriorDoor_OverlapsTheWallOpeningAndHeader(string room,string id)
+        {
+            var scene=EditorSceneManager.OpenScene("Assets/_SashimiBoy/Scenes/"+room+".unity",OpenSceneMode.Single);
+            var root=scene.GetRootGameObjects().Single(g=>g.name=="DayWorld_Integration").transform;
+            var door=root.Find("MatchingDoors/SharedDoor_"+id);
+            var shell=root.Find("InteriorShell");
+            Assert.That(door.gameObject.activeInHierarchy,Is.True);
+            var jamb=door.Find("Jamb_Left").GetComponent<Renderer>().bounds;
+            var side=shell.Find("Wall_EntryRight").GetComponent<Renderer>().bounds;
+            Assert.That(jamb.Intersects(side),Is.True,"The visible door frame must meet the wall.");
+            Assert.That(door.Find("Header").GetComponent<Renderer>().bounds.Intersects(shell.Find("DoorLintel").GetComponent<Renderer>().bounds),Is.True);
+        }
+
+        [TestCase(1,"SamplePackDrumKit")]
+        [TestCase(2,"DawSoftware")]
+        public void Sleep_SavesPendingClear_ContinueIsIdempotent(int day,string equipment)
+        {
+            var save=RuntimeReflection.InvokeStatic("SashimiBoy.SaveData","CreateNew");
+            var progress=RuntimeReflection.GetField(save,"dayWorld");
+            RuntimeReflection.SetField(progress,"active",true);RuntimeReflection.SetField(progress,"day",day);
+            RuntimeReflection.SetField(progress,"beat",Enum.Parse(RuntimeReflection.RuntimeType("SashimiBoy.DayWorldBeat"),"Sleep"));
+            ((IList)RuntimeReflection.GetField(progress,"placedEquipment")).Add(equipment);
+            ((IList)RuntimeReflection.GetField(progress,"practicedDays")).Add(day);
+            Assert.That(RuntimeReflection.InvokeStatic("SashimiBoy.DayWorldRules","Sleep",save),Is.EqualTo(true));
+            Assert.That(RuntimeReflection.GetField(progress,"pendingStageClear"),Is.EqualTo(day));
+            string json=JsonUtility.ToJson(save);
+            var restored=JsonUtility.FromJson(json,save.GetType());
+            Assert.That(RuntimeReflection.InvokeStatic("SashimiBoy.DayWorldRules","Sleep",restored),Is.EqualTo(false));
+            Assert.That(JsonUtility.ToJson(restored),Is.EqualTo(json));
+            Assert.That(RuntimeReflection.InvokeStatic("SashimiBoy.DayWorldRules","ContinueAfterStageClear",restored),Is.EqualTo(true));
+            var after=RuntimeReflection.GetField(restored,"dayWorld");
+            Assert.That(RuntimeReflection.GetField(after,"pendingStageClear"),Is.EqualTo(0));
+            Assert.That(RuntimeReflection.GetField(after,"nightsSlept"),Is.EqualTo(day));
+            Assert.That(RuntimeReflection.GetField(after,"beat").ToString(),Is.EqualTo(day==1?"MorningConversation":"Complete"));
+            string once=JsonUtility.ToJson(restored);
+            Assert.That(RuntimeReflection.InvokeStatic("SashimiBoy.DayWorldRules","ContinueAfterStageClear",restored),Is.EqualTo(false));
+            Assert.That(JsonUtility.ToJson(restored),Is.EqualTo(once));
+        }
+    }
+}

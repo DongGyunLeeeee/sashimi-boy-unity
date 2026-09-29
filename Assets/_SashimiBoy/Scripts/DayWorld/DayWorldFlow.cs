@@ -62,6 +62,7 @@ namespace SashimiBoy
             player.transform.position = spawn.position;
             if (controller != null) controller.enabled = true;
             player.GetComponent<KevinFirstPersonCameraRig>()?.RestoreStageEntryView(spawn.eulerAngles.y-player.transform.eulerAngles.y, spawn.eulerAngles.x);
+            SetBusy(busy); // Restoring the camera must retain a resumed clear screen's input lock.
             SuppressInput();
         }
         public void NewGame()
@@ -77,8 +78,15 @@ namespace SashimiBoy
         public void ContinueGame()
         {
             if (!Active || busy || SceneTransitionService.Instance.IsLoading) return;
-            // Older saves could leave the house while still asleep. Resume that beat at its bed.
-            if (AwaitingWake) { LoadWorld(DayWorldRules.Home, "Wake"); return; }
+            // Resume a saved clear screen before advancing, and migrate the former manual wake checkpoint.
+            if (Save.dayWorld.pendingStageClear > 0) { LoadWorld(DayWorldRules.Home, "Wake"); return; }
+            if (AwaitingWake)
+            {
+                DayWorldRules.Wake(Save);
+                Commit();
+                LoadWorld(DayWorldRules.Home, "Wake");
+                return;
+            }
             string scene = Save.dayWorld.checkpointScene;
             if (scene == SashimiBoyConstants.Scenes.Stage01Salmon || scene == DayWorldRules.StageTwoScene) scene = SashimiBoyConstants.Scenes.FishShopDialogue;
             LoadWorld(scene, Save.dayWorld.checkpointSpawn);

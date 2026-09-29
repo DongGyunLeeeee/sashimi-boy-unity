@@ -19,14 +19,21 @@ namespace SashimiBoy.EditorTools
         {
             DayWorldInteriorAuthoring.ApplyBatch();
             OwnerJudgementAuthoring.ApplyBatch();
+            ApplyOwnerModelsBatch();
+            var scene=UnityEngine.SceneManagement.SceneManager.GetActiveScene();
+            ApplyFish(Find<Stage01ButcheryPresenter>(scene));
+            EditorSceneManager.MarkSceneDirty(scene);
+            if(!EditorSceneManager.SaveScene(scene)) throw new InvalidOperationException("Could not save owner Rockfish assembly.");
+        }
+
+        public static void ApplyOwnerModelsBatch()
+        {
             var scene=EditorSceneManager.OpenScene(ScenePath,OpenSceneMode.Single);
             var view=Find<Stage01ButcheryPresenter>(scene);
             BuildModels(view.plateSlots.Length);
-            ApplyFish(view);
-            EditorSceneManager.MarkSceneDirty(scene);
-            if(!EditorSceneManager.SaveScene(scene)) throw new InvalidOperationException("Could not save owner Rockfish assembly.");
+            // Existing scene prefab references already use these meshes; retain their serialized IDs.
             AssetDatabase.SaveAssets();
-            Debug.Log("[OwnerRevision] Centered existing interior doors and applied four PNG judgements plus all six supplied Rockfish models. Existing music and chart authoring were not invoked.");
+            Debug.Log("[OwnerRevision] Applied all six supplied Rockfish models without invoking music or chart authoring.");
         }
 
         private static Material OwnerMaterial(string part)
@@ -48,8 +55,12 @@ namespace SashimiBoy.EditorTools
             Directory.CreateDirectory(Root);
             AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport);
             // Each supplied scan has its own axes and units. Bake positive scales into derived meshes only.
-            // The scan includes a rounded neck stub; overlap it with the body to close the initial seam.
-            var head = OwnerMesh("head", Quaternion.Euler(-90,90,0), new Vector3(.34f,.20f,.32f), new Vector3(.325f,0,0));
+            // The head scan has an oblique neck plane. Point it toward the body (-X),
+            // then roll the visible eye onto the same side as the body and overlap the cut.
+            // Measured cut-surface normal in the former head orientation: (0.16, -0.36, 0.92).
+            var headRotation = Quaternion.Euler(-145,0,0) *
+                Quaternion.FromToRotation(new Vector3(.16f,-.36f,.92f).normalized, Vector3.left) * Quaternion.Euler(-90,90,0);
+            var head = OwnerMesh("head", headRotation, new Vector3(.35f,.19f,.28f), new Vector3(.30f,.004f,.012f));
             var body = OwnerMesh("body", Quaternion.identity, new Vector3(.70f,.20f,.32f), new Vector3(-.14f,0,0));
             var fillet = OwnerMesh("fillet", Quaternion.Euler(180,0,0), new Vector3(.70f,.085f,.30f), new Vector3(-.14f,0,0));
             var spine = OwnerMesh("bone", Quaternion.Euler(90,0,0)*Quaternion.Euler(0,0,35)*Quaternion.Euler(0,90,0),

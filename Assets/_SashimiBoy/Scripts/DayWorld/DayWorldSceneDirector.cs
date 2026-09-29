@@ -15,6 +15,7 @@ namespace SashimiBoy
         public CanvasGroup fade;
         public Button newGameButton, continueButton;
         public KevinCustomizationScreen customization;
+        public DayWorldStageClearScreen stageClearScreen;
         public DayWorldNpc[] npcs;
         public HomeEquipmentStation[] equipmentStations;
         public bool ShopOpen => shopRoot != null && shopRoot.activeSelf;
@@ -54,6 +55,8 @@ namespace SashimiBoy
                 runner.OnDialogueFinished += UnlockAfterDialogue;
                 runner.OnDialogueCancelled += UnlockAfterDialogue;
             }
+            if (DayWorldFlow.Active && SaveManager.Instance.Current.dayWorld.pendingStageClear == 0 && DayWorldRules.Wake(SaveManager.Instance.Current))
+                DayWorldFlow.Instance.Commit();
             Refresh(SaveManager.Instance.Current);
             if(optionalVenuePanel != null && DayWorldFlow.Active) optionalVenuePanel.SetActive(false);
             if (menuRoot != null) { Cursor.lockState=CursorLockMode.None; Cursor.visible=true; }
@@ -78,7 +81,8 @@ namespace SashimiBoy
             if(dayText != null) dayText.text=active ? (save.dayWorld.day==1 ? "첫째 날" : "둘째 날") : "SASHIMI BOY";
             if(objectiveText != null) objectiveText.text=DayWorldRules.Objective(save);
             if(continueButton != null) continueButton.interactable=active;
-            if(completeRoot != null) completeRoot.SetActive(active && save.dayWorld.beat==DayWorldBeat.Complete);
+            if (stageClearScreen != null) stageClearScreen.Refresh(save);
+            else if (completeRoot != null) completeRoot.SetActive(false);
             if(npcs != null) foreach(var npc in npcs) if(npc != null) npc.gameObject.SetActive(DayWorldRules.NpcAvailable(save,npc.day,npc.npcId));
             if(equipmentStations != null) foreach(var station in equipmentStations) if(station != null) station.Refresh();
             SetLabelVisible("BedLabel", DayWorldRules.BedAvailable(save));
@@ -119,33 +123,29 @@ namespace SashimiBoy
         }
         public void UseBed(GameObject actor)
         {
-            var save=SaveManager.Instance.Current;
-            if(!DayWorldFlow.Active || DayWorldFlow.InputSuppressed) return;
-            if(save.dayWorld.beat != DayWorldBeat.Wake && save.dayWorld.beat != DayWorldBeat.Sleep)
-            { DayWorldFlow.Instance.Notice(DayWorldRules.Objective(save)); return; }
-            StartCoroutine(Rest(actor,save.dayWorld.beat==DayWorldBeat.Wake));
+            var save = SaveManager.Instance.Current;
+            if (!DayWorldRules.BedAvailable(save) || DayWorldFlow.InputSuppressed) return;
+            StartCoroutine(Rest());
         }
-        private IEnumerator Rest(GameObject actor, bool waking)
+        private IEnumerator Rest()
         {
             DayWorldFlow.Instance.SetBusy(true);
-            var camera=actor.GetComponent<KevinFirstPersonCameraRig>()?.controlledCamera;
-            Vector3 original=camera != null ? camera.transform.localPosition : Vector3.zero;
-            float t=0f;
-            while(t<1.5f)
+            float elapsed = 0f;
+            while (elapsed < 1.2f)
             {
-                t+=Time.unscaledDeltaTime;
-                float progress=Mathf.SmoothStep(0f,1f,t/1.5f);
-                if(fade != null) fade.alpha=waking ? 1f-progress : progress;
-                if(camera != null && waking) camera.transform.localPosition=original+Vector3.down*(1f-progress)*.5f;
+                elapsed += Time.unscaledDeltaTime;
+                if (fade != null) fade.alpha = Mathf.SmoothStep(0f, 1f, elapsed / 1.2f);
                 yield return null;
             }
-            if(camera != null) camera.transform.localPosition=original;
-            bool changed=waking ? DayWorldRules.Wake(SaveManager.Instance.Current) : DayWorldRules.Sleep(SaveManager.Instance.Current);
-            DayWorldFlow.Instance.SetBusy(false);
-            if(changed) DayWorldFlow.Instance.Commit();
-            if(waking) { if(fade != null) fade.alpha=0f; }
-            else DayWorldFlow.Instance.LoadWorld(DayWorldRules.Home,"Wake");
+            bool changed = DayWorldRules.Sleep(SaveManager.Instance.Current);
+            if (changed)
+            {
+                try { DayWorldFlow.Instance.Commit(); }
+                catch (System.Exception error) when (error is System.IO.IOException || error is System.UnauthorizedAccessException)
+                { stageClearScreen?.ShowSaveFailure(); }
+            }
+            else DayWorldFlow.Instance.SetBusy(false);
+            if (fade != null) fade.alpha = 0f;
         }
     }
-
 }

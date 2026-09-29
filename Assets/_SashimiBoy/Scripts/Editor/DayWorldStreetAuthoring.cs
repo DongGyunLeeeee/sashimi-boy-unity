@@ -113,10 +113,13 @@ namespace SashimiBoy.EditorTools
             if (scene.name == "Street")
             {
                 Street(scene, worldRoot);
+                var duplicateDoors = worldRoot.Find("MatchingDoors");
+                if (duplicateDoors != null) duplicateDoors.gameObject.SetActive(false);
                 foreach (string id in Shops)
                 {
                     string room = id == "FishShop" ? "FishShopDialogue" : id;
-                    AttachDoor(worldRoot, worldRoot.Find("Door_To_" + room + "_DayWorld"), id, false);
+                    // The facade already contains its real entrance (including the club stair approach).
+                    worldRoot.Find("Door_To_" + room + "_DayWorld").GetComponent<Renderer>().enabled = false;
                 }
             }
             else if (scene.name != "KevinHome")
@@ -145,7 +148,7 @@ namespace SashimiBoy.EditorTools
                 instance.name = "SharedDoor_" + id; door = instance.transform;
             }
             retainedDoor.GetComponent<Renderer>().enabled = false;
-            door.SetPositionAndRotation(new Vector3(retainedDoor.position.x, .05f, retainedDoor.position.z + (interior ? .075f : -.075f)),
+            door.SetPositionAndRotation(new Vector3(retainedDoor.position.x, .05f, retainedDoor.position.z + (interior ? .02f : -.075f)),
                 Quaternion.Euler(0f, interior ? 180f : 0f, 0f));
             PrefabUtility.RecordPrefabInstancePropertyModifications(door);
         }
