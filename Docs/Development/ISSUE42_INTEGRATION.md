@@ -36,12 +36,14 @@ The delivered game includes the logo/four-face menu, two days of home/street/NPC
 and shop progression, Stage1 salmon, Stage2 rockfish, connected hands/tools,
 equipment placement/practice, sleep, and saved checkpoints.
 
-The current implementation requires equipment placement and practice before
-sleep. Morning NPC completion opens work; it does not add a new mandatory boss
-briefing. The original Day1 issue describes optional free-time activities and a
-boss briefing gate. These differences are explicitly pending an Owner scope
-decision, not silently treated as satisfied criteria. No new dialogue or balance
-decision is made by this integration.
+On 2026-09-29 the Owner confirmed the current implementation as the delivery
+contract and authorized independent review of PR #67. Equipment placement and
+practice are required before sleep, and morning NPC completion opens work.
+An additional mandatory boss briefing and optional practice are outside this
+delivery scope; the original Day1 wording is superseded for those two rules by
+the latest Owner Decision on Issue #42. No new dialogue or balance change is
+introduced. The Owner also reported no issue in the scope they played; the
+remaining detailed human verification checklist stays explicit in the PR.
 
 PR #48 still has an EquipmentShop scene overlap, and PR #49 still has a Street
 scene/generator overlap and an unresolved same-head Owner manual failure. Their
