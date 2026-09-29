@@ -278,7 +278,7 @@ namespace SashimiBoy.EditorTools
             EditorUtility.UnloadUnusedAssetsImmediate();
             GC.Collect();
             string dir="Builds/DayWorldValidation-"+DateTime.UtcNow.ToString("yyyyMMdd-HHmmss");Directory.CreateDirectory(dir);
-            var report=BuildPipeline.BuildPlayer(new BuildPlayerOptions{scenes=EditorBuildSettings.scenes.Where(s=>s.enabled).Select(s=>s.path).ToArray(),locationPathName=dir+"/SashimiBoyDayWorld.exe",target=BuildTarget.StandaloneWindows64,options=BuildOptions.Development | BuildOptions.CompressWithLz4});
+            var report=BuildPipeline.BuildPlayer(new BuildPlayerOptions{scenes=EditorBuildSettings.scenes.Where(s=>s.enabled).Select(s=>s.path).ToArray(),locationPathName=dir+"/SashimiBoyDayWorld.exe",target=BuildTarget.StandaloneWindows64,options=BuildOptions.Development | BuildOptions.CompressWithLz4 | BuildOptions.CleanBuildCache});
             if(report.summary.result!=BuildResult.Succeeded)throw new InvalidOperationException("DayWorld build: "+report.summary.result);
             string archive=Path.Combine(dir,"SashimiBoyDayWorld_Data","data.unity3d");
             if(!File.Exists(archive) || new FileInfo(archive).Length==0 || File.Exists(archive+".tmp"))
