@@ -1,7 +1,7 @@
 {
     "name": "SashimiBoy.ReflectionTestSupport",
     "rootNamespace": "SashimiBoy.Tests",
-    "references": [],
+    "references": ["SashimiBoy.Semantics"],
     "includePlatforms": [],
     "excludePlatforms": [],
     "allowUnsafeCode": false,

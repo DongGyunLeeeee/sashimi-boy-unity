@@ -5,6 +5,9 @@ namespace SashimiBoy
 {
     public sealed class Stage01SalmonHUD : MonoBehaviour
     {
+        public string stageTitle = "STAGE 01";
+        public string fishLabel = "SALMON / 연어";
+        public string fishProgressPrefix = "";
         [Header("Top Left")]
         public Text stageTitleText;
         public Text fishTypeText;
@@ -32,6 +35,19 @@ namespace SashimiBoy
         [Header("Result")]
         public GameObject resultRoot;
         public Text resultText;
+        public Stage01ButcheryPresenter butchery;
+        [Header("Phase requirement")]
+        public Image phaseQualityFill;
+        public RectTransform phaseThresholdMarker;
+        public Text phaseQualityText;
+        public Text phaseRequirementText;
+        public Text phaseRemainingText;
+        public bool compactLayout;
+        public GameObject focusHudRoot;
+        public Text lastJudgementText;
+        public Image judgementImage;
+        public Text judgementDetail;
+        public JudgementVisualLibrary ownerJudgementVisuals;
 
         private Stage01SalmonTimingScaffold timing;
         private ProceduralSalmonView salmon;
@@ -45,10 +61,10 @@ namespace SashimiBoy
         {
             if (stageTitleText != null)
             {
-                stageTitleText.text = "STAGE 01";
+                stageTitleText.text = stageTitle;
             }
 
-            SetText(fishTypeText, "SALMON / 연어");
+            SetText(fishTypeText, fishLabel);
 
             SetText(inspirationText, string.Empty);
             if (inspirationRoot != null)
@@ -85,9 +101,13 @@ namespace SashimiBoy
                     timing.GetGameplayProgress01(songSec);
             }
 
-            SetText(scoreText, $"SCORE  {timing.Score:0000000}");
-            SetText(comboText, $"COMBO  {timing.Combo}");
-            if (salmon != null)
+            SetText(scoreText, compactLayout ? $"점수  {timing.Score:N0}" : $"SCORE  {timing.Score:0000000}");
+            SetText(comboText, compactLayout ? $"콤보  {timing.Combo}" : $"COMBO  {timing.Combo}");
+            if (butchery != null)
+            {
+                SetText(fishProgressText, $"{fishProgressPrefix}{butchery.PhaseLabel}  |  회 {butchery.SliceCount} / {butchery.plateSlots.Length}");
+            }
+            else if (salmon != null)
             {
                 SetText(
                     fishProgressText,
@@ -96,10 +116,71 @@ namespace SashimiBoy
             }
 
             RefreshBeatDots(songSec);
+            RefreshPhaseGauge();
             RefreshDialogue();
             RefreshInspiration();
             RefreshFlash();
             RefreshNoteEvent();
+        }
+
+        private void RefreshPhaseGauge()
+        {
+            if (timing.semanticBeatmap == null || timing.semanticBeatmap.chart == null) return;
+            var performance = timing.PhasePerformance;
+            int index = Mathf.Clamp(performance.PhaseIndex, 0, 5);
+            var gate = timing.semanticBeatmap.chart.phases[index];
+            double requiredPoints = gate.metric == SashimiBoy.Semantics.GateMetric.Ratio
+                ? gate.requiredQuality * gate.expectedNoteCount : gate.requiredQuality;
+            double points = performance.Completed ? performance.LastGatePoints : performance.PhasePoints;
+            float ratio = (float)(points / gate.expectedNoteCount);
+            float target = (float)(requiredPoints / gate.expectedNoteCount);
+            if (phaseQualityFill != null)
+            {
+                phaseQualityFill.fillAmount = Mathf.Clamp01(ratio);
+                phaseQualityFill.color = performance.Failed ? new Color(1f, .25f, .18f)
+                    : points >= requiredPoints ? new Color(.32f, .9f, .67f) : new Color(1f, .69f, .23f);
+            }
+            if (phaseThresholdMarker != null)
+            {
+                phaseThresholdMarker.anchorMin = compactLayout ? new Vector2(target,.5f) : new Vector2(0f, target);
+                phaseThresholdMarker.anchorMax = compactLayout ? new Vector2(target,.5f) : new Vector2(1f, target);
+                phaseThresholdMarker.anchoredPosition = Vector2.zero;
+            }
+            SetText(phaseQualityText, $"현재 {points:0.00}점");
+            SetText(phaseRequirementText, compactLayout ? $"통과 {requiredPoints:0.00} · {target * 100f:0}%" : $"통과 {requiredPoints:0.00}점\n({target * 100f:0}% 이상)");
+            SetText(phaseRemainingText, performance.Completed ? "손질 완료" : performance.Failed ? "단계 실패" :
+                $"남은 노트 {Mathf.Max(0, gate.lastNoteId + 1 - performance.NoteCursor)}" + (compactLayout ? "" : "\n단계 끝에 판정"));
+        }
+
+        public void ShowReadableJudgement(string label, Color color)
+        {
+            string word = label.Split(' ')[0];
+            JudgeGrade grade = word == "NASTY" ? JudgeGrade.Nasty : word == "CLEAN" ? JudgeGrade.Smooth :
+                word == "SLIPPED" ? JudgeGrade.Slipped : JudgeGrade.Whack;
+            bool graded = word == "NASTY" || word == "CLEAN" || word == "SLIPPED" || word == "WHACK" || word == "MISS";
+            bool showImage = graded && judgementImage != null && ownerJudgementVisuals != null &&
+                ownerJudgementVisuals.TryGet(grade, out var visual) && visual.sprite != null;
+            if (judgementImage != null)
+            {
+                judgementImage.enabled = showImage;
+                if (showImage)
+                {
+                    ownerJudgementVisuals.TryGet(grade, out var definition);
+                    judgementImage.sprite = definition.sprite;
+                    judgementImage.color = Color.white;
+                }
+            }
+            if (judgementDetail != null)
+            {
+                judgementDetail.enabled = showImage;
+                judgementDetail.text = word == "MISS" ? "놓침" : label.Substring(word.Length).Trim();
+                judgementDetail.color = color;
+            }
+            if (lastJudgementText != null)
+            {
+                lastJudgementText.enabled = !showImage;
+                lastJudgementText.text = label; lastJudgementText.color = color;
+            }
         }
 
         public void Bind(
@@ -152,6 +233,7 @@ namespace SashimiBoy
 
         public void ShowResult()
         {
+            if (focusHudRoot != null) focusHudRoot.SetActive(false);
             if (resultRoot != null)
             {
                 resultRoot.SetActive(true);
@@ -160,10 +242,24 @@ namespace SashimiBoy
             if (resultText != null && timing != null)
             {
                 resultText.text =
-                    $"RESULT PLACEHOLDER\n\nSCORE  {timing.Score}\n" +
+                    $"{stageTitle} CLEAR · 회 한 판 완성\n\nSCORE  {timing.Score}\n" +
                     $"MAX COMBO  {timing.MaxCombo}\n" +
                     $"YIELD  {timing.YieldPercent:0.0}%";
             }
+        }
+
+        public void ResetForRetry()
+        {
+            if (focusHudRoot != null) focusHudRoot.SetActive(true);
+            ShowReadableJudgement("박자에 맞춰 Space",Color.white);
+            inspirationTimer = flashTimer = noteEventTimer = 0f;
+            inspirationShown = false;
+            SetText(inspirationText, string.Empty);
+            SetText(countdownText, string.Empty);
+            SetText(noteEventText, string.Empty);
+            if (inspirationRoot != null) inspirationRoot.SetActive(false);
+            if (resultRoot != null) resultRoot.SetActive(false);
+            SetFlash(Color.clear);
         }
 
         private void RefreshBeatDots(double songSec)

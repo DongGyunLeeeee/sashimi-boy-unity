@@ -42,6 +42,7 @@ namespace SashimiBoy
 
         public void RequestStage(string stageId)
         {
+            if (DayWorldFlow.Active && !DayWorldRules.CanStart(SaveManager.Instance.Current, stageId)) return;
             pendingStageId = stageId;
             OnStageStartRequested?.Invoke(stageId);
         }
@@ -62,6 +63,7 @@ namespace SashimiBoy
                 return;
             }
 
+            if (!DayWorldFlow.AcceptClear(payload, pendingStageId)) return;
             SaveManager.Instance.ApplyStageClear(payload);
             OnStageCleared?.Invoke(payload);
         }

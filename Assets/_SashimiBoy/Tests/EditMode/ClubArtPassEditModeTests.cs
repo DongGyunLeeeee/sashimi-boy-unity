@@ -109,7 +109,11 @@ namespace SashimiBoy.Tests
                 AssertPosition(
                     scene,
                     "Door_To_Street",
-                    new Vector3(6.4f, 0.8f, -4.5f));
+                    new Vector3(0f, 0.8f, -5.9f));
+                Assert.That(
+                    FindNamed(scene, "DoorFrame_PF_Club_ClubDoorFrame").activeSelf,
+                    Is.False,
+                    "The legacy side door frame must stay hidden after the DayWorld entry moved.");
 
                 Assert.That(
                     Components(scene, "SashimiBoy.ClubController").Length,
@@ -207,9 +211,23 @@ namespace SashimiBoy.Tests
             }
             finally
             {
-                EditorSceneManager.NewScene(
-                    NewSceneSetup.EmptyScene,
-                    NewSceneMode.Single);
+                try
+                {
+                    EditorSceneManager.NewScene(
+                        NewSceneSetup.EmptyScene,
+                        NewSceneMode.Single);
+                }
+                finally
+                {
+                    // Preserve the captured output above so restoring a failed run cannot hide drift.
+                    if (!File.Exists(absoluteScenePath) ||
+                        !File.ReadAllBytes(absoluteScenePath).SequenceEqual(committedBytes))
+                    {
+                        File.WriteAllBytes(absoluteScenePath, committedBytes);
+                        AssetDatabase.ImportAsset(ScenePath,
+                            ImportAssetOptions.ForceSynchronousImport | ImportAssetOptions.ForceUpdate);
+                    }
+                }
             }
 
             Assert.That(
@@ -326,7 +344,7 @@ namespace SashimiBoy.Tests
                     new Vector3(0f, 1.5f, 1.9f),
                     new Vector3(3f, 3f, 1.4f)),
                 new Bounds(
-                    new Vector3(6.4f, 1.5f, -4.1f),
+                    new Vector3(0f, 1.5f, -4.9f),
                     new Vector3(2.4f, 3f, 3f)),
             };
 

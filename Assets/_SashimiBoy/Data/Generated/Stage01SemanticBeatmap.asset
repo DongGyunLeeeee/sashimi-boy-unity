@@ -1,0 +1,1349 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2d61f4889f094086ac379cb94e72485b, type: 3}
+  m_Name: Stage01SemanticBeatmap
+  m_EditorClassIdentifier: Assembly-CSharp::SashimiBoy.SemanticBeatmapDefinition
+  chart:
+    actionSequence: 1
+    weights:
+      clean: 0.75
+      nasty: 1
+      slipped: 0.35
+      whack: 0
+    notes:
+    - noteId: 0
+      phase: 0
+      action: 1
+      target: 1
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 1
+      phase: 0
+      action: 1
+      target: 1
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 2
+      phase: 0
+      action: 1
+      target: 1
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 3
+      phase: 0
+      action: 1
+      target: 1
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 4
+      phase: 0
+      action: 1
+      target: 1
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 5
+      phase: 0
+      action: 1
+      target: 1
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 6
+      phase: 0
+      action: 1
+      target: 1
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 7
+      phase: 0
+      action: 1
+      target: 1
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 8
+      phase: 0
+      action: 1
+      target: 1
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 9
+      phase: 0
+      action: 1
+      target: 1
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 10
+      phase: 0
+      action: 1
+      target: 1
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 11
+      phase: 0
+      action: 1
+      target: 1
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 12
+      phase: 0
+      action: 1
+      target: 1
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 13
+      phase: 0
+      action: 1
+      target: 1
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 14
+      phase: 0
+      action: 1
+      target: 1
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 15
+      phase: 0
+      action: 1
+      target: 1
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 16
+      phase: 0
+      action: 1
+      target: 1
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 17
+      phase: 0
+      action: 1
+      target: 1
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 18
+      phase: 0
+      action: 1
+      target: 1
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 19
+      phase: 0
+      action: 1
+      target: 1
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 20
+      phase: 0
+      action: 1
+      target: 1
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 21
+      phase: 0
+      action: 1
+      target: 1
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 22
+      phase: 0
+      action: 1
+      target: 1
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 23
+      phase: 0
+      action: 1
+      target: 1
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 24
+      phase: 0
+      action: 1
+      target: 1
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 25
+      phase: 0
+      action: 1
+      target: 1
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 26
+      phase: 1
+      action: 2
+      target: 2
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 27
+      phase: 1
+      action: 2
+      target: 2
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 28
+      phase: 1
+      action: 2
+      target: 2
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 29
+      phase: 1
+      action: 2
+      target: 2
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 30
+      phase: 1
+      action: 2
+      target: 2
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 31
+      phase: 1
+      action: 2
+      target: 2
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 32
+      phase: 1
+      action: 2
+      target: 2
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 33
+      phase: 1
+      action: 2
+      target: 2
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 34
+      phase: 1
+      action: 2
+      target: 2
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 35
+      phase: 1
+      action: 2
+      target: 2
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 36
+      phase: 1
+      action: 2
+      target: 2
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 37
+      phase: 1
+      action: 2
+      target: 2
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 38
+      phase: 1
+      action: 2
+      target: 2
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 39
+      phase: 1
+      action: 2
+      target: 2
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 40
+      phase: 1
+      action: 2
+      target: 2
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 41
+      phase: 1
+      action: 2
+      target: 2
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 42
+      phase: 1
+      action: 2
+      target: 2
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 43
+      phase: 1
+      action: 2
+      target: 2
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 44
+      phase: 1
+      action: 2
+      target: 2
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 45
+      phase: 1
+      action: 2
+      target: 2
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 46
+      phase: 1
+      action: 2
+      target: 2
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 47
+      phase: 1
+      action: 2
+      target: 2
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 48
+      phase: 1
+      action: 2
+      target: 2
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 49
+      phase: 1
+      action: 2
+      target: 2
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 50
+      phase: 1
+      action: 2
+      target: 2
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 51
+      phase: 1
+      action: 2
+      target: 2
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 52
+      phase: 2
+      action: 3
+      target: 3
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 53
+      phase: 2
+      action: 3
+      target: 3
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 54
+      phase: 2
+      action: 3
+      target: 3
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 55
+      phase: 2
+      action: 3
+      target: 3
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 56
+      phase: 2
+      action: 3
+      target: 3
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 57
+      phase: 2
+      action: 3
+      target: 3
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 58
+      phase: 2
+      action: 3
+      target: 3
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 59
+      phase: 2
+      action: 3
+      target: 3
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 60
+      phase: 2
+      action: 3
+      target: 3
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 61
+      phase: 2
+      action: 3
+      target: 3
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 62
+      phase: 2
+      action: 3
+      target: 3
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 63
+      phase: 2
+      action: 3
+      target: 3
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 64
+      phase: 2
+      action: 3
+      target: 3
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 65
+      phase: 2
+      action: 3
+      target: 3
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 66
+      phase: 2
+      action: 3
+      target: 3
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 67
+      phase: 2
+      action: 3
+      target: 3
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 68
+      phase: 2
+      action: 3
+      target: 3
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 69
+      phase: 2
+      action: 3
+      target: 3
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 70
+      phase: 2
+      action: 3
+      target: 3
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 71
+      phase: 2
+      action: 3
+      target: 3
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 72
+      phase: 2
+      action: 3
+      target: 3
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 73
+      phase: 2
+      action: 3
+      target: 3
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 74
+      phase: 2
+      action: 3
+      target: 3
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 75
+      phase: 2
+      action: 3
+      target: 3
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 76
+      phase: 2
+      action: 3
+      target: 3
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 77
+      phase: 2
+      action: 3
+      target: 3
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 78
+      phase: 3
+      action: 7
+      target: 5
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 79
+      phase: 3
+      action: 7
+      target: 5
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 80
+      phase: 3
+      action: 7
+      target: 5
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 81
+      phase: 3
+      action: 7
+      target: 5
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 82
+      phase: 3
+      action: 7
+      target: 5
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 83
+      phase: 3
+      action: 7
+      target: 5
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 84
+      phase: 3
+      action: 7
+      target: 5
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 85
+      phase: 3
+      action: 7
+      target: 5
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 86
+      phase: 3
+      action: 7
+      target: 5
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 87
+      phase: 3
+      action: 7
+      target: 5
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 88
+      phase: 3
+      action: 7
+      target: 5
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 89
+      phase: 3
+      action: 7
+      target: 5
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 90
+      phase: 3
+      action: 7
+      target: 5
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 91
+      phase: 3
+      action: 7
+      target: 5
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 92
+      phase: 3
+      action: 7
+      target: 5
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 93
+      phase: 3
+      action: 7
+      target: 5
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 94
+      phase: 3
+      action: 7
+      target: 5
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 95
+      phase: 3
+      action: 7
+      target: 5
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 96
+      phase: 3
+      action: 7
+      target: 5
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 97
+      phase: 3
+      action: 7
+      target: 5
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 98
+      phase: 3
+      action: 7
+      target: 5
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 99
+      phase: 3
+      action: 7
+      target: 5
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 100
+      phase: 3
+      action: 7
+      target: 5
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 101
+      phase: 3
+      action: 7
+      target: 5
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 102
+      phase: 3
+      action: 7
+      target: 5
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 103
+      phase: 3
+      action: 7
+      target: 5
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 104
+      phase: 4
+      action: 4
+      target: 4
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 105
+      phase: 4
+      action: 4
+      target: 4
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 106
+      phase: 4
+      action: 4
+      target: 4
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 107
+      phase: 4
+      action: 4
+      target: 4
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 108
+      phase: 4
+      action: 4
+      target: 4
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 109
+      phase: 4
+      action: 4
+      target: 4
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 110
+      phase: 4
+      action: 4
+      target: 4
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 111
+      phase: 4
+      action: 4
+      target: 4
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 112
+      phase: 4
+      action: 4
+      target: 4
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 113
+      phase: 4
+      action: 4
+      target: 4
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 114
+      phase: 4
+      action: 4
+      target: 4
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 115
+      phase: 4
+      action: 4
+      target: 4
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 116
+      phase: 4
+      action: 4
+      target: 4
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 117
+      phase: 4
+      action: 4
+      target: 4
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 118
+      phase: 4
+      action: 4
+      target: 4
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 119
+      phase: 4
+      action: 4
+      target: 4
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 120
+      phase: 4
+      action: 4
+      target: 4
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 121
+      phase: 4
+      action: 4
+      target: 4
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 122
+      phase: 4
+      action: 4
+      target: 4
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 123
+      phase: 4
+      action: 4
+      target: 4
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 124
+      phase: 4
+      action: 4
+      target: 4
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 125
+      phase: 4
+      action: 4
+      target: 4
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 126
+      phase: 4
+      action: 4
+      target: 4
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 127
+      phase: 4
+      action: 4
+      target: 4
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 128
+      phase: 4
+      action: 4
+      target: 4
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 129
+      phase: 4
+      action: 4
+      target: 4
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 130
+      phase: 5
+      action: 5
+      target: 5
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 131
+      phase: 5
+      action: 5
+      target: 5
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 132
+      phase: 5
+      action: 5
+      target: 5
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 133
+      phase: 5
+      action: 5
+      target: 5
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 134
+      phase: 5
+      action: 5
+      target: 5
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 135
+      phase: 5
+      action: 5
+      target: 5
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 136
+      phase: 5
+      action: 5
+      target: 5
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 137
+      phase: 5
+      action: 5
+      target: 5
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 138
+      phase: 5
+      action: 5
+      target: 5
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 139
+      phase: 5
+      action: 5
+      target: 5
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 140
+      phase: 5
+      action: 5
+      target: 5
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 141
+      phase: 5
+      action: 5
+      target: 5
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 142
+      phase: 5
+      action: 5
+      target: 5
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 143
+      phase: 5
+      action: 5
+      target: 5
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 144
+      phase: 5
+      action: 5
+      target: 5
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 145
+      phase: 5
+      action: 5
+      target: 5
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 146
+      phase: 5
+      action: 5
+      target: 5
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 147
+      phase: 5
+      action: 5
+      target: 5
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 148
+      phase: 5
+      action: 5
+      target: 5
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 149
+      phase: 5
+      action: 5
+      target: 5
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 150
+      phase: 5
+      action: 5
+      target: 5
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 151
+      phase: 5
+      action: 5
+      target: 5
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 152
+      phase: 5
+      action: 5
+      target: 5
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 153
+      phase: 5
+      action: 5
+      target: 5
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 154
+      phase: 5
+      action: 5
+      target: 5
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 155
+      phase: 5
+      action: 5
+      target: 5
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    - noteId: 156
+      phase: 5
+      action: 5
+      target: 5
+      anchorId: 
+      handAnimationId: 
+      cueStyle: 
+      repetitionCount: 1
+    phases:
+    - phase: 0
+      firstNoteId: 0
+      lastNoteId: 25
+      expectedNoteCount: 26
+      metric: 1
+      requiredQuality: 0.6
+      nextPhase: 1
+      target: 1
+      action: 1
+      successTransition: stage01.phase.WholeFish.success.v1
+      failureTransition: stage01.phase.WholeFish.failure.v1
+    - phase: 1
+      firstNoteId: 26
+      lastNoteId: 51
+      expectedNoteCount: 26
+      metric: 1
+      requiredQuality: 0.6
+      nextPhase: 2
+      target: 2
+      action: 2
+      successTransition: stage01.phase.Head.success.v1
+      failureTransition: stage01.phase.Head.failure.v1
+    - phase: 2
+      firstNoteId: 52
+      lastNoteId: 77
+      expectedNoteCount: 26
+      metric: 1
+      requiredQuality: 0.6
+      nextPhase: 3
+      target: 3
+      action: 3
+      successTransition: stage01.phase.Fins.success.v1
+      failureTransition: stage01.phase.Fins.failure.v1
+    - phase: 3
+      firstNoteId: 78
+      lastNoteId: 103
+      expectedNoteCount: 26
+      metric: 1
+      requiredQuality: 0.6
+      nextPhase: 4
+      target: 5
+      action: 7
+      successTransition: stage01.phase.Spine.success.v1
+      failureTransition: stage01.phase.Spine.failure.v1
+    - phase: 4
+      firstNoteId: 104
+      lastNoteId: 129
+      expectedNoteCount: 26
+      metric: 1
+      requiredQuality: 0.6
+      nextPhase: 5
+      target: 4
+      action: 4
+      successTransition: stage01.phase.PinBones.success.v1
+      failureTransition: stage01.phase.PinBones.failure.v1
+    - phase: 5
+      firstNoteId: 130
+      lastNoteId: 156
+      expectedNoteCount: 27
+      metric: 1
+      requiredQuality: 0.6
+      nextPhase: 6
+      target: 5
+      action: 5
+      successTransition: stage01.phase.Slicing.success.v1
+      failureTransition: stage01.phase.Slicing.failure.v1
+  authoringVersion: owner-issue39-approved-authoring-20260908-v2
+  sourceScheduleIdentity: adc3fd5a3cfa0b9b7b76068c2a5182cb448b159495201b0ed97681b71d8d5d90
+  sourceMusic: {fileID: 8300000, guid: f2a73b8002eb54f56885306b105b89af, type: 3}
+  sourcePattern: {fileID: 11400000, guid: 828351cf444df4f498f516e73cd1de08, type: 2}

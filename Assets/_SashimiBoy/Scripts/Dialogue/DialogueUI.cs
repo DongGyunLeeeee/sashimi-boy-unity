@@ -24,6 +24,7 @@ namespace SashimiBoy
                 Hide();
                 return;
             }
+            if (line.kind == DialogueLineKind.Action) { Hide(); return; }
 
             if (speakerText != null)
             {
@@ -33,6 +34,8 @@ namespace SashimiBoy
             if (bodyText != null)
             {
                 bodyText.text = line.text;
+                bodyText.fontStyle = line.kind == DialogueLineKind.Thought ? FontStyle.Italic : FontStyle.Normal;
+                bodyText.color = line.kind == DialogueLineKind.Thought ? new Color(.73f,.88f,.95f) : Color.white;
             }
 
             Target.SetActive(true);

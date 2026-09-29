@@ -16,6 +16,7 @@ namespace SashimiBoy.Tests
         private const string RockfishStageId = "STAGE_02_ROCKFISH";
         private const string Stage01PatternPath =
             "Assets/_SashimiBoy/Data/Generated/Stage01NotePattern.asset";
+        private readonly List<ScriptableObject> semanticFixtures = new List<ScriptableObject>();
         private readonly List<GameObject> createdObjects =
             new List<GameObject>();
 
@@ -46,6 +47,8 @@ namespace SashimiBoy.Tests
             }
 
             createdObjects.Clear();
+            foreach (var fixture in semanticFixtures) UnityEngine.Object.DestroyImmediate(fixture);
+            semanticFixtures.Clear();
         }
 
         [Test]
@@ -308,9 +311,9 @@ namespace SashimiBoy.Tests
                 "SashimiBoy.GameFlowManager",
                 gameFlow);
 
-            Component timing = CreateComponent(
-                "Timing",
-                "SashimiBoy.Stage01SalmonTimingScaffold");
+            Component provider, tracker;
+            Component timing = CreateNaturalPatternRig(out provider, out tracker);
+            SemanticTestFixture.ResolveAll(timing);
             RuntimeReflection.SetField(timing, "score", 2500);
             RuntimeReflection.SetField(timing, "yieldPercent", 72f);
 
@@ -361,10 +364,9 @@ namespace SashimiBoy.Tests
         [Test]
         public void FinalizeStageResultOnce_MissingGameFlow_RemainsFailed()
         {
-            Component timing = CreateComponent(
-                "Timing",
-                "SashimiBoy.Stage01SalmonTimingScaffold");
-
+            Component provider, tracker;
+            Component timing = CreateNaturalPatternRig(out provider, out tracker);
+            SemanticTestFixture.ResolveAll(timing);
             LogAssert.Expect(
                 LogType.Error,
                 "Stage01 result could not be finalized because " +
@@ -479,6 +481,7 @@ namespace SashimiBoy.Tests
                 "activeNoteTracker",
                 tracker);
             RuntimeReflection.Invoke(timing, "InitializePatternTracking");
+            semanticFixtures.Add(SemanticTestFixture.Configure(timing));
             return timing;
         }
 

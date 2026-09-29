@@ -48,7 +48,7 @@ namespace SashimiBoy
                     order = 2,
                     fishType = FishType.Rockfish,
                     hiphopGenre = "Boom bap",
-                    bpm = 88f,
+                    bpm = 90f,
                     requiredPreviousStageId = SashimiBoyConstants.StageIds.Salmon,
                     nextStageId = SashimiBoyConstants.StageIds.Sole,
                     rewardEquipment = EquipmentId.DawSoftware,

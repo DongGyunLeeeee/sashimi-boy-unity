@@ -1,5 +1,6 @@
 using System;
 using System.Text;
+using SashimiBoy.Semantics;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -18,6 +19,9 @@ namespace SashimiBoy
     /// </summary>
     public sealed class Stage01SalmonTimingScaffold : MonoBehaviour
     {
+        // Preserve serialized Stage1 components while sharing the tested DSP/judgement engine with authored fish stages.
+        public string stageId = SashimiBoyConstants.StageIds.Salmon;
+        public string chartAuthoringVersion = ApprovedPhaseChart.Version;
         [Header("Audio")]
         public AudioClip musicClip;
         public AudioSource audioSource;
@@ -40,6 +44,18 @@ namespace SashimiBoy
         [Header("Stage 01 Pattern")]
         public Stage01NotePatternProvider notePatternProvider;
         public Stage01ActiveNoteTracker activeNoteTracker;
+
+        [Header("Semantic phase gates (explicit saved chart required)")]
+        public SemanticBeatmapDefinition semanticBeatmap;
+        public bool useAuthoredStageCamera;
+        [Min(0)] public int emptyInputScorePenalty = 100;
+        [Min(0f)] public float emptyInputQualityPenalty = .35f;
+        public PhasePerformanceTracker PhasePerformance { get; } = new PhasePerformanceTracker();
+        public SemanticValidationResult SemanticValidation { get; private set; }
+        public event Action<SemanticEvent> SemanticEventRaised;
+        // Presentation owns blur/fade/return choreography. No success/save call belongs in this callback.
+        public event Action<SemanticEvent> FailureReturnRequested;
+        private long lastPhysicalInputFrame = -1;
 
         [Header("Presentation")]
         public Stage01SalmonPresentationController presentationController;
@@ -116,6 +132,9 @@ namespace SashimiBoy
         {
             get
             {
+                // AudioSource.time returns to zero after the clip ends; a completed run
+                // must keep its result presentation until the explicit retry reset.
+                if (resultShown) return Stage01SalmonSection.Result;
                 double songSec = SongTimeSeconds;
                 if (songSec < gameplayStartSec)
                 {
@@ -155,6 +174,7 @@ namespace SashimiBoy
             if (activeNoteTracker != null)
             {
                 activeNoteTracker.NoteMissed -= HandleAutoMiss;
+                activeNoteTracker.OutcomeResolved -= HandleJudgementOutcome;
             }
         }
 
@@ -163,7 +183,7 @@ namespace SashimiBoy
             clipMissing = audioSource == null || audioSource.clip == null;
             RefreshMissingClipWarning();
 
-            if (playOnStart && !clipMissing &&
+            if (SemanticValidation.IsValid && playOnStart && !clipMissing &&
                 audioClock != null && !audioClock.IsRunning)
             {
                 audioClock.Play();
@@ -237,6 +257,7 @@ namespace SashimiBoy
 
             debugBuilder.Length = 0;
             debugBuilder.AppendLine("Stage 01 Timing");
+            debugBuilder.AppendLine($"Semantic: {SemanticValidation}");
             debugBuilder.AppendLine($"Section: {CurrentSection}");
             debugBuilder.AppendLine($"Song Time: {songSec:0.000}s");
             debugBuilder.AppendLine(
@@ -282,6 +303,8 @@ namespace SashimiBoy
 
         private void HandleTimingInput()
         {
+            if (!PhasePerformance.IsRunning || lastPhysicalInputFrame == Time.frameCount) return;
+            lastPhysicalInputFrame = Time.frameCount;
             double rawSec = RawSongTimeSec();
             double inputSec = InputAdjustedSongTimeSec();
             lastInputSongSec = rawSec;
@@ -309,7 +332,7 @@ namespace SashimiBoy
 
         private void ResolveGameplayInput(double inputSec)
         {
-            if (activeNoteTracker == null ||
+            if (!PhasePerformance.IsRunning || activeNoteTracker == null ||
                 !activeNoteTracker.IsInitialized)
             {
                 lastInputOffsetMs = 0d;
@@ -324,8 +347,12 @@ namespace SashimiBoy
                 NastyWindowMs,
                 SmoothWindowMs,
                 SlippedWindowMs);
+            if (PhasePerformance.Failed && outcome.kind == Stage01NoteInputKind.Empty) return;
             if (outcome.kind == Stage01NoteInputKind.Empty)
             {
+                if (PhasePerformance.PenalizeEmptyInput(activeNoteTracker.RunId,
+                    outcome.physicalInputId, emptyInputQualityPenalty) != ResolveStatus.Accepted) return;
+                score = Mathf.Max(0, score - emptyInputScorePenalty);
                 lastInputOffsetMs = 0d;
                 lastJudge = "EMPTY HIT / WHACK";
                 lastInputDirection = string.Empty;
@@ -334,7 +361,10 @@ namespace SashimiBoy
                 combo = 0;
                 UpdateYieldPercent();
                 ShowFallbackJudge(lastJudge);
-                presentationController?.PresentEmptyHit();
+                // Feedback only: an empty edge never advances the fish/tool action.
+                judgementFeedback?.ShowStatus("WHACK", $"−{emptyInputScorePenalty} SCORE",
+                    $"단계 품질 −{emptyInputQualityPenalty:0.00}", new Color(1f, .35f, .25f));
+                presentationController?.hud?.ShowReadableJudgement($"WHACK  −{emptyInputScorePenalty}",new Color(1f,.45f,.38f));
                 return;
             }
 
@@ -380,7 +410,7 @@ namespace SashimiBoy
                 $"{lastJudge} {offsetMs:+0;-0;0}ms {direction}";
             ShowFallbackJudge(judgeMessage);
 
-            if (presentationController != null)
+            if (presentationController != null && !PhasePerformance.Failed)
             {
                 presentationController.PresentJudgement(
                     grade,
@@ -408,6 +438,16 @@ namespace SashimiBoy
                     Stage01ActiveNoteTracker>();
             }
 
+            SemanticValidationResult sourceValidation = ValidatePatternSource();
+            if (!sourceValidation.IsValid)
+            {
+                activeNoteTracker?.Initialize(null);
+                PhasePerformance.Reset(null, 0, activeNoteTracker != null ? activeNoteTracker.RunId : PhasePerformance.RunId + 1);
+                SemanticValidation = sourceValidation;
+                if (activeNoteTracker != null) activeNoteTracker.ResolutionBlocked = true;
+                audioClock?.Stop();
+                return;
+            }
             if (notePatternProvider != null)
             {
                 notePatternProvider.Initialize(this);
@@ -421,11 +461,95 @@ namespace SashimiBoy
             activeNoteTracker.Initialize(notePatternProvider);
             activeNoteTracker.NoteMissed -= HandleAutoMiss;
             activeNoteTracker.NoteMissed += HandleAutoMiss;
+            activeNoteTracker.OutcomeResolved -= HandleJudgementOutcome;
+            activeNoteTracker.OutcomeResolved += HandleJudgementOutcome;
+            PhasePerformance.EventRaised -= HandleSemanticEvent;
+            PhasePerformance.EventRaised += HandleSemanticEvent;
+            SemanticValidation = SemanticChartValidator.Validate(semanticBeatmap != null ? semanticBeatmap.chart : null,
+                GetAuthoredGameplayNoteCount());
+            if (SemanticValidation.IsValid && !semanticBeatmap.MatchesSource(this))
+            {
+                SemanticValidation = new SemanticValidationResult("STALE_CHART", "Chart source identity differs; explicitly re-author before starting.");
+            }
+            var resetValidation = PhasePerformance.Reset(SemanticValidation.IsValid ? semanticBeatmap.chart : null,
+                GetAuthoredGameplayNoteCount(), activeNoteTracker.RunId);
+            if (SemanticValidation.IsValid) SemanticValidation = resetValidation;
+            activeNoteTracker.ResolutionBlocked = !SemanticValidation.IsValid;
+            if (!SemanticValidation.IsValid) audioClock?.Stop();
+        }
+
+        public SemanticValidationResult ValidatePatternSource()
+        {
+            if (activeNoteTracker == null || notePatternProvider == null || notePatternProvider.pattern == null)
+                return new SemanticValidationResult("MISSING_PATTERN", "Stage01 pattern/provider/tracker is required.");
+            if (!SemanticChartValidator.Finite(bpm) || bpm <= 0f ||
+                !SemanticChartValidator.Finite(firstDownbeatSec) || firstDownbeatSec < 0d ||
+                !SemanticChartValidator.Finite(gameplayStartSec) || gameplayStartSec < firstDownbeatSec ||
+                !SemanticChartValidator.Finite(gameplayEndSec) || gameplayEndSec <= gameplayStartSec ||
+                !SemanticChartValidator.Finite(manualAudioOffsetMs) || !SemanticChartValidator.Finite(manualInputLatencyMs) ||
+                (gameplayEndSec - firstDownbeatSec) / BeatLengthSeconds >= int.MaxValue)
+                return new SemanticValidationResult("INVALID_TIMING", "Timing/calibration must be finite with a positive BPM and ordered song range.");
+            var pattern = notePatternProvider.pattern;
+            if (pattern.manualBarCount < 1 || pattern.repeatFromBar < 1 || pattern.repeatFromBar > pattern.manualBarCount ||
+                pattern.subdivisionsPerBeat < 1 || pattern.subdivisionsPerBeat > int.MaxValue / 4 ||
+                pattern.notes == null || pattern.notes.Count == 0)
+                return new SemanticValidationResult("INVALID_PATTERN", "Pattern range, subdivision and notes are required.");
+            var positions = new System.Collections.Generic.HashSet<long>();
+            foreach (var note in pattern.notes)
+            {
+                if (note == null || note.barIndex < 1 || note.barIndex > pattern.manualBarCount ||
+                    note.eighthStepInBar < 0 || note.eighthStepInBar >= pattern.subdivisionsPerBeat * 4 ||
+                    !positions.Add((long)note.barIndex * (pattern.subdivisionsPerBeat * 4L) + note.eighthStepInBar))
+                    return new SemanticValidationResult("INVALID_PATTERN_NOTE", "Pattern notes must have unique valid bar/step references.");
+            }
+            return new SemanticValidationResult("OK", "Existing timing source validated without mutation.");
+        }
+
+        private void HandleJudgementOutcome(JudgementOutcome outcome)
+        {
+            PhasePerformance.Consume(outcome);
+        }
+
+        private void HandleSemanticEvent(SemanticEvent value)
+        {
+            if (value.kind == SemanticEventKind.PhaseFailed)
+            {
+                activeNoteTracker.ResolutionBlocked = true;
+                audioClock?.Stop();
+                // Failure is terminal and cannot enter the legacy result/progression path.
+                resultShown = false;
+            }
+            SemanticEventRaised?.Invoke(value);
+            if (value.kind == SemanticEventKind.PhaseFailed) FailureReturnRequested?.Invoke(value);
+        }
+
+        // Stops transport, rebuilds the existing schedule, resets rhythm and semantic state.
+        // Consumers reset fish/hand/tool/VFX state on RunReset before the next Play command.
+        public bool RetryStage()
+        {
+            if (PhasePerformance.IsDispatching) throw new InvalidOperationException("Queue retry until semantic dispatch returns.");
+            audioClock?.Stop();
+            score = combo = maxCombo = totalGameplayInputs = 0;
+            nastyCount = smoothCount = slippedCount = whackCount = 0;
+            yieldPercent = 0f;
+            lastInputSongSec = lastInputOffsetMs = 0d;
+            lastJudge = "None"; lastInputDirection = string.Empty;
+            judgeDisplayTimer = 0f; lastPhysicalInputFrame = -1;
+            resultShown = stageResultFinalizationAttempted = stageResultFinalized = false;
+            SetResultVisible(false);
+            InitializePatternTracking();
+            return SemanticValidation.IsValid;
+        }
+
+        public bool StartStagePlayback()
+        {
+            return SemanticValidation.IsValid && PhasePerformance.IsRunning &&
+                audioClock != null && audioClock.Play();
         }
 
         private void HandleAutoMiss(Stage01RuntimeNote note)
         {
-            if (resultShown)
+            if (resultShown || !SemanticValidation.IsValid || PhasePerformance.Failed)
             {
                 return;
             }
@@ -443,7 +567,7 @@ namespace SashimiBoy
             double songSec,
             double inputAdjustedSongSec)
         {
-            if (resultShown)
+            if (resultShown || !SemanticValidation.IsValid || PhasePerformance.Failed)
             {
                 return;
             }
@@ -451,7 +575,7 @@ namespace SashimiBoy
             if (songSec >= gameplayEndSec)
             {
                 activeNoteTracker?.ResolveRemainingNotesAsMissed();
-                ShowResultPlaceholder(songSec);
+                if (PhasePerformance.Completed) ShowResultPlaceholder(songSec);
                 return;
             }
 
@@ -465,6 +589,7 @@ namespace SashimiBoy
 
         private Camera EnsureMainCamera()
         {
+            bool createdCamera = false;
             Camera camera = Camera.main;
             if (camera == null)
             {
@@ -476,10 +601,12 @@ namespace SashimiBoy
                 GameObject cameraObject = new GameObject("Main Camera");
                 cameraObject.tag = "MainCamera";
                 camera = cameraObject.AddComponent<Camera>();
+                createdCamera = true;
             }
 
             camera.gameObject.SetActive(true);
             camera.tag = "MainCamera";
+            if (useAuthoredStageCamera && !createdCamera) return camera;
             camera.clearFlags = CameraClearFlags.SolidColor;
             camera.backgroundColor = new Color(0.025f, 0.03f, 0.035f);
             camera.orthographic = true;
@@ -653,7 +780,7 @@ namespace SashimiBoy
 
         private void FinalizeStageResultOnce()
         {
-            if (stageResultFinalizationAttempted)
+            if (!SemanticValidation.IsValid || !PhasePerformance.Completed || PhasePerformance.Failed || stageResultFinalizationAttempted)
             {
                 return;
             }
@@ -673,7 +800,7 @@ namespace SashimiBoy
             }
 
             StageRuntimeData stage = ContentDefaults.FindStage(
-                SashimiBoyConstants.StageIds.Salmon);
+                stageId);
             if (stage == null || string.IsNullOrWhiteSpace(stage.stageId))
             {
                 Debug.LogError(

@@ -141,6 +141,13 @@ namespace SashimiBoy.EditorTools
                 scene,
                 catalog,
                 clusters);
+            var worldRoot = scene.GetRootGameObjects().SingleOrDefault(
+                g => g.name == "DayWorld_Integration" && g.transform.Find("VenueAssets") != null);
+            if (worldRoot != null)
+            {
+                DayWorldVenueAuthoring.ApplyClubPlacement(scene);
+                DayWorldStreetAuthoring.Apply(scene, worldRoot.transform);
+            }
             ValidateArtPass(scene, snapshot, stats);
 
             string sceneStateAfter = CaptureSceneState(scene);

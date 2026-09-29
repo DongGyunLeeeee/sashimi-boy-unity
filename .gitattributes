@@ -5,3 +5,60 @@
 *.tif filter=lfs diff=lfs merge=lfs -text
 *.tiff filter=lfs diff=lfs merge=lfs -text
 *.exr filter=lfs diff=lfs merge=lfs -text
+Assets/_SashimiBoy/Art/Generated/DayWorld/Venues/MS_ShopkeeperRest_*.asset filter=lfs diff=lfs merge=lfs -text
+Assets/_SashimiBoy/Art/Generated/Reports/Stage01SalmonButcherySourceRoleMap.md -whitespace
+# Unity emits a trailing space for empty YAML scalars. Keep its canonical output
+# in the Issue42 assets; code/docs retain the normal whitespace checks.
+Assets/_SashimiBoy/Art/Generated/DayWorld/** whitespace=-blank-at-eol
+Assets/_SashimiBoy/Art/Source/DayWorld/**/*.meta whitespace=-blank-at-eol
+Assets/_SashimiBoy/**/DayWorld*.meta whitespace=-blank-at-eol
+Assets/_SashimiBoy/Scripts/DayWorld/*.meta whitespace=-blank-at-eol
+Assets/_SashimiBoy/Scenes/Bootstrap.unity whitespace=-blank-at-eol
+Assets/_SashimiBoy/Scenes/Street.unity whitespace=-blank-at-eol
+Assets/_SashimiBoy/Scenes/FishShopDialogue.unity whitespace=-blank-at-eol
+Assets/_SashimiBoy/Scenes/EquipmentShop.unity whitespace=-blank-at-eol
+Assets/_SashimiBoy/Scenes/Club.unity whitespace=-blank-at-eol
+Assets/_SashimiBoy/Scenes/KevinHome.unity whitespace=-blank-at-eol
+Assets/_SashimiBoy/Scenes/KevinHome.unity.meta whitespace=-blank-at-eol
+# The new Stage2 assets use the same canonical Unity serialization.
+Assets/_SashimiBoy/Art/Generated/Stage02Rockfish.meta whitespace=-blank-at-eol
+Assets/_SashimiBoy/Art/Generated/Stage02Rockfish/** whitespace=-blank-at-eol
+Assets/_SashimiBoy/Art/Resources.meta whitespace=-blank-at-eol
+Assets/_SashimiBoy/Art/Resources/Stage02Rockfish.meta whitespace=-blank-at-eol
+Assets/_SashimiBoy/Art/Resources/Stage02Rockfish/*.meta whitespace=-blank-at-eol
+Assets/_SashimiBoy/Audio/Music/Stage_02_Rockfish.meta whitespace=-blank-at-eol
+Assets/_SashimiBoy/Audio/Music/Stage_02_Rockfish/*.meta whitespace=-blank-at-eol
+Assets/_SashimiBoy/Data/Generated/Stage02*.asset* whitespace=-blank-at-eol
+Assets/_SashimiBoy/Scenes/Stage02_Rockfish.unity* whitespace=-blank-at-eol
+Assets/_SashimiBoy/Scripts/Rhythm/RockfishFlesh.shader.meta whitespace=-blank-at-eol
+# Owner-supplied transparent sprites and their localized HUD authoring.
+Assets/_SashimiBoy/Art/Source/UI/Judgement/*.png.meta whitespace=-blank-at-eol
+Assets/_SashimiBoy/Data/Generated/OwnerJudgementVisuals.asset* whitespace=-blank-at-eol
+Assets/_SashimiBoy/Scripts/Editor/OwnerJudgementAuthoring.cs.meta whitespace=-blank-at-eol
+Assets/_SashimiBoy/Scripts/Editor/Stage02OwnerAssets.cs.meta whitespace=-blank-at-eol
+# Localized face selection assets retain Unity's empty serialized fields.
+Assets/_SashimiBoy/Art/Generated/Stage01Playable/Kevin/* whitespace=-blank-at-eol
+Assets/_SashimiBoy/Art/Generated/Data/KevinFaceCatalog.asset* whitespace=-blank-at-eol
+Assets/_SashimiBoy/Scripts/World/KevinAppearance.cs.meta whitespace=-blank-at-eol
+Assets/_SashimiBoy/Scripts/World/KevinFaceCatalog.cs.meta whitespace=-blank-at-eol
+Assets/_SashimiBoy/Scripts/Editor/KevinCustomizationAuthoring.cs.meta whitespace=-blank-at-eol
+Assets/_SashimiBoy/Scripts/Editor/DayWorldVenueLayout.cs.meta whitespace=-blank-at-eol
+Assets/_SashimiBoy/Scripts/Editor/DayWorldOwnerPresentationAuthoring.cs.meta whitespace=-blank-at-eol
+Assets/_SashimiBoy/Tests/EditMode/KevinCustomizationEditModeTests.cs.meta whitespace=-blank-at-eol
+# Preserve canonical Unity YAML in the inherited Stage1 generated assets and
+# imported metadata. Source code and authored documentation keep strict checks.
+Assets/_SashimiBoy/Art/Generated/Stage01Playable.meta whitespace=-blank-at-eol
+Assets/_SashimiBoy/Art/Generated/Stage01Playable/** whitespace=-blank-at-eol
+Assets/_SashimiBoy/Art/Source/**/*.meta whitespace=-blank-at-eol
+Assets/_SashimiBoy/Data/Generated/Stage01SemanticBeatmap.asset* whitespace=-blank-at-eol
+Assets/_SashimiBoy/Scripts/Rhythm/Stage01JudgementWhiteKey.shader.meta whitespace=-blank-at-eol
+# This imported license is retained byte-for-byte, including its original spaces.
+Assets/_SashimiBoy/Art/Source/Characters/Kevin/Body/Quaternius/License.txt whitespace=-blank-at-eol,-blank-at-eof
+Assets/_SashimiBoy/Art/Generated/DayWorld/Misuk_Head.asset filter=lfs diff=lfs merge=lfs -text
+Assets/_SashimiBoy/Art/Generated/DayWorld/Seongho_Body.asset filter=lfs diff=lfs merge=lfs -text
+Assets/_SashimiBoy/Art/Generated/Stage01Playable/Kevin/MS_OwnerHead.asset filter=lfs diff=lfs merge=lfs -text
+Assets/_SashimiBoy/Art/Generated/DayWorld/Cheolsu_Body.asset filter=lfs diff=lfs merge=lfs -text
+Assets/_SashimiBoy/Art/Generated/DayWorld/Cheolsu_Head.asset filter=lfs diff=lfs merge=lfs -text
+Assets/_SashimiBoy/Art/Generated/DayWorld/Minjae_Body.asset filter=lfs diff=lfs merge=lfs -text
+Assets/_SashimiBoy/Art/Generated/DayWorld/Minjae_Head.asset filter=lfs diff=lfs merge=lfs -text
+Assets/_SashimiBoy/Art/Generated/DayWorld/Misuk_Body.asset filter=lfs diff=lfs merge=lfs -text

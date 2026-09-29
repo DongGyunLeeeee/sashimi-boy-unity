@@ -69,6 +69,34 @@ namespace SashimiBoy.EditorTools
             BuildAll(false, false);
         }
 
+        [MenuItem("Sashimi Boy/Art/Apply Crosswalk Direction Only")]
+        public static void ApplyCrosswalkDirectionBatch()
+        {
+            Require(!EditorApplication.isPlayingOrWillChangePlaymode,
+                "Exit Play mode before applying the crosswalk direction.");
+            for (int i = 0; i < SceneManager.sceneCount; i++)
+                Require(!SceneManager.GetSceneAt(i).isDirty,
+                    "Save unsaved scenes before applying the crosswalk direction.");
+            Scene scene = OpenRequiredScene(StreetScenePath);
+            Transform root = FindNamed(scene, "Street_PresentationRoot").transform;
+            Transform[] stripes = Enumerable.Range(1, 6)
+                .Select(i => root.Find($"Crosswalk_{i:00}")).ToArray();
+            Require(stripes.All(stripe => stripe != null),
+                "The existing six crosswalk stripes must be present.");
+            for (int i = 0; i < stripes.Length; i++)
+            {
+                stripes[i].localPosition = CrosswalkPosition(i);
+                stripes[i].localRotation = Quaternion.Euler(0f, 90f, 0f);
+            }
+            ValidateCommon(scene, GameLocation.Street, "Street_PresentationRoot");
+            SaveScene(scene, StreetScenePath);
+            Debug.Log("[Crosswalk] Applied 90-degree direction to the six existing stripes; scene objects retained.");
+        }
+
+        // Rotate the whole marking around its existing center, including stripe spacing.
+        private static Vector3 CrosswalkPosition(int index) =>
+            new Vector3(0f, 0.075f, -0.8f - (-0.9f + index * 0.36f));
+
         private static void BuildAll(bool rebuildStage, bool showDialog)
         {
             EnsureFolder(MaterialRoot);
@@ -337,9 +365,9 @@ namespace SashimiBoy.EditorTools
             {
                 Primitive($"Crosswalk_{i + 1:00}", root,
                     PrimitiveType.Cube,
-                    new Vector3(-0.9f + i * 0.36f, 0.075f, -0.8f),
+                    CrosswalkPosition(i),
                     new Vector3(0.2f, 0.015f, 2.35f),
-                    materials.white);
+                    materials.white, new Vector3(0f, 90f, 0f));
             }
 
             for (int i = 0; i < 10; i++)

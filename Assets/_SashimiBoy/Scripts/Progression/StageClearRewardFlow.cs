@@ -28,7 +28,7 @@ namespace SashimiBoy
 
         private void HandleStageCleared(StageClearPayload payload)
         {
-            if (!autoOpenShopPopup)
+            if (!autoOpenShopPopup || DayWorldFlow.Active)
             {
                 return;
             }

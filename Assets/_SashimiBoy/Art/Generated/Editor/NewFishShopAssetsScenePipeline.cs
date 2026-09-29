@@ -338,6 +338,10 @@ namespace SashimiBoy.EditorTools
             }
 
             HideLegacyFishShopPresentation(scene);
+            var worldRoot = scene.GetRootGameObjects().SingleOrDefault(
+                g => g.name == "DayWorld_Integration" && g.transform.Find("VenueAssets") != null);
+            if (worldRoot != null)
+                DayWorldVenueAuthoring.Apply(scene, worldRoot.transform);
             ValidatePrefabSource(display, displayInsidePrefab);
             ValidatePrefabSource(tableLeft, sashimiTablePrefab);
             ValidatePrefabSource(tableRight, sashimiTablePrefab);
@@ -439,6 +443,7 @@ namespace SashimiBoy.EditorTools
             }
 
             EditorSceneManager.MarkSceneDirty(scene);
+            Stage01PlayableAuthoring.ReapplyIfAuthored(scene);
             EditorSceneManager.SaveScene(scene, StageScenePath);
         }
 

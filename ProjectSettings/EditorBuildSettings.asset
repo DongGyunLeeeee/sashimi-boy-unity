@@ -23,4 +23,10 @@ EditorBuildSettings:
   - enabled: 1
     path: Assets/_SashimiBoy/Scenes/Stage01_Salmon.unity
     guid: 165e6eb49a0df4272b44d1ff9ea2eab3
+  - enabled: 1
+    path: Assets/_SashimiBoy/Scenes/KevinHome.unity
+    guid: f574d766bf671cb499eaf40bc4614ca5
+  - enabled: 1
+    path: Assets/_SashimiBoy/Scenes/Stage02_Rockfish.unity
+    guid: ee4375ec62b077a44858ec110eadf7e2
   m_configObjects: {}

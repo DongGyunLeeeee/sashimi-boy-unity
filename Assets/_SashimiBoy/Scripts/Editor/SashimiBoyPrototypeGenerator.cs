@@ -364,6 +364,7 @@ namespace SashimiBoy.EditorTools
             clock.playOnStart = false;
             Stage01SalmonTimingScaffold scaffold = scaffoldObject.AddComponent<Stage01SalmonTimingScaffold>();
             scaffold.musicClip = source.clip;
+            SashimiBoy.EditorTools.Stage01ApprovedPhaseChartAuthoring.BindExistingChart(scaffold);
             scaffold.audioSource = source;
             scaffold.audioClock = clock;
             scaffold.bpm = 88f;
@@ -700,6 +701,7 @@ namespace SashimiBoy.EditorTools
                 asset.kevinShopRequest = runtime.kevinShopRequest;
                 asset.shopkeeperRecommendation = runtime.shopkeeperRecommendation;
                 asset.implementedInPrototype = runtime.order != 1;
+                if(runtime.order==2 && File.Exists(Stage02RockfishAuthoring.ScenePath)) Stage02RockfishAuthoring.ApplyMetadata(asset);
                 asset.distractionCues = new List<DistractionCue>(runtime.distractionCues);
                 EditorUtility.SetDirty(asset);
                 stageAssets.Add(asset);

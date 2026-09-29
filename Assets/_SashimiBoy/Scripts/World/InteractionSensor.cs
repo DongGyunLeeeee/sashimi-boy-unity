@@ -21,7 +21,7 @@ namespace SashimiBoy
 
         private void Update()
         {
-            if (!inputEnabled)
+            if (!inputEnabled || (DayWorldFlow.Active && DayWorldFlow.InputSuppressed))
             {
                 ClearCurrent();
                 UpdatePrompt();
@@ -79,7 +79,7 @@ namespace SashimiBoy
                 RaycastHit hit = raycastHits[i];
                 Collider collider = hit.collider;
                 if (collider == null ||
-                    collider.transform.IsChildOf(transform.root))
+                    collider.transform.IsChildOf(transform))
                 {
                     continue;
                 }
@@ -131,7 +131,7 @@ namespace SashimiBoy
             for (int i = 0; i < hits.Length; i++)
             {
                 Collider hit = hits[i];
-                if (hit == null || hit.transform.IsChildOf(transform.root))
+                if (hit == null || hit.transform.IsChildOf(transform))
                 {
                     continue;
                 }
@@ -189,8 +189,11 @@ namespace SashimiBoy
             MonoBehaviour[] behaviours = hit.GetComponentsInParent<MonoBehaviour>();
             for (int i = 0; i < behaviours.Length; i++)
             {
-                if (behaviours[i] is IInteractable interactable)
+                if (behaviours[i].isActiveAndEnabled && behaviours[i] is IInteractable interactable &&
+                    (!(interactable is IInteractionAvailability availability) || availability.IsAvailable))
                 {
+                    if (DayWorldFlow.AwaitingWake &&
+                        !(interactable is DayWorldInteractable bed && bed.kind == DayWorldInteractionKind.Bed)) continue;
                     return interactable;
                 }
             }

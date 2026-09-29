@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Threading;
+using SashimiBoy.Semantics;
 using UnityEngine;
 
 namespace SashimiBoy
@@ -15,15 +17,17 @@ namespace SashimiBoy
         public readonly Stage01NoteInputKind kind;
         public readonly Stage01RuntimeNote note;
         public readonly JudgeResult judge;
+        public readonly long physicalInputId;
 
         public Stage01NoteInputOutcome(
             Stage01NoteInputKind kind,
             Stage01RuntimeNote note,
-            JudgeResult judge)
+            JudgeResult judge, long physicalInputId = 0)
         {
             this.kind = kind;
             this.note = note;
             this.judge = judge;
+            this.physicalInputId = physicalInputId;
         }
     }
 
@@ -34,6 +38,12 @@ namespace SashimiBoy
         public event Action<Stage01RuntimeNote> NoteMissed;
 
         private int nextUnresolvedIndex;
+        private static long nextRunId;
+        private long generatedInputId;
+        private readonly HashSet<long> consumedPhysicalInputs = new HashSet<long>();
+        public long RunId { get; private set; }
+        public bool ResolutionBlocked { get; set; }
+        public event Action<JudgementOutcome> OutcomeResolved;
 
         public int HitCount { get; private set; }
         public int MissCount { get; private set; }
@@ -67,6 +77,10 @@ namespace SashimiBoy
 
         public void Initialize(Stage01NotePatternProvider patternProvider)
         {
+            RunId = Interlocked.Increment(ref nextRunId);
+            consumedPhysicalInputs.Clear();
+            generatedInputId = 0;
+            ResolutionBlocked = false;
             provider = patternProvider;
             provider?.ResetStates();
             nextUnresolvedIndex = 0;
@@ -80,9 +94,10 @@ namespace SashimiBoy
             double lateWindowMilliseconds)
         {
             IReadOnlyList<Stage01RuntimeNote> notes = Notes;
+            if (!SemanticChartValidator.Finite(songTimeSeconds) || !SemanticChartValidator.Finite(lateWindowMilliseconds) || lateWindowMilliseconds < 0d) return;
             double lateWindowSeconds = lateWindowMilliseconds / 1000d;
             AdvancePastResolvedNotes();
-            while (nextUnresolvedIndex < notes.Count)
+            while (!ResolutionBlocked && nextUnresolvedIndex < notes.Count)
             {
                 Stage01RuntimeNote note = notes[nextUnresolvedIndex];
                 if (songTimeSeconds <=
@@ -99,7 +114,7 @@ namespace SashimiBoy
         {
             IReadOnlyList<Stage01RuntimeNote> notes = Notes;
             AdvancePastResolvedNotes();
-            while (nextUnresolvedIndex < notes.Count)
+            while (!ResolutionBlocked && nextUnresolvedIndex < notes.Count)
             {
                 ResolveNextNoteAsMissed(notes[nextUnresolvedIndex]);
             }
@@ -111,9 +126,28 @@ namespace SashimiBoy
             double smoothWindowMilliseconds,
             double slippedWindowMilliseconds)
         {
+            return JudgePhysicalInput(inputSongTimeSeconds, nastyWindowMilliseconds,
+                smoothWindowMilliseconds, slippedWindowMilliseconds, ++generatedInputId);
+        }
+
+        public Stage01NoteInputOutcome JudgePhysicalInput(
+            double inputSongTimeSeconds, double nastyWindowMilliseconds,
+            double smoothWindowMilliseconds, double slippedWindowMilliseconds, long physicalInputId)
+        {
+            if (!SemanticChartValidator.Finite(inputSongTimeSeconds) ||
+                !SemanticChartValidator.Finite(nastyWindowMilliseconds) ||
+                !SemanticChartValidator.Finite(smoothWindowMilliseconds) ||
+                !SemanticChartValidator.Finite(slippedWindowMilliseconds) ||
+                nastyWindowMilliseconds < 0d || smoothWindowMilliseconds < nastyWindowMilliseconds ||
+                slippedWindowMilliseconds < smoothWindowMilliseconds || ResolutionBlocked || physicalInputId <= 0 ||
+                !consumedPhysicalInputs.Add(physicalInputId))
+                return new Stage01NoteInputOutcome(Stage01NoteInputKind.Empty, null, default);
             ProcessExpiredNotes(
                 inputSongTimeSeconds,
                 slippedWindowMilliseconds);
+            // An expired note may have failed the gate during this same input edge.
+            if (ResolutionBlocked)
+                return new Stage01NoteInputOutcome(Stage01NoteInputKind.Empty, null, default);
             Stage01RuntimeNote note = NextActiveNote;
             if (note == null)
             {
@@ -121,7 +155,7 @@ namespace SashimiBoy
                 return new Stage01NoteInputOutcome(
                     Stage01NoteInputKind.Empty,
                     null,
-                    default);
+                    default, physicalInputId);
             }
 
             double offsetMilliseconds =
@@ -132,7 +166,7 @@ namespace SashimiBoy
                 return new Stage01NoteInputOutcome(
                     Stage01NoteInputKind.Empty,
                     null,
-                    default);
+                    default, physicalInputId);
             }
 
             JudgeResult judge = RhythmJudge.JudgeFixedWindows(
@@ -144,10 +178,12 @@ namespace SashimiBoy
             HitCount++;
             nextUnresolvedIndex++;
             AdvancePastResolvedNotes();
+            OutcomeResolved?.Invoke(new JudgementOutcome(RunId, note.sequenceIndex,
+                ToQualityGrade(judge.grade), physicalInputId, false));
             return new Stage01NoteInputOutcome(
                 Stage01NoteInputKind.Hit,
                 note,
-                judge);
+                judge, physicalInputId);
         }
 
         public int CopyUpcomingNotes(
@@ -180,12 +216,26 @@ namespace SashimiBoy
             }
         }
 
+        public static QualityGrade ToQualityGrade(JudgeGrade grade)
+        {
+            // JudgementVisualLibrary labels legacy Smooth as CLEAN and Nasty as NASTY.
+            switch (grade)
+            {
+                case JudgeGrade.Smooth: return QualityGrade.Clean;
+                case JudgeGrade.Nasty: return QualityGrade.Nasty;
+                case JudgeGrade.Slipped: return QualityGrade.Slipped;
+                default: return QualityGrade.Whack;
+            }
+        }
+
         private void ResolveNextNoteAsMissed(Stage01RuntimeNote note)
         {
             note.state = Stage01NoteState.Missed;
             MissCount++;
             nextUnresolvedIndex++;
             NoteMissed?.Invoke(note);
+            OutcomeResolved?.Invoke(new JudgementOutcome(RunId, note.sequenceIndex,
+                QualityGrade.Whack, 0, true));
             AdvancePastResolvedNotes();
         }
     }

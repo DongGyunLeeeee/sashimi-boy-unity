@@ -11,6 +11,11 @@ namespace SashimiBoy
 
         public void Interact(GameObject actor)
         {
+            if (DayWorldFlow.Active)
+            {
+                if (!DayWorldFlow.InputSuppressed) DayWorldFlow.Instance.LoadWorld(sceneName, gameObject.scene.name);
+                return;
+            }
             if (SceneTransitionService.Instance != null)
             {
                 SceneTransitionService.Instance.LoadScene(sceneName);

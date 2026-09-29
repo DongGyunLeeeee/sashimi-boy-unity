@@ -48,6 +48,7 @@ namespace SashimiBoy.Tests
                 "SashimiBoy.SaveData",
                 "CreateNew");
 
+            ScriptableObject semanticFixture = null;
             try
             {
                 RuntimeReflection.SetField(
@@ -66,6 +67,7 @@ namespace SashimiBoy.Tests
                     timing,
                     "judgementFeedback",
                     null);
+                semanticFixture = SemanticTestFixture.Configure(timing);
                 var notes = (IList)RuntimeReflection.GetField(
                     provider,
                     "runtimeNotes");
@@ -175,6 +177,7 @@ namespace SashimiBoy.Tests
             }
             finally
             {
+                UnityEngine.Object.Destroy(semanticFixture);
                 RuntimeReflection.SetField(
                     saveManager,
                     "current",

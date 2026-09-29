@@ -9,6 +9,8 @@ namespace SashimiBoy
     {
         public event Action OnDialogueStarted;
         public event Action OnDialogueFinished;
+        public event Action OnDialogueCancelled;
+        public event Action<DialogueLine> OnLineShown;
 
         public DialogueUI dialogueUI;
         public KeyCode advanceKey = KeyCode.Space;
@@ -17,6 +19,7 @@ namespace SashimiBoy
         private int index;
         private bool isRunning;
         private Coroutine autoRoutine;
+        private int startedFrame;
 
         public bool IsRunning => isRunning;
 
@@ -30,7 +33,8 @@ namespace SashimiBoy
 
         private void Update()
         {
-            if (isRunning && Input.GetKeyDown(advanceKey))
+            if (isRunning && Time.frameCount > startedFrame && Input.GetKeyDown(KeyCode.Escape)) Cancel();
+            else if (isRunning && Time.frameCount > startedFrame && Input.GetKeyDown(advanceKey))
             {
                 Advance();
             }
@@ -48,6 +52,7 @@ namespace SashimiBoy
 
         public void Play(IEnumerable<DialogueLine> lines)
         {
+            if (isRunning) return;
             activeLines.Clear();
             activeLines.AddRange(lines);
             index = 0;
@@ -59,6 +64,7 @@ namespace SashimiBoy
             }
 
             isRunning = true;
+            startedFrame = Time.frameCount;
             OnDialogueStarted?.Invoke();
             ShowCurrent();
         }
@@ -89,6 +95,7 @@ namespace SashimiBoy
         private void ShowCurrent()
         {
             DialogueLine line = activeLines[index];
+            OnLineShown?.Invoke(line);
             if (dialogueUI != null)
             {
                 dialogueUI.ShowLine(line);
@@ -117,5 +124,16 @@ namespace SashimiBoy
 
             OnDialogueFinished?.Invoke();
         }
+
+        public void Cancel()
+        {
+            if (!isRunning) return;
+            if (autoRoutine != null) StopCoroutine(autoRoutine);
+            autoRoutine = null;
+            isRunning = false;
+            dialogueUI?.Hide();
+            OnDialogueCancelled?.Invoke();
+        }
+        private void OnDisable() => Cancel();
     }
 }

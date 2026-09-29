@@ -13,6 +13,8 @@ namespace SashimiBoy
         public JudgementFeedbackView judgementFeedback;
         public Stage01NotePatternProvider notePatternProvider;
         public Stage01ActiveNoteTracker activeNoteTracker;
+        public Stage01ButcheryPresenter butchery;
+        public bool cameraDrivenByBody;
 
         private Camera stageCamera;
         private Vector3 cameraBasePosition;
@@ -108,12 +110,12 @@ namespace SashimiBoy
         {
             bossDemo?.NotifyGameplayInput();
 
-            if (playerKnife != null)
+            if (butchery == null && playerKnife != null)
             {
                 playerKnife.PlaySlice(grade);
             }
 
-            if (salmon != null)
+            if (butchery == null && salmon != null)
             {
                 salmon.ApplyJudgement(grade);
             }
@@ -126,6 +128,9 @@ namespace SashimiBoy
             if (hud != null)
             {
                 hud.ShowReaction(grade);
+                string label = grade == JudgeGrade.Nasty ? "NASTY" : grade == JudgeGrade.Smooth ? "CLEAN" : grade == JudgeGrade.Slipped ? "SLIPPED" : "WHACK";
+                hud.ShowReadableJudgement(label + "  " + offsetMs.ToString("+0;-0;0") + "ms",
+                    grade == JudgeGrade.Nasty ? new Color(.45f,1f,.73f) : grade == JudgeGrade.Smooth ? new Color(.5f,.9f,1f) : new Color(1f,.63f,.35f));
             }
 
             cameraReactionTimer = grade == JudgeGrade.Whack ? 0.12f : 0.08f;
@@ -138,8 +143,11 @@ namespace SashimiBoy
         public void PresentEmptyHit()
         {
             bossDemo?.NotifyGameplayInput();
-            playerKnife?.PlaySlice(JudgeGrade.Whack);
-            salmon?.ApplyJudgement(JudgeGrade.Whack);
+            if (butchery == null)
+            {
+                playerKnife?.PlaySlice(JudgeGrade.Whack);
+                salmon?.ApplyJudgement(JudgeGrade.Whack);
+            }
             judgementFeedback?.ShowStatus(
                 "EMPTY",
                 "NO ACTIVE NOTE",
@@ -151,6 +159,7 @@ namespace SashimiBoy
 
         public void PresentMiss(Stage01RuntimeNote note)
         {
+            hud?.ShowReadableJudgement("MISS · 놓침",new Color(1f,.45f,.38f));
             judgementFeedback?.ShowStatus(
                 "MISS",
                 "NOTE PASSED",
@@ -167,12 +176,21 @@ namespace SashimiBoy
                 sliceCue.HideImmediate();
             }
 
-            if (playerKnife != null)
+            if (butchery == null && playerKnife != null)
             {
                 playerKnife.SetVisible(false);
             }
 
             hud?.ShowResult();
+        }
+
+        public void ResetForRetry()
+        {
+            cameraReactionTimer = cameraReactionStrength = 0f;
+            if (stageCamera != null && !cameraDrivenByBody) stageCamera.transform.position = cameraBasePosition;
+            judgementFeedback?.HideImmediate();
+            sliceCue?.HideImmediate();
+            Bind(timing);
         }
 
         private void BeginFailureReaction(float strength)
@@ -184,6 +202,7 @@ namespace SashimiBoy
 
         private void UpdateCameraReaction()
         {
+            if (cameraDrivenByBody) return;
             if (stageCamera == null)
             {
                 stageCamera = Camera.main;

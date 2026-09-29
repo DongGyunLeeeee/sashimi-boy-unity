@@ -15,9 +15,14 @@ namespace SashimiBoy
         [SerializeField] private bool loadOnAwake = true;
         [SerializeField] private bool autoSaveOnChange = true;
         [SerializeField] private SaveData current;
+        private string validationSavePath;
 
         public SaveData Current => current;
-        public string SavePath => Path.Combine(Application.persistentDataPath, SashimiBoyConstants.SaveKeys.SaveFileName);
+        public static bool IsStage01ValidationSession => (Application.isEditor || Debug.isDebugBuild) &&
+            Array.IndexOf(Environment.GetCommandLineArgs(), "-stage1Validation") >= 0;
+        public string SavePath => string.IsNullOrEmpty(validationSavePath)
+            ? Path.Combine(Application.persistentDataPath, SashimiBoyConstants.SaveKeys.SaveFileName) : validationSavePath;
+        private bool IsVolatileValidation => IsStage01ValidationSession && string.IsNullOrEmpty(validationSavePath);
 
         private void Awake()
         {
@@ -29,6 +34,21 @@ namespace SashimiBoy
 
             Instance = this;
 
+            string[] arguments = Environment.GetCommandLineArgs();
+            if ((Application.isEditor || Debug.isDebugBuild) && Array.IndexOf(arguments, "-dayWorldValidation") >= 0)
+            {
+                string profile = "review";
+                int index = Array.IndexOf(arguments, "-dayWorldProfile");
+                if (index >= 0 && index + 1 < arguments.Length) profile = arguments[index + 1];
+                ConfigureValidationProfile(profile);
+            }
+
+            if (IsVolatileValidation)
+            {
+                loadOnAwake = autoSaveOnChange = false;
+                current = SaveData.CreateNew();
+            }
+
             if (loadOnAwake)
             {
                 LoadOrCreate();
@@ -37,6 +57,12 @@ namespace SashimiBoy
 
         public void LoadOrCreate()
         {
+            if (IsVolatileValidation)
+            {
+                current = current ?? SaveData.CreateNew();
+                OnSaveLoaded?.Invoke(current);
+                return;
+            }
             if (File.Exists(SavePath))
             {
                 try
@@ -60,11 +86,15 @@ namespace SashimiBoy
                 current = SaveData.CreateNew();
             }
 
+            current.dayWorld ??= new DayWorldProgress();
+            current.dayWorld.Normalize();
+
             OnSaveLoaded?.Invoke(current);
         }
 
         public void Save()
         {
+            if (IsVolatileValidation) return;
             if (current == null)
             {
                 current = SaveData.CreateNew();
@@ -83,7 +113,7 @@ namespace SashimiBoy
         public void ResetSave()
         {
             current = SaveData.CreateNew();
-            if (File.Exists(SavePath))
+            if (!IsVolatileValidation && File.Exists(SavePath))
             {
                 File.Delete(SavePath);
             }
@@ -107,6 +137,7 @@ namespace SashimiBoy
                 LoadOrCreate();
             }
 
+            if (payload == null || !DayWorldRules.CanRecordClear(current, payload.stageId)) return;
             StageRuntimeData stage = ContentDefaults.FindStage(payload.stageId);
             current.MarkStageCleared(payload.stageId);
 
@@ -133,6 +164,7 @@ namespace SashimiBoy
             }
 
             current.currentStageId = string.IsNullOrWhiteSpace(payload.nextStageId) ? payload.stageId : payload.nextStageId;
+            DayWorldRules.RecordClear(current, payload.stageId);
             RaiseChanged();
         }
 
@@ -156,6 +188,7 @@ namespace SashimiBoy
             }
 
             if (!save.IsStageCleared(canonicalStage.stageId) ||
+                !DayWorldRules.CanPurchase(save, canonicalStage.stageId) ||
                 save.HasEquipment(canonicalStage.rewardEquipment))
             {
                 return false;
@@ -183,8 +216,31 @@ namespace SashimiBoy
             }
 
             current.AddEquipment(canonicalStage.rewardEquipment);
+            DayWorldRules.RecordPurchase(current, canonicalStage.stageId);
             RaiseChanged();
             return true;
+        }
+
+        public void StartDayWorldNewGame()
+        {
+            StartDayWorldNewGameWithFace("CuteFace");
+        }
+
+        public void StartDayWorldNewGameWithFace(string faceId)
+        {
+            current = SaveData.CreateNew();
+            current.kevinFaceId = string.IsNullOrEmpty(faceId) ? "CuteFace" : faceId;
+            current.dayWorld.active = true;
+            RaiseChanged();
+        }
+
+        public void ConfigureValidationProfile(string profile)
+        {
+            if (!Application.isEditor && !Debug.isDebugBuild) throw new InvalidOperationException("Validation profiles require a development build.");
+            if (string.IsNullOrWhiteSpace(profile) || profile.Length > 64 ||
+                !System.Text.RegularExpressions.Regex.IsMatch(profile, "^[a-zA-Z0-9_-]+$"))
+                throw new ArgumentException("Use a simple validation profile name.", nameof(profile));
+            validationSavePath = Path.Combine(Path.GetDirectoryName(Application.dataPath), "Logs", "DayWorld", "Profiles", profile + ".json");
         }
 
         private static bool TryResolvePurchaseMetadata(

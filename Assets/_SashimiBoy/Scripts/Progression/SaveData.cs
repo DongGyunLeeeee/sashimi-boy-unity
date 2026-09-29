@@ -7,6 +7,7 @@ namespace SashimiBoy
     public sealed class SaveData
     {
         public int version = 1;
+        public string kevinFaceId = "CuteFace";
         public string currentStageId = SashimiBoyConstants.StageIds.Salmon;
         public List<string> unlockedStageIds = new List<string>();
         public List<string> clearedStageIds = new List<string>();
@@ -16,6 +17,7 @@ namespace SashimiBoy
         public int allNastyClearCount = 0;
         public bool sawClubIntro = false;
         public bool sawEquipmentShopIntro = false;
+        public DayWorldProgress dayWorld = new DayWorldProgress();
 
         public static SaveData CreateNew()
         {

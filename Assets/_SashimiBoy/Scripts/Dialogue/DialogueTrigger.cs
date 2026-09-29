@@ -3,7 +3,7 @@ using UnityEngine;
 
 namespace SashimiBoy
 {
-    public sealed class DialogueTrigger : MonoBehaviour, IInteractable
+    public sealed class DialogueTrigger : MonoBehaviour, IInteractable, IInteractionAvailability
     {
         public string prompt = "대화하기";
         public DialogueRunner runner;
@@ -12,9 +12,12 @@ namespace SashimiBoy
         [TextArea(2, 4)] public string fallbackLine = "...";
 
         public string Prompt => prompt;
+        // DayWorld story conversations use DayWorldNpc; legacy prototype dialogue has no scheduled turn.
+        public bool IsAvailable => !DayWorldFlow.Active;
 
         public void Interact(GameObject actor)
         {
+            if (!IsAvailable) return;
             if (runner == null)
             {
                 runner = Object.FindAnyObjectByType<DialogueRunner>();
