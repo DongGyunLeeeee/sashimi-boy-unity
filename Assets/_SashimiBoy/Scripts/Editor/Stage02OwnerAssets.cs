@@ -39,13 +39,17 @@ namespace SashimiBoy.EditorTools
         private static Material OwnerMaterial(string part)
         {
             var material=Material("Owner_"+part,"Standard",Color.white);
-            material.shader=Shader.Find(part=="fillet_half" ? "SashimiBoy/Stage01FixedFilletSurface" : "Standard");
+            material.shader=Shader.Find("SashimiBoy/Stage02RockfishSurface");
+            if(material.shader==null)throw new InvalidOperationException("Missing Rockfish surface shader.");
             string path=OwnerSource+"/rockfish_"+part+"/rockfish_"+part;
             material.mainTexture=AssetDatabase.LoadAssetAtPath<Texture2D>(path+"_basecolor.JPEG");
             material.SetTexture("_BumpMap",AssetDatabase.LoadAssetAtPath<Texture2D>(path+"_normal.JPEG"));
             material.EnableKeyword("_NORMALMAP");material.SetFloat("_BumpScale",.4f);
-            material.SetFloat("_Metallic",0f);material.SetFloat("_Glossiness",.22f);
-            if(part=="fillet_half") material.SetVector("_CutPlane",new Vector4(0,0,0,1));
+            material.SetTexture("_RoughnessMap",AssetDatabase.LoadAssetAtPath<Texture2D>(path+"_roughness.JPEG"));
+            material.SetTexture("_MetallicMap",AssetDatabase.LoadAssetAtPath<Texture2D>(path+"_metallic.JPEG"));
+            if(material.GetTexture("_BumpMap")==null || material.GetTexture("_RoughnessMap")==null || material.GetTexture("_MetallicMap")==null)
+                throw new InvalidOperationException("Missing Owner surface map: "+path);
+            material.SetVector("_CutPlane",new Vector4(0,0,0,part=="fillet_half"?1:-1));
             if(material.mainTexture==null)throw new InvalidOperationException("Missing Owner texture: "+path);
             EditorUtility.SetDirty(material);return material;
         }

@@ -73,6 +73,26 @@ namespace SashimiBoy.Tests
             Assert.That(door.Find("Header").GetComponent<Renderer>().bounds.Intersects(shell.Find("DoorLintel").GetComponent<Renderer>().bounds),Is.True);
         }
 
+        [TestCase("head")][TestCase("body")][TestCase("bone")]
+        [TestCase("fillet")][TestCase("fillet_half")][TestCase("piece")]
+        public void Rockfish_UsesAllFourOwnerSurfaceMaps_WithLinearDataImports(string part)
+        {
+            var material=AssetDatabase.LoadAssetAtPath<Material>("Assets/_SashimiBoy/Art/Generated/Stage02Rockfish/MAT_Rockfish_Owner_"+part+".mat");
+            Assert.That(material.shader.name,Is.EqualTo("SashimiBoy/Stage02RockfishSurface"));
+            Assert.That(ShaderUtil.ShaderHasError(material.shader),Is.False);
+            Assert.That(material.shader.isSupported,Is.True);
+            string prefix="Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage02/rockfish_"+part+"/rockfish_"+part;
+            foreach(var pair in new[]{new[]{"_MainTex","basecolor"},new[]{"_BumpMap","normal"},new[]{"_RoughnessMap","roughness"},new[]{"_MetallicMap","metallic"}})
+            {
+                string path=prefix+"_"+pair[1]+".JPEG";
+                Assert.That(AssetDatabase.GetAssetPath(material.GetTexture(pair[0])),Is.EqualTo(path));
+                var importer=(TextureImporter)AssetImporter.GetAtPath(path);
+                if(pair[1]!="basecolor")Assert.That(importer.sRGBTexture,Is.False,"Surface data must not receive a colour-space conversion.");
+                if(pair[1]=="normal")Assert.That(importer.textureType,Is.EqualTo(TextureImporterType.NormalMap));
+            }
+            Assert.That(material.GetVector("_CutPlane").w,Is.EqualTo(part=="fillet_half"?1f:-1f));
+        }
+
         [TestCase(1,"SamplePackDrumKit")]
         [TestCase(2,"DawSoftware")]
         public void Sleep_SavesPendingClear_ContinueIsIdempotent(int day,string equipment)
