@@ -89,9 +89,9 @@ namespace SashimiBoy.Tests
             var restored=JsonUtility.FromJson(json,save.GetType());
             Assert.That(RuntimeReflection.InvokeStatic("SashimiBoy.DayWorldRules","Sleep",restored),Is.EqualTo(false));
             Assert.That(JsonUtility.ToJson(restored),Is.EqualTo(json));
-            Assert.That(RuntimeReflection.InvokeStatic("SashimiBoy.DayWorldRules","ContinueAfterStageClear",restored),Is.EqualTo(true));
+            Assert.That(RuntimeReflection.InvokeStatic("SashimiBoy.DayWorldRules","ContinueAfterStageClear",restored),Is.EqualTo(day==1));
             var after=RuntimeReflection.GetField(restored,"dayWorld");
-            Assert.That(RuntimeReflection.GetField(after,"pendingStageClear"),Is.EqualTo(0));
+            Assert.That(RuntimeReflection.GetField(after,"pendingStageClear"),Is.EqualTo(day==1?0:2));
             Assert.That(RuntimeReflection.GetField(after,"nightsSlept"),Is.EqualTo(day));
             Assert.That(RuntimeReflection.GetField(after,"beat").ToString(),Is.EqualTo(day==1?"MorningConversation":"Complete"));
             string once=JsonUtility.ToJson(restored);

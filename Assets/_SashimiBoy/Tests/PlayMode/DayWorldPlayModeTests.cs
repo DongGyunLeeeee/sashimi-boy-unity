@@ -199,6 +199,28 @@ namespace SashimiBoy.Tests
         }
 
         [UnityTest]
+        public IEnumerator LegacyCompletedSave_ResumesStageTwoPendingScreenWithoutNewRewards()
+        {
+            RuntimeReflection.SetField(Progress,"active",true);
+            RuntimeReflection.SetField(Progress,"day",2);
+            RuntimeReflection.SetField(Progress,"beat",Enum.Parse(RuntimeReflection.RuntimeType("SashimiBoy.DayWorldBeat"),"Complete"));
+            RuntimeReflection.SetField(Progress,"nightsSlept",2);
+            RuntimeReflection.SetField(Progress,"pendingStageClear",0);
+            RuntimeReflection.SetField(Progress,"checkpointScene","Street");
+            Call(save,"Save");Call(save,"LoadOrCreate");
+            Assert.That(Field(Progress,"pendingStageClear"),Is.EqualTo(2));
+            Call(Find("DayWorldSceneDirector"),"Refresh",Current);
+            Assert.That(((Button)Field(Find("DayWorldSceneDirector"),"continueButton")).interactable,Is.True);
+            ((Button)Field(Find("DayWorldSceneDirector"),"continueButton")).onClick.Invoke();
+            yield return WaitScene("KevinHome");
+            var screen=Find("DayWorldStageClearScreen");Assert.That(screen,Is.Not.Null);
+            Assert.That(((Text)Field(screen,"title")).text,Is.EqualTo("2스테이지 클리어"));
+            Assert.That(((Button)Field(screen,"continueButton")).interactable,Is.False);
+            Assert.That(((IList)Field(Current,"clearedStageIds")).Count,Is.Zero,"Migration does not grant rewards.");
+            Assert.That(Call(Find("SimpleTopDownPlayerController"),"get_InputEnabled"),Is.EqualTo(false));
+        }
+
+        [UnityTest]
         public IEnumerator OwnerJudgements_RealJudgedInputs_EmptyAndMiss_ShowPngInBothStages()
         {
             foreach(string scene in new[]{"Stage01_Salmon","Stage02_Rockfish"})
@@ -307,7 +329,22 @@ namespace SashimiBoy.Tests
             Assert.That(complete,Is.Not.Null,"Saved pending clear must resume before advancing.");
             Assert.That(Call(Find("SimpleTopDownPlayerController"),"get_InputEnabled"),Is.EqualTo(false));
             Assert.That(Cursor.lockState,Is.EqualTo(CursorLockMode.None));
-            ((Button)Field(complete,"continueButton")).onClick.Invoke();
+            var continueStage=(Button)Field(complete,"continueButton");
+            if(clearedDay==2)
+            {
+                Assert.That(continueStage.interactable,Is.False);
+                Assert.That(continueStage.GetComponentInChildren<Text>().text,Is.EqualTo("다음 스테이지 준비 중"));
+                string unchanged=JsonUtility.ToJson(Current);
+                continueStage.onClick.Invoke();
+                Assert.That(JsonUtility.ToJson(Current),Is.EqualTo(unchanged));
+                Assert.That(Field(Progress,"pendingStageClear"),Is.EqualTo(2));
+                Assert.That(Call(flow,"get_Busy"),Is.EqualTo(true));
+                Assert.That(EventSystem.current.currentSelectedGameObject,Is.EqualTo(((Button)Field(complete,"saveAndExitButton")).gameObject));
+                RoundTrip();
+                yield break;
+            }
+            Assert.That(continueStage.interactable,Is.True);
+            continueStage.onClick.Invoke();
             yield return new WaitForSecondsRealtime(.8f);yield return WaitScene("KevinHome");
             Assert.That(Field(Progress,"pendingStageClear"),Is.EqualTo(0));
             Assert.That(Field(Progress,"nightsSlept"),Is.EqualTo(clearedDay));

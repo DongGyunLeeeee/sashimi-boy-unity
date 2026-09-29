@@ -12,7 +12,7 @@ namespace SashimiBoy.EditorTools
             var root = director.completeRoot.GetComponent<RectTransform>();
             root.anchorMin = Vector2.zero; root.anchorMax = Vector2.one;
             root.offsetMin = root.offsetMax = Vector2.zero;
-            root.GetComponent<Image>().color = new Color(.025f,.045f,.06f,.97f);
+            root.GetComponent<Image>().color = new Color(.025f,.045f,.06f,1f);
             var screen = root.GetComponent<DayWorldStageClearScreen>() ?? root.gameObject.AddComponent<DayWorldStageClearScreen>();
             screen.title = Label(root,"EndTitle","스테이지 클리어",new Vector2(.5f,.65f),new Vector2(1100,100),52);
             screen.title.color = new Color(.98f,.79f,.41f);

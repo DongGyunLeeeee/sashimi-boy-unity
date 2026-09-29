@@ -28,6 +28,8 @@ namespace SashimiBoy
             practicedDays ??= new List<int>();
             day = Math.Max(1, Math.Min(2, day));
             if (string.IsNullOrWhiteSpace(checkpointScene)) checkpointScene = "KevinHome";
+            // Old completed saves had no pending-screen field. Preserve their completion as the Stage2 endpoint.
+            if (active && beat == DayWorldBeat.Complete && nightsSlept >= 2) pendingStageClear = 2;
         }
     }
 
@@ -116,7 +118,7 @@ namespace SashimiBoy
         }
         public static bool ContinueAfterStageClear(SaveData save)
         {
-            if (!Active(save) || save.dayWorld.pendingStageClear <= 0) return false;
+            if (!Active(save) || save.dayWorld.pendingStageClear != 1) return false;
             save.dayWorld.pendingStageClear = 0;
             Wake(save);
             return true;

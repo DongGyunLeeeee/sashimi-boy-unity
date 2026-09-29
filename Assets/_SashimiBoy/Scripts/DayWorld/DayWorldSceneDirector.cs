@@ -55,7 +55,7 @@ namespace SashimiBoy
                 runner.OnDialogueFinished += UnlockAfterDialogue;
                 runner.OnDialogueCancelled += UnlockAfterDialogue;
             }
-            if (DayWorldFlow.Active && SaveManager.Instance.Current.dayWorld.pendingStageClear == 0 && DayWorldRules.Wake(SaveManager.Instance.Current))
+            if (gameObject.scene.name == DayWorldRules.Home && DayWorldFlow.Active && SaveManager.Instance.Current.dayWorld.pendingStageClear == 0 && DayWorldRules.Wake(SaveManager.Instance.Current))
                 DayWorldFlow.Instance.Commit();
             Refresh(SaveManager.Instance.Current);
             if(optionalVenuePanel != null && DayWorldFlow.Active) optionalVenuePanel.SetActive(false);

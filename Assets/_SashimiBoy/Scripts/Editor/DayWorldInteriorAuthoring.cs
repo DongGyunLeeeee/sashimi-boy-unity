@@ -232,7 +232,12 @@ namespace SashimiBoy.EditorTools
             var material=AssetDatabase.LoadAssetAtPath<Material>(path);
             if(material==null){material=new Material(Shader.Find("Standard"));AssetDatabase.CreateAsset(material,path);}
             material.color=color;material.SetFloat("_Glossiness",smoothness);
-            if(emission.maxColorComponent>0f){material.EnableKeyword("_EMISSION");material.SetColor("_EmissionColor",emission);}
+            // Retain Unity-normalized keywords when reapplying the same existing colour.
+            if(emission.maxColorComponent>0f)
+            {
+                if(material.GetColor("_EmissionColor")!=emission) material.EnableKeyword("_EMISSION");
+                material.SetColor("_EmissionColor",emission);
+            }
             EditorUtility.SetDirty(material);return material;
         }
     }
