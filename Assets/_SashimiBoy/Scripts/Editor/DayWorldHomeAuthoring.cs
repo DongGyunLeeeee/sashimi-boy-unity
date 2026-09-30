@@ -11,7 +11,16 @@ namespace SashimiBoy.EditorTools
     // The supplied models replace visuals only. Existing scene objects own travel, waking, sleeping and saves.
     public static class DayWorldHomeAuthoring
     {
-        public const float HalfWidth = 2.4f, HalfDepth = 2.3f, RoomHeight = 2.65f;
+        public const float HalfWidth = 5.4f, HalfDepth = 4.6f, RoomHeight = 2.95f;
+        // Two current stations and eight future placement reserves; no unearned instruments are spawned.
+        public static readonly Vector3[] EquipmentPositions = {
+            new Vector3(-4.1f,0f,3.45f), new Vector3(-1.7f,0f,3.45f), new Vector3(.7f,0f,3.45f),
+            new Vector3(-4.15f,0f,.9f), new Vector3(-4.15f,0f,-1.35f), new Vector3(-4.15f,0f,-3.45f),
+            new Vector3(4.1f,0f,.9f), new Vector3(4.1f,0f,-1.35f), new Vector3(4.1f,0f,-3.45f),
+            new Vector3(-1.75f,0f,-3.45f)
+        };
+        public static readonly float[] EquipmentYaw = {0,0,0,-90,-90,-90,90,90,90,180};
+        public static readonly Vector2 EquipmentFootprint = new Vector2(2f, 1.6f);
         const string Owned = "OwnerHomeAssets";
         const string Art = DayWorldAssetAuthoring.Output;
 
@@ -56,7 +65,7 @@ namespace SashimiBoy.EditorTools
             }
             else
             {
-                ApplyCompactLayout(scene, worldRoot);
+                ApplyRoomLayout(scene, worldRoot);
                 foreach (string name in new[] { "BedFrame", "Bed", "Pillow" })
                     worldRoot.Find(name).GetComponent<Renderer>().enabled = false;
                 var bed = worldRoot.Find("Bed");
@@ -74,33 +83,42 @@ namespace SashimiBoy.EditorTools
             }
         }
 
-        public static void ApplyCompactLayout(Scene scene, Transform root)
+        public static void ApplyRoomLayout(Scene scene, Transform root)
         {
             if (scene.name != "KevinHome") return;
             root.Find("HomeFloor").localScale = new Vector3(HalfWidth * 2f, .1f, HalfDepth * 2f);
             foreach (var sofa in root.Cast<Transform>().Where(t => t.name == "PF_Sofa" || t.name == "Sofa").ToArray())
                 Object.DestroyImmediate(sofa.gameObject);
-            root.Find("BedFrame").position = new Vector3(1.38f, .3f, .85f);
-            root.Find("Bed").position = new Vector3(1.38f, .61f, .85f);
-            root.Find("Pillow").position = new Vector3(1.38f, .78f, 1.60f);
-            root.Find("BedLabel").position = new Vector3(1.38f, 1.63f, 2.08f);
+            root.Find("BedFrame").position = new Vector3(3.8f, .3f, 3.25f);
+            root.Find("Bed").position = new Vector3(3.8f, .61f, 3.25f);
+            root.Find("Pillow").position = new Vector3(3.8f, .78f, 4.0f);
+            root.Find("BedLabel").position = new Vector3(3.8f, 1.63f, 4.48f);
             var ownedBed = root.Find(Owned + "/HomeBed");
-            if (ownedBed != null) ownedBed.position = new Vector3(1.38f, .05f, .85f);
-            var director = root.GetComponent<DayWorldSceneDirector>();
+            if (ownedBed != null) ownedBed.position = new Vector3(3.8f, .05f, 3.25f);
+            var slots = root.Find("HomeEquipmentSlots");
+            if (slots == null) { slots = new GameObject("HomeEquipmentSlots").transform; slots.SetParent(root, false); }
+            for (int i = 0; i < EquipmentPositions.Length; i++)
+            {
+                string name = "Slot_" + (i + 1).ToString("00");
+                var slot = slots.Find(name);
+                if (slot == null) { slot = new GameObject(name).transform; slot.SetParent(slots, false); }
+                slot.SetPositionAndRotation(EquipmentPositions[i], Quaternion.Euler(0f, EquipmentYaw[i], 0f));
+            }
+            DayWorldCompletionAuthoring.Apply(root.GetComponent<DayWorldSceneDirector>());
             var wake = root.Find("Wake");
-            if (wake != null) wake.SetPositionAndRotation(new Vector3(.08f, .10f, .45f), Quaternion.Euler(34f, 90f, 0f));
+            if (wake != null) wake.SetPositionAndRotation(new Vector3(2.45f, .10f, 2.45f), Quaternion.Euler(0f, 180f, 0f));
             var player = root.GetComponentInChildren<SimpleTopDownPlayerController>();
-            if (player != null) player.transform.position = new Vector3(.08f, .10f, .45f);
+            if (player != null) player.transform.position = new Vector3(2.45f, .10f, 2.45f);
             var light = root.Find("HomeWarmLight").GetComponent<Light>();
-            light.transform.position = new Vector3(0f, 2.38f, 0f); light.range = 5f; light.intensity = .50f;
+            light.transform.position = new Vector3(0f, 2.68f, 0f); light.range = 12f; light.intensity = .50f;
             foreach (var station in root.GetComponentsInChildren<HomeEquipmentStation>(true))
             {
                 bool drum = station.equipmentId == EquipmentId.SamplePackDrumKit;
                 Vector3 oldCenter = drum ? new Vector3(-2.5f, 0f, 1.65f) : new Vector3(.1f, 0f, 2.1f);
-                Vector3 center = drum ? new Vector3(-1.22f, 0f, 1.1f) : new Vector3(-1.42f, 0f, -1.68f);
-                Quaternion rotation = Quaternion.Euler(0f, drum ? 0f : 180f, 0f);
+                Vector3 center = EquipmentPositions[drum ? 0 : 1];
+                Quaternion rotation = Quaternion.identity;
                 station.transform.SetPositionAndRotation(center - rotation * oldCenter, rotation);
-                station.practiceCamera.position = drum ? new Vector3(.35f, 1.83f, 1.75f) : new Vector3(.15f, 1.85f, -1.9f);
+                station.practiceCamera.position = center + new Vector3(1.55f, 1.83f, .65f);
                 station.practiceCamera.LookAt(station.playerPosition.position + new Vector3(0f, 1.02f, 0f));
             }
         }
