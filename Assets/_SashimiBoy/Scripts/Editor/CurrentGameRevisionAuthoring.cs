@@ -34,6 +34,29 @@ namespace SashimiBoy.EditorTools
             Debug.Log("[Issue68] Applied home capacity, clear screen, entrances and Rockfish assembly.");
         }
 
+        public static void ApplyCheolsuSeatingBatch()
+        {
+            if (EditorApplication.isPlayingOrWillChangePlaymode) throw new InvalidOperationException("Exit Play mode first.");
+            if (!Application.isBatchMode && !EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo()) return;
+            Directory.CreateDirectory(Evidence);
+            var scene = EditorSceneManager.OpenScene("Assets/_SashimiBoy/Scenes/FishShopDialogue.unity", OpenSceneMode.Single);
+            var root = scene.GetRootGameObjects().Single(g => g.name == "DayWorld_Integration").transform;
+            DayWorldVenueAuthoring.SeatCheolsuAtDiningTable(scene, root.Find("VenueAssets"));
+            EditorSceneManager.MarkSceneDirty(scene);
+            if (!EditorSceneManager.SaveScene(scene)) throw new InvalidOperationException("Could not save FishShopDialogue.");
+            string before = File.ReadAllText(scene.path);
+            DayWorldVenueAuthoring.SeatCheolsuAtDiningTable(scene, root.Find("VenueAssets"));
+            EditorSceneManager.MarkSceneDirty(scene);
+            if (!EditorSceneManager.SaveScene(scene) || File.ReadAllText(scene.path) != before)
+                throw new InvalidOperationException("Cheolsu seating reapply changed scene bytes.");
+            var customer = root.GetComponentsInChildren<DayWorldNpc>(true).Single(n => n.npcId == "cheolsu");
+            customer.gameObject.SetActive(true);
+            Vector3 target = customer.transform.position + Vector3.up * .65f;
+            CaptureView(target + new Vector3(-1.1f, .45f, -1.65f), target, "cheolsu-seated-side");
+            CaptureView(target + new Vector3(1.7f, .65f, -1.8f), target, "cheolsu-seated-front");
+            Debug.Log("[Issue68] Cheolsu seated at " + customer.transform.position + "; repeated placement preserves scene bytes.");
+        }
+
         public static void InspectBatch()
         {
             Directory.CreateDirectory(Evidence);

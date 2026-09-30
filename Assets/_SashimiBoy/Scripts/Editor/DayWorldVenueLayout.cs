@@ -109,9 +109,7 @@ namespace SashimiBoy.EditorTools
             DiningTable(root, "MiddleRight", new Vector3(3.45f, 0f, -.05f), wood, darkWood);
             foreach (string id in new[] { "CustomerTable", "CustomerTableSupport", "CustomerSeat" }) Named(scene, id).SetActive(false);
             // Cheolsu is the restaurant regular. His existing dialogue and meal stay beside the hall table.
-            var customer = root.parent.GetComponentsInChildren<DayWorldNpc>(true).First(n => n.npcId == "cheolsu");
-            customer.transform.position = new Vector3(3.45f, .05f, -1.03f);
-            PrefabUtility.RecordPrefabInstancePropertyModifications(customer.transform);
+            SeatCheolsuAtDiningTable(scene, root);
             var plate = Named(scene, "CheolsuMealPlate"); plate.transform.position = new Vector3(3.45f, .82f, -2.1f);
             foreach (var meal in root.parent.Cast<Transform>().Where(t => t.name.ToLowerInvariant().Contains("salmonpiece")))
             {
@@ -122,6 +120,20 @@ namespace SashimiBoy.EditorTools
                 meal.position = new Vector3(3.45f - bounds.center.x, height, -2.1f - bounds.center.z);
                 PrefabUtility.RecordPrefabInstancePropertyModifications(meal);
             }
+        }
+
+        public static void SeatCheolsuAtDiningTable(Scene scene, Transform root)
+        {
+            var customer = root.parent.GetComponentsInChildren<DayWorldNpc>(true).Single(n => n.npcId == "cheolsu");
+            Bounds seat = root.Find("DiningSeat_FrontRight-1").GetComponent<Renderer>().bounds;
+            Vector3 table = root.Find("DiningTop_FrontRight").position;
+            // BuildNpc's seated mesh puts the hip/thigh contact at height * .53 - .40.
+            // Anchor that contact to the actual chair top, facing the table, not the old seat.
+            const float seatedContactHeight = 1.74f * .53f - .40f;
+            Vector3 position = new Vector3(seat.center.x, seat.max.y - seatedContactHeight, seat.center.z);
+            Vector3 forward = table - position; forward.y = 0f;
+            customer.transform.SetPositionAndRotation(position, Quaternion.LookRotation(forward));
+            PrefabUtility.RecordPrefabInstancePropertyModifications(customer.transform);
         }
 
         public static void ApplyStreetDisplay(Scene scene, Transform worldRoot)

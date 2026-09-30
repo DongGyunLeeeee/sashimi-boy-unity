@@ -91,6 +91,16 @@ namespace SashimiBoy
             if (scene == SashimiBoyConstants.Scenes.Stage01Salmon || scene == DayWorldRules.StageTwoScene) scene = SashimiBoyConstants.Scenes.FishShopDialogue;
             LoadWorld(scene, Save.dayWorld.checkpointSpawn);
         }
+        public void ReturnToTitle()
+        {
+            if (SceneTransitionService.Instance.IsLoading) return;
+            // Keep the saved checkpoint and pending clear. Title navigation is not a world
+            // door, so it must also work while Day1's next-morning Wake gate is pending.
+            requestedSpawn = null;
+            SetBusy(true);
+            SuppressInput();
+            SceneTransitionService.Instance.LoadScene(SashimiBoyConstants.Scenes.Bootstrap);
+        }
         public void LoadWorld(string scene, string spawn = "Entry")
         {
             if (busy || SceneTransitionService.Instance.IsLoading || string.IsNullOrWhiteSpace(scene)) return;

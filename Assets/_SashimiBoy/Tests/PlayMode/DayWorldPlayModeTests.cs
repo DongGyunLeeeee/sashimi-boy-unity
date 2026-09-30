@@ -221,6 +221,31 @@ namespace SashimiBoy.Tests
         }
 
         [UnityTest]
+        public IEnumerator SavedClear_TitleNewGame_ConfirmStartsFreshWithNormalInput()
+        {
+            RuntimeReflection.SetField(Progress,"active",true);
+            RuntimeReflection.SetField(Progress,"day",2);
+            RuntimeReflection.SetField(Progress,"beat",Enum.Parse(RuntimeReflection.RuntimeType("SashimiBoy.DayWorldBeat"),"Complete"));
+            RuntimeReflection.SetField(Progress,"nightsSlept",2);
+            RuntimeReflection.SetField(Progress,"pendingStageClear",2);
+            RuntimeReflection.SetField(Progress,"checkpointScene","KevinHome");
+            ((IList)Field(Current,"ownedEquipmentIds")).Add("SamplePackDrumKit");
+            Call(save,"Save");
+            Call(flow,"ContinueGame");yield return WaitScene("KevinHome");
+            var clear = Find("DayWorldStageClearScreen");
+            ((Button)Field(clear,"saveAndExitButton")).onClick.Invoke();
+            yield return WaitScene("Bootstrap");
+            yield return ChooseNewGameFace(3);yield return WaitScene("KevinHome");
+            Assert.That(Day,Is.EqualTo(1));Assert.That(Beat,Is.EqualTo("MorningConversation"));
+            Assert.That(Field(Progress,"pendingStageClear"),Is.EqualTo(0));
+            Assert.That(Field(Progress,"nightsSlept"),Is.EqualTo(0));
+            Assert.That(((IList)Field(Current,"ownedEquipmentIds")).Count,Is.Zero);
+            Assert.That(Field(Current,"kevinFaceId"),Is.EqualTo("WesternFace"));
+            Assert.That(Call(Find("SimpleTopDownPlayerController"),"get_InputEnabled"),Is.EqualTo(true));
+            RoundTrip();
+        }
+
+        [UnityTest]
         public IEnumerator OwnerJudgements_RealJudgedInputs_EmptyAndMiss_ShowPngInBothStages()
         {
             foreach(string scene in new[]{"Stage01_Salmon","Stage02_Rockfish"})
@@ -313,7 +338,10 @@ namespace SashimiBoy.Tests
             try
             {
                 RuntimeReflection.SetField(save,"validationSavePath",Path.GetDirectoryName(actualPath));
-                Assert.That(Call(complete,"SaveCheckpointForExit"),Is.EqualTo(false));
+                ((Button)Field(complete,"saveAndExitButton")).onClick.Invoke();
+                yield return null;
+                Assert.That(SceneManager.GetActiveScene().name,Is.EqualTo("KevinHome"));
+                Assert.That(((Text)Field(complete,"saveStatus")).text,Does.Contain("저장하지 못했습니다"));
                 Assert.That(complete.gameObject.activeInHierarchy,Is.True,"Saving failure must keep the screen open.");
                 string pendingBefore=JsonUtility.ToJson(Current);
                 ((Button)Field(complete,"continueButton")).onClick.Invoke();
@@ -324,7 +352,26 @@ namespace SashimiBoy.Tests
             finally { RuntimeReflection.SetField(save,"validationSavePath",actualPath); }
             Assert.That(Call(complete,"SaveCheckpointForExit"),Is.EqualTo(true));
             Capture("stage-clear-screen-day"+clearedDay);
-            RoundTrip();yield return ContinueSaved("KevinHome");
+            string checkpoint = JsonUtility.ToJson(Current);
+            ((Button)Field(complete,"saveAndExitButton")).onClick.Invoke();
+            yield return WaitScene("Bootstrap");
+            Assert.That(Call(flow,"get_Busy"),Is.EqualTo(false),"The title buttons must be usable after leaving the clear screen.");
+            Assert.That(Cursor.lockState,Is.EqualTo(CursorLockMode.None));
+            Assert.That(Cursor.visible,Is.True);
+            var titleDirector = Find("DayWorldSceneDirector");
+            Assert.That(((GameObject)Field(titleDirector,"menuRoot")).activeInHierarchy,Is.True);
+            Assert.That(All("DayWorldStageClearScreen"),Is.Empty);
+            Call(save,"LoadOrCreate");
+            Assert.That(JsonUtility.ToJson(Current),Is.EqualTo(checkpoint),"Title return and a disk reload must preserve the completed checkpoint.");
+            Capture("saved-title-menu-day"+clearedDay);
+            // Opening and cancelling New Game must keep the saved continuation intact.
+            ((Button)Field(titleDirector,"newGameButton")).onClick.Invoke();yield return null;
+            ((Button)Field(Find("KevinCustomizationScreen"),"cancelButton")).onClick.Invoke();yield return null;
+            Assert.That(JsonUtility.ToJson(Current),Is.EqualTo(checkpoint));
+            var resume = (Button)Field(titleDirector,"continueButton");
+            Assert.That(resume.interactable,Is.True);resume.onClick.Invoke();
+            yield return WaitScene("KevinHome");
+            Assert.That(JsonUtility.ToJson(Current),Is.EqualTo(checkpoint),"Continue must not duplicate progress or rewards.");
             complete=Find("DayWorldStageClearScreen");
             Assert.That(complete,Is.Not.Null,"Saved pending clear must resume before advancing.");
             Assert.That(Call(Find("SimpleTopDownPlayerController"),"get_InputEnabled"),Is.EqualTo(false));
@@ -397,6 +444,15 @@ namespace SashimiBoy.Tests
             Call(Find("Stage01PlayableFlow"),"ReturnToShop");yield return WaitScene("FishShopDialogue");
             Assert.That(All("DayWorldNpc").Select(c=>Field(c,"npcId")),Is.EqualTo(new[]{"cheolsu"}));
             Assert.That(Call(Find("StageStarterInteractable"),"get_IsAvailable"),Is.EqualTo(false));
+            yield return Walk(new Vector3(-4f,0f,-.6f));
+            yield return Walk(new Vector3(0f,0f,-.6f));
+            yield return Walk(new Vector3(0f,0f,-2.1f));
+            yield return Walk(new Vector3(1.3f,0f,-2.1f));
+            var cheolsu = All("DayWorldNpc").Single();
+            yield return LookAt(((Transform)Field(cheolsu,"faceAnchor")).position);
+            Call(Find("InteractionSensor"),"FindCurrent");
+            Assert.That(Call(Find("InteractionSensor"),"get_Current"),Is.EqualTo(cheolsu),"Seated Cheolsu must remain reachable through the real interaction sensor.");
+            Capture("cheolsu-seated-before-dialogue");
             yield return Talk("cheolsu");Assert.That(Beat,Is.EqualTo("Purchase"));
             yield return Door("Street");yield return BuyAndGoHome("SamplePackDrumKit");yield return PlaceAndPractice("SamplePackDrumKit");
             Assert.That(Day,Is.EqualTo(2));Assert.That(Beat,Is.EqualTo("MorningConversation"));

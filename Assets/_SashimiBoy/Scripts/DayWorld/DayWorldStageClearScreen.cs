@@ -80,11 +80,7 @@ namespace SashimiBoy
         private void SaveAndExit()
         {
             if (!SaveCheckpointForExit()) return;
-#if UNITY_EDITOR
-            UnityEditor.EditorApplication.isPlaying = false;
-#else
-            Application.Quit();
-#endif
+            DayWorldFlow.Instance.ReturnToTitle();
         }
     }
 }

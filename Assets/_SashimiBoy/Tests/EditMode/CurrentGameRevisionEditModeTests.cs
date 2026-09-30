@@ -11,6 +11,33 @@ namespace SashimiBoy.Tests
     public sealed class CurrentGameRevisionEditModeTests
     {
         [Test]
+        public void Cheolsu_ActualSeatedMeshContactsTheChair_AndFacesItsTable()
+        {
+            var scene = EditorSceneManager.OpenScene("Assets/_SashimiBoy/Scenes/FishShopDialogue.unity", OpenSceneMode.Single);
+            var root = scene.GetRootGameObjects().Single(g => g.name == "DayWorld_Integration").transform;
+            var customer = root.GetComponentsInChildren<Transform>(true).Single(t => t.GetComponent(RuntimeReflection.RuntimeType("SashimiBoy.DayWorldNpc")) is Component npc && (string)RuntimeReflection.GetField(npc, "npcId") == "cheolsu");
+            Bounds seat = root.Find("VenueAssets/DiningSeat_FrontRight-1").GetComponent<Renderer>().bounds;
+            Vector3 towardTable = root.Find("VenueAssets/DiningTop_FrontRight").position - customer.position;
+            towardTable.y = 0f;
+            Assert.That(Vector3.Dot(customer.forward, towardTable.normalized), Is.GreaterThan(.99f));
+            var body = customer.GetComponentInChildren<MeshFilter>(true);
+            float contactY = float.PositiveInfinity;
+            int contactSamples = 0;
+            foreach (Vector3 local in body.sharedMesh.vertices)
+            {
+                // Read the actual central pelvis/thigh underside, independently of authoring offsets.
+                if (Mathf.Abs(local.x) > .18f || Mathf.Abs(local.z) > .08f || local.y < .4f || local.y > .65f) continue;
+                Vector3 world = body.transform.TransformPoint(local);
+                contactY = Mathf.Min(contactY, world.y);
+                Assert.That(world.x, Is.InRange(seat.min.x, seat.max.x));
+                Assert.That(world.z, Is.InRange(seat.min.z, seat.max.z));
+                contactSamples++;
+            }
+            Assert.That(contactSamples, Is.GreaterThan(100));
+            Assert.That(contactY, Is.EqualTo(seat.max.y).Within(.003f), "The mesh must sit on the real chair, not hover above it.");
+        }
+
+        [Test]
         public void Home_HoldsTenExistingSizeInstruments_WithSeparateBedAndCenterAisle()
         {
             var scene=EditorSceneManager.OpenScene("Assets/_SashimiBoy/Scenes/KevinHome.unity",OpenSceneMode.Single);
