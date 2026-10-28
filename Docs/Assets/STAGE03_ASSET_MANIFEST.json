@@ -1,0 +1,589 @@
+{
+  "issue": 70,
+  "receivedDate": "2026-10-29",
+  "baseCommit": "3b2b7f71f286e31218f2d8d2d170eb50c60ad44c",
+  "sources": [
+    {
+      "name": "drive-download-20261028T151238Z-1-001.zip",
+      "bytes": 764693032,
+      "sha256": "393b27c932c4b61e66379b85e20b917e3781dad321a1acb1362c144c212127d4"
+    },
+    {
+      "name": "riggedbody.fbm-20261028T151252Z-1-001.zip",
+      "bytes": 36925496,
+      "sha256": "9c8209e57a3aa42a1d11249a24e24b6272ca8497124ae424d6bc88a947b013ac"
+    },
+    {
+      "name": "font-20261028T151309Z-1-001.zip",
+      "bytes": 1800656,
+      "sha256": "90051302fae9413bbeaa4d798a4bf03d663c4c78c2c813e622756b41bb65d430"
+    },
+    {
+      "name": "flounder1.wav",
+      "bytes": 28485292,
+      "sha256": "3d277b2dcd67feb1bebf937460d2cd694347aa3db020ece0bd6079f5a29fb065"
+    }
+  ],
+  "assets": [
+    {
+      "archive": "riggedbody.fbm-20261028T151252Z-1-001.zip",
+      "entry": "riggedbody.fbm/tripo_convert_55831c62-15bc-4528-b581-f6170e846614.fbx",
+      "path": "Assets/_SashimiBoy/Art/Source/Characters/Stage03/RiggedBody/RiggedBody.fbx",
+      "role": "RiggedBody",
+      "bytes": 793564,
+      "sha256": "3235dbba38a616d33c39474754685396607b2111e65118fbcd9ee25580101d2a"
+    },
+    {
+      "archive": "riggedbody.fbm-20261028T151252Z-1-001.zip",
+      "entry": "riggedbody.fbm/mannequin_3d_model_basecolor.JPEG",
+      "path": "Assets/_SashimiBoy/Art/Source/Characters/Stage03/RiggedBody/mannequin_3d_model_basecolor.JPEG",
+      "role": "RiggedBody",
+      "bytes": 10490010,
+      "sha256": "27d46e37c3bea84f6452b2f65dcc62f368d5b2c60dec20830fa2e07921c30a24"
+    },
+    {
+      "archive": "riggedbody.fbm-20261028T151252Z-1-001.zip",
+      "entry": "riggedbody.fbm/mannequin_3d_model_metallic.JPEG",
+      "path": "Assets/_SashimiBoy/Art/Source/Characters/Stage03/RiggedBody/mannequin_3d_model_metallic.JPEG",
+      "role": "RiggedBody",
+      "bytes": 2673434,
+      "sha256": "4580f0873bec98e134c79a10ee561e285ccbff02b40cff28f06371cb463f5093"
+    },
+    {
+      "archive": "riggedbody.fbm-20261028T151252Z-1-001.zip",
+      "entry": "riggedbody.fbm/mannequin_3d_model_normal.JPEG",
+      "path": "Assets/_SashimiBoy/Art/Source/Characters/Stage03/RiggedBody/mannequin_3d_model_normal.JPEG",
+      "role": "RiggedBody",
+      "bytes": 3485792,
+      "sha256": "8be750067f0e41e6c82c296ac41280eabe88fe6cc09b4564fa758339038ae019"
+    },
+    {
+      "archive": "riggedbody.fbm-20261028T151252Z-1-001.zip",
+      "entry": "riggedbody.fbm/mannequin_3d_model_rm.PNG",
+      "path": "Assets/_SashimiBoy/Art/Source/Characters/Stage03/RiggedBody/mannequin_3d_model_rm.PNG",
+      "role": "RiggedBody",
+      "bytes": 16751794,
+      "sha256": "e9d377dd855cd0758108c13df03024abc4d76337f2110ffceb8619fb5bc86b11"
+    },
+    {
+      "archive": "riggedbody.fbm-20261028T151252Z-1-001.zip",
+      "entry": "riggedbody.fbm/mannequin_3d_model_roughness.JPEG",
+      "path": "Assets/_SashimiBoy/Art/Source/Characters/Stage03/RiggedBody/mannequin_3d_model_roughness.JPEG",
+      "role": "RiggedBody",
+      "bytes": 2874187,
+      "sha256": "a16415609db480db2dd9a29666cad8c8bb0aa26ecda08e110c8a14095b9daf61"
+    },
+    {
+      "archive": "drive-download-20261028T151238Z-1-001.zip",
+      "entry": "뒷면필렛/BackFillet.fbm/tripo_convert_1a7f8562-fd63-4e95-9975-22b8afc2104a.fbx",
+      "path": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/BackFillet/BackFillet.fbx",
+      "role": "BackFillet",
+      "bytes": 60159676,
+      "sha256": "5ebceb915d1046c06f29091b7a8301bbdb085775ee52c45d6666ec591ad8d003"
+    },
+    {
+      "archive": "drive-download-20261028T151238Z-1-001.zip",
+      "entry": "뒷면필렛/BackFillet.fbm/raw_fish_fillet_3d_model_basecolor.JPEG",
+      "path": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/BackFillet/raw_fish_fillet_3d_model_basecolor.JPEG",
+      "role": "BackFillet",
+      "bytes": 10197123,
+      "sha256": "ddc2a66a5758e23247cd21818cf1a942de02317900cabc5bd98d086d5a4af620"
+    },
+    {
+      "archive": "drive-download-20261028T151238Z-1-001.zip",
+      "entry": "뒷면필렛/BackFillet.fbm/raw_fish_fillet_3d_model_metallic.JPEG",
+      "path": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/BackFillet/raw_fish_fillet_3d_model_metallic.JPEG",
+      "role": "BackFillet",
+      "bytes": 1451552,
+      "sha256": "1f2e90c29aa1a294d8aff3a31ab988371524498745fe48ae61c510a86e81d9d5"
+    },
+    {
+      "archive": "drive-download-20261028T151238Z-1-001.zip",
+      "entry": "뒷면필렛/BackFillet.fbm/raw_fish_fillet_3d_model_normal.PNG",
+      "path": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/BackFillet/raw_fish_fillet_3d_model_normal.PNG",
+      "role": "BackFillet",
+      "bytes": 3512500,
+      "sha256": "5aae314941395041303c88d1aa9f26a97350a4628a588e337f93ccbb8880deb4"
+    },
+    {
+      "archive": "drive-download-20261028T151238Z-1-001.zip",
+      "entry": "뒷면필렛/BackFillet.fbm/raw_fish_fillet_3d_model_rm.JPEG",
+      "path": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/BackFillet/raw_fish_fillet_3d_model_rm.JPEG",
+      "role": "BackFillet",
+      "bytes": 1578050,
+      "sha256": "1382d8d8d374c35f9bc3dcf6aee105db4ba6118077805102c65e934e93ca7a3c"
+    },
+    {
+      "archive": "drive-download-20261028T151238Z-1-001.zip",
+      "entry": "뒷면필렛/BackFillet.fbm/raw_fish_fillet_3d_model_roughness.JPEG",
+      "path": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/BackFillet/raw_fish_fillet_3d_model_roughness.JPEG",
+      "role": "BackFillet",
+      "bytes": 1478972,
+      "sha256": "a69f26a7e4fb9a3f2ca5bea9772c3b4c208e88f8b395aaa72cdcadfecbdccba8"
+    },
+    {
+      "archive": "drive-download-20261028T151238Z-1-001.zip",
+      "entry": "필렛제거1/FilletRemoved1.fbm/1flatfish_3d_model_basecolor.JPEG",
+      "path": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/FilletRemoved1/1flatfish_3d_model_basecolor.JPEG",
+      "role": "FilletRemoved1",
+      "bytes": 14866643,
+      "sha256": "f16059b3e999a3a5a7ee9c1e84550f49352ab0ce7a2935ce733c516873c7efc8"
+    },
+    {
+      "archive": "drive-download-20261028T151238Z-1-001.zip",
+      "entry": "필렛제거1/FilletRemoved1.fbm/1flatfish_3d_model_metallic.JPEG",
+      "path": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/FilletRemoved1/1flatfish_3d_model_metallic.JPEG",
+      "role": "FilletRemoved1",
+      "bytes": 828639,
+      "sha256": "40cfc683544a7d11b61d96694c37ddad82cd53cac6db3f55ce48606c839babb1"
+    },
+    {
+      "archive": "drive-download-20261028T151238Z-1-001.zip",
+      "entry": "필렛제거1/FilletRemoved1.fbm/1flatfish_3d_model_normal.PNG",
+      "path": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/FilletRemoved1/1flatfish_3d_model_normal.PNG",
+      "role": "FilletRemoved1",
+      "bytes": 4203318,
+      "sha256": "4e7b60bbe8fa05ae51b8a335ef88ab632ed04b740230d8b61731f58fb43c6a59"
+    },
+    {
+      "archive": "drive-download-20261028T151238Z-1-001.zip",
+      "entry": "필렛제거1/FilletRemoved1.fbm/1flatfish_3d_model_rm.JPEG",
+      "path": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/FilletRemoved1/1flatfish_3d_model_rm.JPEG",
+      "role": "FilletRemoved1",
+      "bytes": 884653,
+      "sha256": "215c8ba3a6aebf3aadaec640867ef5d994085a0a8bf6c8a11986323109e2ada4"
+    },
+    {
+      "archive": "drive-download-20261028T151238Z-1-001.zip",
+      "entry": "필렛제거1/FilletRemoved1.fbm/1flatfish_3d_model_roughness.JPEG",
+      "path": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/FilletRemoved1/1flatfish_3d_model_roughness.JPEG",
+      "role": "FilletRemoved1",
+      "bytes": 854427,
+      "sha256": "8228cbbc112c73653917a9ce2799370be7e9d7743dd273fced2938e1421658e4"
+    },
+    {
+      "archive": "drive-download-20261028T151238Z-1-001.zip",
+      "entry": "필렛제거1/FilletRemoved1.fbm/tripo_convert_16b804fc-13ca-490c-86b0-72fceee92968.fbx",
+      "path": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/FilletRemoved1/FilletRemoved1.fbx",
+      "role": "FilletRemoved1",
+      "bytes": 61457980,
+      "sha256": "9989fe3a24a9f24e772a35a9cc9fb5aa56e6d82ab3ad06f8153874caa2270c51"
+    },
+    {
+      "archive": "drive-download-20261028T151238Z-1-001.zip",
+      "entry": "필렛제거2/FilletRemoved2.fbm/2flatfish_3d_model_basecolor.JPEG",
+      "path": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/FilletRemoved2/2flatfish_3d_model_basecolor.JPEG",
+      "role": "FilletRemoved2",
+      "bytes": 11672347,
+      "sha256": "8fc98260d6f6dd5c9ab3a7e6781f919f2b169023e2d855498b58651892e4a880"
+    },
+    {
+      "archive": "drive-download-20261028T151238Z-1-001.zip",
+      "entry": "필렛제거2/FilletRemoved2.fbm/2flatfish_3d_model_metallic.JPEG",
+      "path": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/FilletRemoved2/2flatfish_3d_model_metallic.JPEG",
+      "role": "FilletRemoved2",
+      "bytes": 1332542,
+      "sha256": "ce49805f4a8ece6147a944598e708ffca6ed014b71a5c49938a383f8ba684b8f"
+    },
+    {
+      "archive": "drive-download-20261028T151238Z-1-001.zip",
+      "entry": "필렛제거2/FilletRemoved2.fbm/2flatfish_3d_model_normal.PNG",
+      "path": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/FilletRemoved2/2flatfish_3d_model_normal.PNG",
+      "role": "FilletRemoved2",
+      "bytes": 4234529,
+      "sha256": "b2ce131bc21c69fdbbef932a572a63f734cdc4791e8188cf5b276d816980e81d"
+    },
+    {
+      "archive": "drive-download-20261028T151238Z-1-001.zip",
+      "entry": "필렛제거2/FilletRemoved2.fbm/2flatfish_3d_model_rm.JPEG",
+      "path": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/FilletRemoved2/2flatfish_3d_model_rm.JPEG",
+      "role": "FilletRemoved2",
+      "bytes": 1392033,
+      "sha256": "f4ddf9a2080563fd5b963db893d30dbef41f94e397b7ae7e15ac85eb73d64bba"
+    },
+    {
+      "archive": "drive-download-20261028T151238Z-1-001.zip",
+      "entry": "필렛제거2/FilletRemoved2.fbm/2flatfish_3d_model_roughness.JPEG",
+      "path": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/FilletRemoved2/2flatfish_3d_model_roughness.JPEG",
+      "role": "FilletRemoved2",
+      "bytes": 1314662,
+      "sha256": "9f45708a3bd577df996bdf3c99fb71e378de12a44c6fde6158b726adb1f26777"
+    },
+    {
+      "archive": "drive-download-20261028T151238Z-1-001.zip",
+      "entry": "필렛제거2/FilletRemoved2.fbm/tripo_convert_69bf928c-3aa0-40c1-bd22-8d69b1fbd27b.fbx",
+      "path": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/FilletRemoved2/FilletRemoved2.fbx",
+      "role": "FilletRemoved2",
+      "bytes": 58618588,
+      "sha256": "8d54ba5878f97104c37cb22395f279a8ad889b7fde6175267a3f45a066c6bfa3"
+    },
+    {
+      "archive": "drive-download-20261028T151238Z-1-001.zip",
+      "entry": "필렛제거3/FilletRemoved3.fbm/3flatfish_3d_model_basecolor.JPEG",
+      "path": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/FilletRemoved3/3flatfish_3d_model_basecolor.JPEG",
+      "role": "FilletRemoved3",
+      "bytes": 11506959,
+      "sha256": "c8a45057c10885e928b650aa1f0afc5dbd4b2ad503a62e1fca0bc38728977b81"
+    },
+    {
+      "archive": "drive-download-20261028T151238Z-1-001.zip",
+      "entry": "필렛제거3/FilletRemoved3.fbm/3flatfish_3d_model_metallic.JPEG",
+      "path": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/FilletRemoved3/3flatfish_3d_model_metallic.JPEG",
+      "role": "FilletRemoved3",
+      "bytes": 1025652,
+      "sha256": "83660a4b58d88e52c19429cabcffde640ccde0d5e85d25791684344969d9e356"
+    },
+    {
+      "archive": "drive-download-20261028T151238Z-1-001.zip",
+      "entry": "필렛제거3/FilletRemoved3.fbm/3flatfish_3d_model_normal.PNG",
+      "path": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/FilletRemoved3/3flatfish_3d_model_normal.PNG",
+      "role": "FilletRemoved3",
+      "bytes": 4361423,
+      "sha256": "87f548f6a264d5c857282da94bca981bd588de859e6c1cf0942bfdd0bc2cd3c3"
+    },
+    {
+      "archive": "drive-download-20261028T151238Z-1-001.zip",
+      "entry": "필렛제거3/FilletRemoved3.fbm/3flatfish_3d_model_rm.JPEG",
+      "path": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/FilletRemoved3/3flatfish_3d_model_rm.JPEG",
+      "role": "FilletRemoved3",
+      "bytes": 984644,
+      "sha256": "d108306146b682102facdbd057fd4210e81133a1c11d3243dd57900f10d5f135"
+    },
+    {
+      "archive": "drive-download-20261028T151238Z-1-001.zip",
+      "entry": "필렛제거3/FilletRemoved3.fbm/3flatfish_3d_model_roughness.JPEG",
+      "path": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/FilletRemoved3/3flatfish_3d_model_roughness.JPEG",
+      "role": "FilletRemoved3",
+      "bytes": 964023,
+      "sha256": "b8990723b291d629eb05e7d209285464d4434c82ff99a92c3614ab25cdd5dca9"
+    },
+    {
+      "archive": "drive-download-20261028T151238Z-1-001.zip",
+      "entry": "필렛제거3/FilletRemoved3.fbm/tripo_convert_9cd3a9ee-8e16-4b7d-8d88-d7cd00362205.fbx",
+      "path": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/FilletRemoved3/FilletRemoved3.fbx",
+      "role": "FilletRemoved3",
+      "bytes": 62450092,
+      "sha256": "d719ebfaa8d5cb51f7635c2c2ac232736b88572943f4c44e946aee25c6cd451f"
+    },
+    {
+      "archive": "drive-download-20261028T151238Z-1-001.zip",
+      "entry": "필렛제거4/FilletRemoved4.fbm/4flatfish_3d_model_basecolor.JPEG",
+      "path": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/FilletRemoved4/4flatfish_3d_model_basecolor.JPEG",
+      "role": "FilletRemoved4",
+      "bytes": 10432578,
+      "sha256": "376552da7082d3dffcdf458c08c8105fb0143c038905fcec0f65249e97f4a240"
+    },
+    {
+      "archive": "drive-download-20261028T151238Z-1-001.zip",
+      "entry": "필렛제거4/FilletRemoved4.fbm/4flatfish_3d_model_metallic.JPEG",
+      "path": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/FilletRemoved4/4flatfish_3d_model_metallic.JPEG",
+      "role": "FilletRemoved4",
+      "bytes": 1100828,
+      "sha256": "4d2b1a9cbab791d5ab348a25579f05bf40b86b84933026f5e744b9955a521470"
+    },
+    {
+      "archive": "drive-download-20261028T151238Z-1-001.zip",
+      "entry": "필렛제거4/FilletRemoved4.fbm/4flatfish_3d_model_normal.PNG",
+      "path": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/FilletRemoved4/4flatfish_3d_model_normal.PNG",
+      "role": "FilletRemoved4",
+      "bytes": 4613831,
+      "sha256": "c47dcffb389b7e5f9895d4dbc7fe89d6a7ff97e1ad9c33d9d9c9ae8008d544c2"
+    },
+    {
+      "archive": "drive-download-20261028T151238Z-1-001.zip",
+      "entry": "필렛제거4/FilletRemoved4.fbm/4flatfish_3d_model_rm.JPEG",
+      "path": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/FilletRemoved4/4flatfish_3d_model_rm.JPEG",
+      "role": "FilletRemoved4",
+      "bytes": 1061480,
+      "sha256": "befd7ae96b00e35f9206ce485b2a10dfc700ce58c4e1d00cfdb061af8238bc3b"
+    },
+    {
+      "archive": "drive-download-20261028T151238Z-1-001.zip",
+      "entry": "필렛제거4/FilletRemoved4.fbm/4flatfish_3d_model_roughness.JPEG",
+      "path": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/FilletRemoved4/4flatfish_3d_model_roughness.JPEG",
+      "role": "FilletRemoved4",
+      "bytes": 1045874,
+      "sha256": "1da5def94c516e2231306f49b0957cc6e12dba4246a96154b37259f97374f298"
+    },
+    {
+      "archive": "drive-download-20261028T151238Z-1-001.zip",
+      "entry": "필렛제거4/FilletRemoved4.fbm/tripo_convert_70c24bf0-bcc6-43c1-93e3-332fd431e69a.fbx",
+      "path": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/FilletRemoved4/FilletRemoved4.fbx",
+      "role": "FilletRemoved4",
+      "bytes": 61888540,
+      "sha256": "98e6a236eed9defb42e41710d908a779f2da9d9766e8dab27701495117f074db"
+    },
+    {
+      "archive": "drive-download-20261028T151238Z-1-001.zip",
+      "entry": "대가리/FishHead.fbm/tripo_convert_a84bc23d-1cd5-45c4-b77f-f401a9aab93c.fbx",
+      "path": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/FishHead/FishHead.fbx",
+      "role": "FishHead",
+      "bytes": 60126332,
+      "sha256": "48643c6b163ce646fb5490db81b347e1dd0b760711d5ebc9fac77b04642e680b"
+    },
+    {
+      "archive": "drive-download-20261028T151238Z-1-001.zip",
+      "entry": "대가리/FishHead.fbm/dead_fish_3d_model_basecolor.JPEG",
+      "path": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/FishHead/dead_fish_3d_model_basecolor.JPEG",
+      "role": "FishHead",
+      "bytes": 13980151,
+      "sha256": "aef5265b26b56fc97ec5ed09034964db421d10d977a80de2966fcbefca73dbfc"
+    },
+    {
+      "archive": "drive-download-20261028T151238Z-1-001.zip",
+      "entry": "대가리/FishHead.fbm/dead_fish_3d_model_metallic.JPEG",
+      "path": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/FishHead/dead_fish_3d_model_metallic.JPEG",
+      "role": "FishHead",
+      "bytes": 472360,
+      "sha256": "1b45724f3af3b76e9932dd662ac0d7634da6153b47cd91f7e8f0fd6409e12358"
+    },
+    {
+      "archive": "drive-download-20261028T151238Z-1-001.zip",
+      "entry": "대가리/FishHead.fbm/dead_fish_3d_model_normal.PNG",
+      "path": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/FishHead/dead_fish_3d_model_normal.PNG",
+      "role": "FishHead",
+      "bytes": 4145580,
+      "sha256": "10765e9d49a713f8966593e354927ad39805f48b0850764ec0c9fcedad70eafa"
+    },
+    {
+      "archive": "drive-download-20261028T151238Z-1-001.zip",
+      "entry": "대가리/FishHead.fbm/dead_fish_3d_model_rm.JPEG",
+      "path": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/FishHead/dead_fish_3d_model_rm.JPEG",
+      "role": "FishHead",
+      "bytes": 509922,
+      "sha256": "2b81be81d92a5c715d172b31fdb5fde70b33d3a3beb9cbcd1f70b4358c4926aa"
+    },
+    {
+      "archive": "drive-download-20261028T151238Z-1-001.zip",
+      "entry": "대가리/FishHead.fbm/dead_fish_3d_model_roughness.JPEG",
+      "path": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/FishHead/dead_fish_3d_model_roughness.JPEG",
+      "role": "FishHead",
+      "bytes": 456120,
+      "sha256": "8f49f510cc76aed68e02637485334d495e3120b76489e86030fed6d88c02493c"
+    },
+    {
+      "archive": "drive-download-20261028T151238Z-1-001.zip",
+      "entry": "앞면필렛/FrontFillet.fbm/tripo_convert_9460df90-d621-475d-85d2-06e1f0927dbe.fbx",
+      "path": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/FrontFillet/FrontFillet.fbx",
+      "role": "FrontFillet",
+      "bytes": 59518716,
+      "sha256": "3c931f23ea4f4f244711f7ea6eac648a85060e5df4d631afb1d873a583a8c35b"
+    },
+    {
+      "archive": "drive-download-20261028T151238Z-1-001.zip",
+      "entry": "앞면필렛/FrontFillet.fbm/flatfish_3d_model_basecolor.JPEG",
+      "path": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/FrontFillet/flatfish_3d_model_basecolor.JPEG",
+      "role": "FrontFillet",
+      "bytes": 15437152,
+      "sha256": "af5bd397ef68c18efa8e4a5c1f9c0588fd16dbf426aa35e93e07bba031863d70"
+    },
+    {
+      "archive": "drive-download-20261028T151238Z-1-001.zip",
+      "entry": "앞면필렛/FrontFillet.fbm/flatfish_3d_model_metallic.JPEG",
+      "path": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/FrontFillet/flatfish_3d_model_metallic.JPEG",
+      "role": "FrontFillet",
+      "bytes": 748359,
+      "sha256": "ab658d5f3453a60a9631a351f71c1cb10c12fd52132859fcf3d557da2395a24c"
+    },
+    {
+      "archive": "drive-download-20261028T151238Z-1-001.zip",
+      "entry": "앞면필렛/FrontFillet.fbm/flatfish_3d_model_normal.PNG",
+      "path": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/FrontFillet/flatfish_3d_model_normal.PNG",
+      "role": "FrontFillet",
+      "bytes": 3755017,
+      "sha256": "13c36cb88d0e6e19ee348f3a68313ffa68bf065b9d93cb9ee65ee8d12a6251de"
+    },
+    {
+      "archive": "drive-download-20261028T151238Z-1-001.zip",
+      "entry": "앞면필렛/FrontFillet.fbm/flatfish_3d_model_rm.JPEG",
+      "path": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/FrontFillet/flatfish_3d_model_rm.JPEG",
+      "role": "FrontFillet",
+      "bytes": 783200,
+      "sha256": "4d1bb95d2551e6ad32200a48212bb8b2a14bc1ac3877b7a439ebba477c9629f0"
+    },
+    {
+      "archive": "drive-download-20261028T151238Z-1-001.zip",
+      "entry": "앞면필렛/FrontFillet.fbm/flatfish_3d_model_roughness.JPEG",
+      "path": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/FrontFillet/flatfish_3d_model_roughness.JPEG",
+      "role": "FrontFillet",
+      "bytes": 771836,
+      "sha256": "3b7a8ae5e23852fea1f26d8814ae733f52ba8d4da5e5c11e19e8b373e6945fcb"
+    },
+    {
+      "archive": "drive-download-20261028T151238Z-1-001.zip",
+      "entry": "대가리잘린버전/HeadRemovedFish.fbm/tripo_convert_90e8519f-b015-4188-a18c-366d7d40acfc.fbx",
+      "path": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/HeadRemovedFish/HeadRemovedFish.fbx",
+      "role": "HeadRemovedFish",
+      "bytes": 58497676,
+      "sha256": "2e80b495a00cf9f80a1214bfb3a345a6ecc662ecad2fd762004ae41ddaa9d866"
+    },
+    {
+      "archive": "drive-download-20261028T151238Z-1-001.zip",
+      "entry": "대가리잘린버전/HeadRemovedFish.fbm/flatfish_3d_model_basecolor.JPEG",
+      "path": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/HeadRemovedFish/flatfish_3d_model_basecolor.JPEG",
+      "role": "HeadRemovedFish",
+      "bytes": 17986513,
+      "sha256": "5853f9ee9bb4afd973f9127fdcd7a945015a74705b39c8f994d2aedef35529ad"
+    },
+    {
+      "archive": "drive-download-20261028T151238Z-1-001.zip",
+      "entry": "대가리잘린버전/HeadRemovedFish.fbm/flatfish_3d_model_metallic.JPEG",
+      "path": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/HeadRemovedFish/flatfish_3d_model_metallic.JPEG",
+      "role": "HeadRemovedFish",
+      "bytes": 762434,
+      "sha256": "e884717b9d290f4634be2f7dbf633058008fb4368aa51969486d4f8553c25cb3"
+    },
+    {
+      "archive": "drive-download-20261028T151238Z-1-001.zip",
+      "entry": "대가리잘린버전/HeadRemovedFish.fbm/flatfish_3d_model_normal.PNG",
+      "path": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/HeadRemovedFish/flatfish_3d_model_normal.PNG",
+      "role": "HeadRemovedFish",
+      "bytes": 4451992,
+      "sha256": "57905ef299a194283f0323702a9d25cda947825f35df867caf60bec9dcb46053"
+    },
+    {
+      "archive": "drive-download-20261028T151238Z-1-001.zip",
+      "entry": "대가리잘린버전/HeadRemovedFish.fbm/flatfish_3d_model_rm.JPEG",
+      "path": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/HeadRemovedFish/flatfish_3d_model_rm.JPEG",
+      "role": "HeadRemovedFish",
+      "bytes": 777298,
+      "sha256": "57edc70660ebc03ec0890c51305d19166b2cb7e00f173abd3bfd8e6871305c41"
+    },
+    {
+      "archive": "drive-download-20261028T151238Z-1-001.zip",
+      "entry": "대가리잘린버전/HeadRemovedFish.fbm/flatfish_3d_model_roughness.JPEG",
+      "path": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/HeadRemovedFish/flatfish_3d_model_roughness.JPEG",
+      "role": "HeadRemovedFish",
+      "bytes": 752300,
+      "sha256": "a6c9902b90f0a2a465140c1425c885c477bbff904bb987ff6d8703f02d1f7be0"
+    },
+    {
+      "archive": "drive-download-20261028T151238Z-1-001.zip",
+      "entry": "회단한점/SashimiSlice.fbm/tripo_convert_843f6d1d-fe01-4c04-b309-feb49245b8a3.fbx",
+      "path": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/SashimiSlice/SashimiSlice.fbx",
+      "role": "SashimiSlice",
+      "bytes": 60485164,
+      "sha256": "0651be8e96babd372d94294902fdc8ddeebc85de52d0a22ea2009aabfb7b5fa6"
+    },
+    {
+      "archive": "drive-download-20261028T151238Z-1-001.zip",
+      "entry": "회단한점/SashimiSlice.fbm/raw_chicken_breast_3d_model_basecolor.JPEG",
+      "path": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/SashimiSlice/raw_chicken_breast_3d_model_basecolor.JPEG",
+      "role": "SashimiSlice",
+      "bytes": 7840447,
+      "sha256": "cb0e8d98cb31855429385fcc5c4907e630be2bcaec70de214fd2f8e2b733aa69"
+    },
+    {
+      "archive": "drive-download-20261028T151238Z-1-001.zip",
+      "entry": "회단한점/SashimiSlice.fbm/raw_chicken_breast_3d_model_metallic.JPEG",
+      "path": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/SashimiSlice/raw_chicken_breast_3d_model_metallic.JPEG",
+      "role": "SashimiSlice",
+      "bytes": 889927,
+      "sha256": "712598afa90b3765b147d79d248ebea520e92c4079b797ada7962f2e8702ec9a"
+    },
+    {
+      "archive": "drive-download-20261028T151238Z-1-001.zip",
+      "entry": "회단한점/SashimiSlice.fbm/raw_chicken_breast_3d_model_normal.PNG",
+      "path": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/SashimiSlice/raw_chicken_breast_3d_model_normal.PNG",
+      "role": "SashimiSlice",
+      "bytes": 3188136,
+      "sha256": "c5d7cbda99c6bad937bc84b5251cd26d97ab0b535cfe939bd7effda2c14a7777"
+    },
+    {
+      "archive": "drive-download-20261028T151238Z-1-001.zip",
+      "entry": "회단한점/SashimiSlice.fbm/raw_chicken_breast_3d_model_rm.JPEG",
+      "path": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/SashimiSlice/raw_chicken_breast_3d_model_rm.JPEG",
+      "role": "SashimiSlice",
+      "bytes": 863464,
+      "sha256": "731bc056295c636045efb5897e344befa9cdd1fd945b52aa3adabc6c2bc4a887"
+    },
+    {
+      "archive": "drive-download-20261028T151238Z-1-001.zip",
+      "entry": "회단한점/SashimiSlice.fbm/raw_chicken_breast_3d_model_roughness.JPEG",
+      "path": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/SashimiSlice/raw_chicken_breast_3d_model_roughness.JPEG",
+      "role": "SashimiSlice",
+      "bytes": 845656,
+      "sha256": "1ab7b17b2801c9bd90dccb755b212eab5a7087e4806a81ab9abcdbdf6b42f480"
+    },
+    {
+      "archive": "drive-download-20261028T151238Z-1-001.zip",
+      "entry": "온전한버전/WholeFish.fbm/tripo_convert_0428fdf6-99b2-4b8b-8928-7a685f3b44a5.fbx",
+      "path": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/WholeFish/WholeFish.fbx",
+      "role": "WholeFish",
+      "bytes": 58738764,
+      "sha256": "e017d3498a58cf95a187c3bb633999651d1755da33da7793445b1dd77f6d9934"
+    },
+    {
+      "archive": "drive-download-20261028T151238Z-1-001.zip",
+      "entry": "온전한버전/WholeFish.fbm/flatfish_3d_model_basecolor.JPEG",
+      "path": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/WholeFish/flatfish_3d_model_basecolor.JPEG",
+      "role": "WholeFish",
+      "bytes": 15256468,
+      "sha256": "fd1347c73311950ff2e068e1a56e1b041a10bd5f712b411af810ea96dd1e680b"
+    },
+    {
+      "archive": "drive-download-20261028T151238Z-1-001.zip",
+      "entry": "온전한버전/WholeFish.fbm/flatfish_3d_model_metallic.JPEG",
+      "path": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/WholeFish/flatfish_3d_model_metallic.JPEG",
+      "role": "WholeFish",
+      "bytes": 420505,
+      "sha256": "5ac54d5da6441fb974df10a9ef4a2a688882fccd28bafeb8c2d472baf10773d8"
+    },
+    {
+      "archive": "drive-download-20261028T151238Z-1-001.zip",
+      "entry": "온전한버전/WholeFish.fbm/flatfish_3d_model_normal.PNG",
+      "path": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/WholeFish/flatfish_3d_model_normal.PNG",
+      "role": "WholeFish",
+      "bytes": 4291708,
+      "sha256": "164a4be2ae6b3b32d9d62253262a2fbc7d6e2a534d31577745de9a4ad568c022"
+    },
+    {
+      "archive": "drive-download-20261028T151238Z-1-001.zip",
+      "entry": "온전한버전/WholeFish.fbm/flatfish_3d_model_rm.JPEG",
+      "path": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/WholeFish/flatfish_3d_model_rm.JPEG",
+      "role": "WholeFish",
+      "bytes": 448130,
+      "sha256": "e68e25aafdc24fca0b71ac3dabe9246adb302ade20bf289caca39d487461781c"
+    },
+    {
+      "archive": "drive-download-20261028T151238Z-1-001.zip",
+      "entry": "온전한버전/WholeFish.fbm/flatfish_3d_model_roughness.JPEG",
+      "path": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/WholeFish/flatfish_3d_model_roughness.JPEG",
+      "role": "WholeFish",
+      "bytes": 391910,
+      "sha256": "f41ce41dcfc9c032e49d1896a247272467a6439c1e332ea524c02fb02cadc1cd"
+    },
+    {
+      "archive": "font-20261028T151309Z-1-001.zip",
+      "entry": "font/Cheosgeol-eum.otf",
+      "path": "Assets/_SashimiBoy/Art/Source/UI/Fonts/Cheosgeol-eum/Cheosgeol-eum.otf",
+      "role": "Font",
+      "bytes": 9522240,
+      "sha256": "cdddc82227f2ed75ae744b1ec42d01bbe7e7cfc9ede230db0ca73d3bd0c4e3d2"
+    },
+    {
+      "archive": "",
+      "entry": "flounder1.wav",
+      "path": "Assets/_SashimiBoy/Audio/Music/Stage_03_Flounder/flounder1.wav",
+      "role": "Music",
+      "bytes": 28485292,
+      "sha256": "3d277b2dcd67feb1bebf937460d2cd694347aa3db020ece0bd6079f5a29fb065"
+    }
+  ],
+  "audio": {
+    "encoding": "PCM",
+    "channels": 2,
+    "sampleRate": 48000,
+    "bitsPerSample": 16,
+    "frames": 7121280,
+    "durationSeconds": 148.36
+  },
+  "font": {
+    "family": "Cheosgeol-eum",
+    "localizedFamily": "첫걸음",
+    "author": "Lu.k",
+    "copyright": "Copyright (c) 2024, Lu.k",
+    "licenseProvided": false
+  },
+  "planningProvided": false
+}
