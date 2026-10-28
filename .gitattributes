@@ -62,3 +62,6 @@ Assets/_SashimiBoy/Art/Generated/DayWorld/Cheolsu_Head.asset filter=lfs diff=lfs
 Assets/_SashimiBoy/Art/Generated/DayWorld/Minjae_Body.asset filter=lfs diff=lfs merge=lfs -text
 Assets/_SashimiBoy/Art/Generated/DayWorld/Minjae_Head.asset filter=lfs diff=lfs merge=lfs -text
 Assets/_SashimiBoy/Art/Generated/DayWorld/Misuk_Body.asset filter=lfs diff=lfs merge=lfs -text
+# Preserve Unity-generated empty scalar spacing for the new Stage3 audio only.
+Assets/_SashimiBoy/Audio/Music/Stage_03_Flounder.meta whitespace=-blank-at-eol
+Assets/_SashimiBoy/Audio/Music/Stage_03_Flounder/*.meta whitespace=-blank-at-eol
