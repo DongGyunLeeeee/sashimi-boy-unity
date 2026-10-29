@@ -1,3 +1,4 @@
+using System;
 using UnityEngine;
 
 namespace SashimiBoy
@@ -40,6 +41,7 @@ namespace SashimiBoy
             departurePosition = transform.position;
             departureRotation = transform.rotation;
             transform.SetParent(independentRoot, true);
+            if (transform.parent != independentRoot) return false;
             IsDetached = true;
             IsStored = false;
             IsMoving = true;
@@ -62,6 +64,8 @@ namespace SashimiBoy
             if (t >= 1f)
             {
                 transform.SetParent(storageAnchor, true);
+                if (transform.parent != storageAnchor)
+                    throw new InvalidOperationException("Flounder part could not reach its storage parent: " + stableId);
                 transform.localPosition = Vector3.zero;
                 transform.localRotation = Quaternion.identity;
                 IsMoving = false;
@@ -73,6 +77,8 @@ namespace SashimiBoy
         {
             CaptureAuthoredPose();
             transform.SetParent(authoredParent, false);
+            if (transform.parent != authoredParent)
+                throw new InvalidOperationException("Flounder part could not restore its authored parent: " + stableId);
             transform.localPosition = authoredPosition;
             transform.localRotation = authoredRotation;
             transform.localScale = authoredScale;

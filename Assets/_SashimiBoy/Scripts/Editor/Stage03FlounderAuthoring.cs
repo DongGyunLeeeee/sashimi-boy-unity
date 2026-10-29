@@ -90,6 +90,7 @@ namespace SashimiBoy.EditorTools
         public static void BuildBatch()
         {
             RequireEditor();
+            using var console = new EditorConsoleFailureScope();
             EnsureFolder(Root);
             EnsureFolder(Root + "/Meshes");
             EnsureFolder(Root + "/Materials");
@@ -141,6 +142,7 @@ namespace SashimiBoy.EditorTools
         public static void ProbeBatch()
         {
             RequireEditor();
+            using var console = new EditorConsoleFailureScope();
             var reports = new List<ModelReport>();
             var images = new List<Texture2D>();
             using (var preview = new PreviewSpace())
@@ -189,6 +191,7 @@ namespace SashimiBoy.EditorTools
         public static void CapturePreviewsBatch()
         {
             RequireEditor();
+            using var console = new EditorConsoleFailureScope();
             var report = JsonUtility.FromJson<AuthoringReport>(File.ReadAllText(ProjectFile(ReportPath)));
             Require(report != null && report.models != null && report.models.Length == 10, "Generate flounder presentation before capturing.");
             var images = new List<Texture2D>();
@@ -677,7 +680,14 @@ namespace SashimiBoy.EditorTools
                         i == 0 ? 0f : -whole.z * HeadLengthRatio * .5f);
                     view.bodyStates[i].SetActive(i == 0);
                 }
-                view.headStorageAnchor = Anchor(root.transform, "Storage_Head", new Vector3(-whole.x * 1.1f, whole.y * .6f, whole.z * .55f));
+                Bounds headBounds = WrapperBounds("FishHead");
+                Bounds frontBounds = WrapperBounds("FrontFillet"), backBounds = WrapperBounds("BackFillet");
+                float margin = whole.z * .06f;
+                float storageWidth = Mathf.Max(frontBounds.size.x, backBounds.size.x);
+                float storageLength = Mathf.Max(frontBounds.size.z, backBounds.size.z);
+                float firstColumn = whole.x * .5f + storageWidth * .5f + margin;
+                view.headStorageAnchor = Anchor(root.transform, "Storage_Head", new Vector3(
+                    -whole.x * .5f - headBounds.extents.x - margin, -headBounds.min.y, whole.z * .55f));
                 view.filletStorageAnchors = new Transform[4];
                 view.fillets = new FlounderAssemblyPart[4];
                 view.head = Part("FishHead", "Head", view.bodyPivot, new Vector3(0, 0, whole.z * .4f), view.headStorageAnchor);
@@ -686,8 +696,10 @@ namespace SashimiBoy.EditorTools
                     bool front = i < 2;
                     string id = (front ? "FrontFillet" : "BackFillet") + (i % 2);
                     float side = i % 2 == 0 ? -.25f : .25f;
+                    Bounds partBounds = front ? frontBounds : backBounds;
                     view.filletStorageAnchors[i] = Anchor(root.transform, "Storage_" + id,
-                        new Vector3(whole.x * (1.15f + (i % 2) * .65f), whole.y * .5f, whole.z * (front ? .25f : -.25f)));
+                        new Vector3(firstColumn + (i % 2) * (storageWidth + margin),
+                            -partBounds.min.y, (storageLength + margin) * (front ? .5f : -.5f)));
                     // Back fillets sit below the initial plane and rotate up with BodyPivot.
                     view.fillets[i] = Part(front ? "FrontFillet" : "BackFillet", id, view.bodyPivot,
                         new Vector3(whole.x * side, whole.y * (front ? .25f : -.25f), -whole.z * .06f), view.filletStorageAnchors[i]);
@@ -711,6 +723,15 @@ namespace SashimiBoy.EditorTools
             part.stableId = id; part.storageAnchor = storage;
             instance.SetActive(false);
             return part;
+        }
+
+        private static Bounds WrapperBounds(string role)
+        {
+            var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(WrapperPath(role));
+            Require(prefab != null, "Missing part wrapper: " + role);
+            var mesh = prefab.GetComponentInChildren<MeshFilter>(true).sharedMesh;
+            Require(mesh != null, "Missing part mesh: " + role);
+            return mesh.bounds;
         }
 
         private static GameObject WrapperInstance(string role, Transform parent)
@@ -761,10 +782,12 @@ namespace SashimiBoy.EditorTools
             var root = preview.Instantiate(asset);
             try
             {
+                FlounderPreviewDiagnostics.PrepareRuntimeClone(root);
                 var view = root.GetComponent<FlounderAssemblyView>();
                 var frame = new Bounds(new Vector3(0, whole.y * .5f, 0), whole * 1.25f);
                 void Capture(string id)
                 {
+                    FlounderPreviewDiagnostics.WriteSnapshot(view, id, EvidencePath("state-" + id + ".json"));
                     Texture2D image = preview.Capture(frame, 1000, 800);
                     try { WriteImage(EvidencePath("transition-" + id + ".png"), image); }
                     finally { Object.DestroyImmediate(image); }
@@ -779,6 +802,8 @@ namespace SashimiBoy.EditorTools
                 Require(view.TrySeparateFillet(3), "Fourth fillet presentation rejected.");
                 Capture("6-FilletRemoved4-separating");
                 view.AdvancePresentation(5f);
+                FlounderPreviewDiagnostics.RequireCompletedStorage(view);
+                FlounderPreviewDiagnostics.WriteSnapshot(view, "7-all-parts-stored", EvidencePath("state-7-all-parts-stored.json"));
                 // Keep the completed stored-parts state in frame as a separate capture.
                 Texture2D stored = preview.Capture(GeometryBounds(root), 1200, 900);
                 try { WriteImage(EvidencePath("transition-7-all-parts-stored.png"), stored); }
@@ -984,6 +1009,23 @@ namespace SashimiBoy.EditorTools
             if (original != normalized) File.WriteAllText(absolute, normalized, new System.Text.UTF8Encoding(false));
         }
         private static string ProjectFile(string path) => Path.GetFullPath(Path.Combine(Path.GetDirectoryName(Application.dataPath), path));
+        private sealed class EditorConsoleFailureScope : IDisposable
+        {
+            private readonly List<string> messages = new List<string>();
+            public EditorConsoleFailureScope() { Application.logMessageReceived += Record; }
+            private void Record(string message, string stackTrace, LogType type)
+            {
+                if (type == LogType.Error || type == LogType.Assert || type == LogType.Exception)
+                    messages.Add(message);
+            }
+            public void Dispose()
+            {
+                Application.logMessageReceived -= Record;
+                if (messages.Count > 0)
+                    throw new InvalidOperationException("Unity reported " + messages.Count +
+                        " console failures during flounder authoring: " + string.Join(" | ", messages.Take(3)));
+            }
+        }
         private static string FileSha256(string path)
         {
             using var input = File.OpenRead(ProjectFile(path));
