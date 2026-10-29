@@ -16,8 +16,10 @@ Meshes are derived by spatial vertex clustering, retaining texture/normal
 discontinuities and a common geometric representative across duplicate seam
 vertices. Each source remains unchanged. Generation refuses an over-budget mesh
 or excessive measured displacement instead of silently dropping a supplied model.
-The limit is 200,000 render vertices per derived model, p99 displacement at most
-1%, maximum displacement at most 2%, and bounds error at most 1% of calibrated
+The preferred budget is 200,000 render vertices, with a measured per-model
+boundary budget up to 400,000 to retain UV/hard-normal discontinuities. Each
+actual budget and result is recorded. P99 displacement is at most 1%, maximum
+displacement at most 2%, and bounds error at most 1% of calibrated
 longest extent. These are measured authoring bounds, not a target-device FPS claim.
 
 Standard material metallic R comes from the supplied metallic R; smoothness A
