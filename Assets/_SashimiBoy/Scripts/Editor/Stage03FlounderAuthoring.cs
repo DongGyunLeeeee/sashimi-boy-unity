@@ -139,6 +139,12 @@ namespace SashimiBoy.EditorTools
         }
 
         // Safe first-import probe: does not require the generated runtime prefab or save a scene.
+        public static void RebuildAndCaptureBatch()
+        {
+            BuildBatch();
+            CapturePreviewsBatch();
+        }
+
         public static void ProbeBatch()
         {
             RequireEditor();
