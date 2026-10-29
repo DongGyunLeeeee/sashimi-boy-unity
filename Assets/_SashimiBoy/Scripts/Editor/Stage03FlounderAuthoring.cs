@@ -23,7 +23,7 @@ namespace SashimiBoy.EditorTools
         public const string AssemblyPath = Root + "/Prefabs/PF_Stage03_FlounderAssembly.prefab";
         public const string ReportPath = Root + "/Stage03FlounderAuthoring.json";
         public const int MaximumDerivedVertices = 200000;
-        private const string Algorithm = "Stage03Flounder-2";
+        private const string Algorithm = "Stage03Flounder-3";
 
         // These are presentation calibrations, not timing, cutting or balance values.
         // Headless bodies share the tail and neck extents; the final spine is narrower.
@@ -129,6 +129,7 @@ namespace SashimiBoy.EditorTools
             var reportFile = new AuthoringReport { wholeFootprint = footprint, models = reports.ToArray() };
             WriteIfDifferent(ReportPath, JsonUtility.ToJson(reportFile, true) + "\n");
             AssetDatabase.ImportAsset(ReportPath, ImportAssetOptions.ForceSynchronousImport);
+            NormalizeGeneratedText();
             Debug.Log("[Stage03Flounder] Generated ten source-backed wrappers and one assembly. Visual confirmation remains pending. " + ReportPath);
         }
 
@@ -466,6 +467,7 @@ namespace SashimiBoy.EditorTools
                     saved = candidate; candidate = null;
                 }
                 else { EditorUtility.CopySerialized(candidate, saved); EditorUtility.SetDirty(saved); AssetDatabase.SaveAssetIfDirty(saved); }
+                NormalizeOwnedText(report.meshPath);
                 report.generatedMeshSha256 = FileSha256(report.meshPath);
                 return saved;
             }
@@ -487,7 +489,11 @@ namespace SashimiBoy.EditorTools
                 var key = new ClusterKey
                 {
                     position = spatial, seam = seam[i],
-                    attributes = new AttributeKey(uv[i], normals[i], seam[i] ? 100000f : 32f, seam[i] ? 1000f : 4f)
+                    // Preserve original discontinuity signatures. Smooth interior
+                    // normal noise must not split one spatial/UV cluster into
+                    // hundreds of render vertices; dominant-direction bins retain
+                    // opposing surfaces while the normal map supplies fine detail.
+                    attributes = new AttributeKey(uv[i], normals[i], seam[i] ? 100000f : 32f, seam[i] ? 1000f : 1f)
                 };
                 if (!keys.TryGetValue(key, out int index))
                 {
@@ -942,6 +948,32 @@ namespace SashimiBoy.EditorTools
         { path = ProjectFile(path); if (!File.Exists(path) || File.ReadAllText(path) != text) File.WriteAllText(path, text, new System.Text.UTF8Encoding(false)); }
         private static void WriteIfDifferent(string path, byte[] bytes)
         { path = ProjectFile(path); if (!File.Exists(path) || !File.ReadAllBytes(path).SequenceEqual(bytes)) File.WriteAllBytes(path, bytes); }
+        private static void NormalizeGeneratedText()
+        {
+            // Unity emits spaces after empty YAML scalars. Normalize only the
+            // generator-owned text outputs, preserving GUIDs and all source files.
+            foreach (string path in Directory.GetFiles(ProjectFile(Root), "*", SearchOption.AllDirectories))
+            {
+                string relative = Root + "/" + Path.GetRelativePath(ProjectFile(Root), path).Replace('\\', '/');
+                if (new[] { ".meta", ".asset", ".prefab", ".mat", ".json" }.Contains(Path.GetExtension(path), StringComparer.OrdinalIgnoreCase))
+                    NormalizeOwnedText(relative);
+            }
+            NormalizeOwnedText(Root + ".meta");
+        }
+        private static void NormalizeOwnedText(string path)
+        {
+            Require(path == Root + ".meta" || path.StartsWith(Root + "/", StringComparison.Ordinal), "Normalization is limited to owned generated assets.");
+            string absolute = ProjectFile(path);
+            if (!File.Exists(absolute)) return;
+            if (Path.GetExtension(path).Equals(".asset", StringComparison.OrdinalIgnoreCase))
+            {
+                using var input = File.OpenRead(absolute);
+                if (input.ReadByte() != '%') return; // Never rewrite a binary mesh.
+            }
+            string original = File.ReadAllText(absolute);
+            string normalized = string.Join("\n", File.ReadAllLines(absolute).Select(line => line.TrimEnd(' ', '\t'))) + "\n";
+            if (original != normalized) File.WriteAllText(absolute, normalized, new System.Text.UTF8Encoding(false));
+        }
         private static string ProjectFile(string path) => Path.GetFullPath(Path.Combine(Path.GetDirectoryName(Application.dataPath), path));
         private static string FileSha256(string path)
         {
