@@ -231,6 +231,7 @@ namespace SashimiBoy
             current = SaveData.CreateNew();
             current.kevinFaceId = string.IsNullOrEmpty(faceId) ? "CuteFace" : faceId;
             current.dayWorld.active = true;
+            DayWorldRules.Wake(current);
             RaiseChanged();
         }
 

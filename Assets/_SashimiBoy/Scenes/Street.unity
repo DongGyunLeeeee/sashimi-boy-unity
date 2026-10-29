@@ -19506,7 +19506,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!4 &1209740631
 Transform:
   m_ObjectHideFlags: 0
@@ -25011,6 +25011,7 @@ MonoBehaviour:
   newGameButton: {fileID: 0}
   continueButton: {fileID: 0}
   customization: {fileID: 0}
+  stageClearScreen: {fileID: 0}
   npcs:
   - {fileID: 780849953}
   - {fileID: 317490112}
