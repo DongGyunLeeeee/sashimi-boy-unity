@@ -23,10 +23,10 @@ namespace SashimiBoy.EditorTools
         public const string AssemblyPath = Root + "/Prefabs/PF_Stage03_FlounderAssembly.prefab";
         public const string ReportPath = Root + "/Stage03FlounderAuthoring.json";
         public const int MaximumDerivedVertices = 200000;
-        private const string Algorithm = "Stage03Flounder-1";
+        private const string Algorithm = "Stage03Flounder-2";
 
         // These are presentation calibrations, not timing, cutting or balance values.
-        // First five body wrappers share a footprint; the final spine keeps its narrower outline.
+        // Headless bodies share the tail and neck extents; the final spine is narrower.
         // ProbeBatch and the generated report expose all scales for visual review.
         private const float HeadLengthRatio = .20f;
         private const float FilletLengthRatio = .70f;
@@ -58,7 +58,7 @@ namespace SashimiBoy.EditorTools
         {
             public int issue = 73;
             public string algorithm = Algorithm;
-            public string coordinateContract = "Right-handed rigid orientation; head +Z, up +Y, positive scales only; shared body pivot.";
+            public string coordinateContract = "Head +Z, up +Y, positive scales only; shared body pivot and tail alignment. Back-work states include an authored working-face correction.";
             public string calibrationScope = "Art wrapper calibration, not source units or approved gameplay values. Visual confirmation remains required.";
             public string packedTextureContract = "Standard metallic R = supplied metallic R, smoothness A = 1 - supplied roughness R; supplied rm recorded but not guessed.";
             public Vector3 wholeFootprint;
@@ -101,6 +101,7 @@ namespace SashimiBoy.EditorTools
 
             foreach (string role in Roles)
             {
+                var watch = System.Diagnostics.Stopwatch.StartNew();
                 using (var source = ReadSource(role))
                 {
                     var report = Describe(source);
@@ -121,6 +122,7 @@ namespace SashimiBoy.EditorTools
                     Require(report.sourceUnchanged, "Source dependency changed during generation: " + source.path);
                     report.visualConfirmationPending = true;
                     reports.Add(report);
+                    Debug.Log("[Stage03Flounder] " + role + " vertices " + report.sourceVertices + " -> " + report.derivedVertices + "; generation/cache " + watch.ElapsedMilliseconds + " ms.");
                 }
             }
             BuildAssembly(footprint);
@@ -214,9 +216,11 @@ namespace SashimiBoy.EditorTools
         private static string WrapperPath(string role) => Root + "/Prefabs/PF_" + role + ".prefab";
         private static Vector3 TargetSize(string role, Vector3 source, Vector3 whole)
         {
-            if (Array.IndexOf(Roles, role) < 5) return whole;
+            int bodyIndex = Array.IndexOf(Roles, role);
+            if (bodyIndex == 0) return whole;
+            if (bodyIndex > 0 && bodyIndex < 5) return new Vector3(whole.x, whole.y, whole.z * (1f - HeadLengthRatio));
             if (role == "FilletRemoved4")
-                return new Vector3(whole.x * SpineWidthRatio, Mathf.Min(whole.y, source.y * whole.z / source.z), whole.z);
+                return new Vector3(whole.x * SpineWidthRatio, Mathf.Min(whole.y, source.y * whole.z * (1f - HeadLengthRatio) / source.z), whole.z * (1f - HeadLengthRatio));
             float length = role == "FishHead" ? whole.z * HeadLengthRatio
                          : role == "SashimiSlice" ? whole.z * SliceLengthRatio : whole.z * FilletLengthRatio;
             // Independent scan parts keep their source aspect ratio under one positive uniform scale.
@@ -226,7 +230,7 @@ namespace SashimiBoy.EditorTools
         private static string AlignmentReason(string role)
         {
             if (Array.IndexOf(Roles, role) < 5)
-                return "Independent normalized scans: common WholeFish footprint, centered shared pivot, positive per-axis wrapper calibration. Inspect source and transition captures for shape fidelity.";
+                return "Independent normalized scans: shared tail/neck anchors account for the removed head, common width/height and positive calibration. Explicit working-face/yaw corrections follow the actual source probe; inspect transition captures.";
             if (role == "FilletRemoved4")
                 return "Final remaining spine: common longitudinal extent and pivot; narrower width, no enlargement beyond WholeFish. Thin-axis detail retains source ratio.";
             return "Independent source part: rigid canonical axes, uniform positive scale; artist calibration length ratio recorded in generator. No cut count/timing inferred.";
@@ -278,7 +282,7 @@ namespace SashimiBoy.EditorTools
             finally { Object.DestroyImmediate(instance); }
             Require(positions.Count > 0 && triangles.Count > 0, "Empty source geometry: " + path);
             Bounds imported = BoundsOf(positions);
-            Quaternion orientation = CanonicalRotation(imported.size);
+            Quaternion orientation = CanonicalRotation(role, imported.size);
             Bounds oriented = BoundsOf(positions.Select(p => orientation * p));
             return new SourceGeometry
             {
@@ -290,14 +294,22 @@ namespace SashimiBoy.EditorTools
 
         // Rigid rotation from the actual imported hierarchy, rather than guessing whether FBX -90X
         // was baked by the importer. Longest axis -> +Z; thinnest axis -> +Y. No reflection.
-        private static Quaternion CanonicalRotation(Vector3 size)
+        private static Quaternion CanonicalRotation(string role, Vector3 size)
         {
             Require(size.x > 0 && size.y > 0 && size.z > 0 && Finite(size), "Source bounds must be finite and three-dimensional.");
             int longest = size.x >= size.y && size.x >= size.z ? 0 : size.y >= size.z ? 1 : 2;
             int thinnest = size.x <= size.y && size.x <= size.z ? 0 : size.y <= size.z ? 1 : 2;
             Require(longest != thinnest, "Ambiguous source axes require an explicit authoring calibration.");
             Vector3 Axis(int index) => index == 0 ? Vector3.right : index == 1 ? Vector3.up : Vector3.forward;
-            return Quaternion.Inverse(Quaternion.LookRotation(Axis(longest), Axis(thinnest)));
+            Quaternion rotation = Quaternion.Inverse(Quaternion.LookRotation(Axis(longest), Axis(thinnest)));
+            // Probe1 exposed reversed tails in these independent scans. They are
+            // authored for the already-flipped BodyPivot, so their cut face is
+            // local -Y and becomes visible +Y during back-side work.
+            if (role == "FilletRemoved3")
+                rotation = Quaternion.AngleAxis(180f, Vector3.forward) * Quaternion.AngleAxis(180f, Vector3.up) * rotation;
+            else if (role == "FilletRemoved4")
+                rotation = Quaternion.AngleAxis(180f, Vector3.forward) * Quaternion.AngleAxis(225f, Vector3.up) * rotation;
+            return rotation;
         }
 
         private static ModelReport Describe(SourceGeometry source)
@@ -407,6 +419,7 @@ namespace SashimiBoy.EditorTools
             }
             var seam = points.Select(p => discontinuities.Contains(new PositionKey(p, positionPrecision))).ToArray();
             report.seamVertices = seam.Count(s => s);
+            Debug.Log("[Stage03Flounder] " + source.role + " attribute-boundary vertices " + report.seamVertices + " / " + points.Length);
             firstAttributes.Clear(); discontinuities.Clear();
 
             Mesh candidate = null;
@@ -418,6 +431,7 @@ namespace SashimiBoy.EditorTools
                 {
                     if (candidate != null) Object.DestroyImmediate(candidate);
                     candidate = Cluster(points, normals, source.uv, source.triangles, seam, cell, out map);
+                    Debug.Log("[Stage03Flounder] " + source.role + " cluster attempt " + attempt + ": " + candidate.vertexCount + " vertices.");
                     if (candidate.vertexCount <= MaximumDerivedVertices) break;
                     cell *= 1.25f;
                 }
@@ -641,6 +655,11 @@ namespace SashimiBoy.EditorTools
                 for (int i = 0; i < 6; i++)
                 {
                     view.bodyStates[i] = WrapperInstance(Roles[i], view.bodyPivot);
+                    Bounds bodyBounds = GeometryBounds(view.bodyStates[i]);
+                    float heightOffset = (whole.y - bodyBounds.size.y) * .5f;
+                    view.bodyStates[i].transform.localPosition = new Vector3(0f,
+                        i >= 4 ? heightOffset : -heightOffset,
+                        i == 0 ? 0f : -whole.z * HeadLengthRatio * .5f);
                     view.bodyStates[i].SetActive(i == 0);
                 }
                 view.headStorageAnchor = Anchor(root.transform, "Storage_Head", new Vector3(-whole.x * 1.1f, whole.y * .6f, whole.z * .55f));
@@ -793,8 +812,8 @@ namespace SashimiBoy.EditorTools
                     camera = cameraObject.GetComponent<Camera>(); camera.enabled = false; camera.scene = objects.scene;
                     camera.clearFlags = CameraClearFlags.SolidColor; camera.backgroundColor = new Color(.105f, .13f, .15f);
                     camera.orthographic = true; camera.nearClipPlane = .001f; camera.farClipPlane = 10000f;
-                    AddLight("Key", Quaternion.Euler(45, -35, 0), 1.3f);
-                    AddLight("Fill", Quaternion.Euler(65, 150, 0), .7f);
+                    AddLight("Key", Quaternion.Euler(45, -35, 0), .7f);
+                    AddLight("Fill", Quaternion.Euler(65, 150, 0), .2f);
                 }
                 catch { objects.Dispose(); throw; }
             }
