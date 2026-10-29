@@ -22,7 +22,7 @@ namespace SashimiBoy.Tests
         {
             public string role, sourcePath, sourceDependencyHash, meshPath, generatedMeshSha256, materialPath, wrapperPath;
             public string baseColorPath, normalSourcePath, metallicSourcePath, roughnessSourcePath;
-            public int sourceVertices, derivedVertices;
+            public int sourceVertices, derivedVertices, vertexBudget;
             public float relativeP99Error, relativeMaximumError, maximumBoundsDeviation;
             public Vector3 derivedSize, derivedCenter, positiveScale, orientedSize;
             public bool sourceUnchanged;
@@ -116,7 +116,8 @@ namespace SashimiBoy.Tests
                 Assert.That(sourceFilters.Sum(f => f.sharedMesh.vertexCount), Is.EqualTo(entry.sourceVertices), entry.role);
                 Assert.That(AssetDatabase.GetAssetDependencyHash(entry.sourcePath).ToString(),
                     Is.EqualTo(entry.sourceDependencyHash), entry.role);
-                Assert.That(mesh.vertexCount, Is.InRange(1, 200000));
+                Assert.That(entry.vertexBudget, Is.InRange(200000, 400000));
+                Assert.That(mesh.vertexCount, Is.InRange(1, entry.vertexBudget));
                 Assert.That(mesh.vertexCount, Is.EqualTo(entry.derivedVertices));
                 Assert.That(mesh.vertexCount, Is.LessThan(entry.sourceVertices));
                 Assert.That(mesh.normals.Length, Is.EqualTo(mesh.vertexCount));

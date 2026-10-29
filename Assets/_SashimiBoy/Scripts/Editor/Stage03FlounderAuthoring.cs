@@ -22,8 +22,9 @@ namespace SashimiBoy.EditorTools
         public const string Root = "Assets/_SashimiBoy/Art/Generated/Stage03Flounder";
         public const string AssemblyPath = Root + "/Prefabs/PF_Stage03_FlounderAssembly.prefab";
         public const string ReportPath = Root + "/Stage03FlounderAuthoring.json";
-        public const int MaximumDerivedVertices = 200000;
-        private const string Algorithm = "Stage03Flounder-3";
+        public const int PreferredDerivedVertices = 200000;
+        public const int MaximumDerivedVertices = 400000;
+        private const string Algorithm = "Stage03Flounder-4";
 
         // These are presentation calibrations, not timing, cutting or balance values.
         // Headless bodies share the tail and neck extents; the final spine is narrower.
@@ -44,7 +45,7 @@ namespace SashimiBoy.EditorTools
             public string role, sourcePath, sourceDependencyHash, materialPath, wrapperPath;
             public string baseColorPath, normalSourcePath, metallicSourcePath, roughnessSourcePath, suppliedPackedRmPath;
             public string meshPath, generatedMeshSha256, algorithm;
-            public int sourceVertices, derivedVertices, sourceTriangles, derivedTriangles, seamVertices;
+            public int sourceVertices, derivedVertices, sourceTriangles, derivedTriangles, seamVertices, vertexBudget;
             public Vector3 importedSize, importedCenter, orientedSize, orientedCenter, positiveScale;
             public Vector3 rotationEuler, translation, derivedSize, derivedCenter;
             public float clusterCell, maximumVertexDisplacement, p99VertexDisplacement, rmsVertexDisplacement;
@@ -94,6 +95,8 @@ namespace SashimiBoy.EditorTools
             EnsureFolder(Root + "/Materials");
             EnsureFolder(Root + "/Textures");
             EnsureFolder(Root + "/Prefabs");
+            try
+            {
             var reports = new List<ModelReport>();
             Vector3 footprint;
             using (var source = ReadSource("WholeFish")) footprint = source.orientedBounds.size;
@@ -129,8 +132,9 @@ namespace SashimiBoy.EditorTools
             var reportFile = new AuthoringReport { wholeFootprint = footprint, models = reports.ToArray() };
             WriteIfDifferent(ReportPath, JsonUtility.ToJson(reportFile, true) + "\n");
             AssetDatabase.ImportAsset(ReportPath, ImportAssetOptions.ForceSynchronousImport);
-            NormalizeGeneratedText();
             Debug.Log("[Stage03Flounder] Generated ten source-backed wrappers and one assembly. Visual confirmation remains pending. " + ReportPath);
+            }
+            finally { NormalizeGeneratedText(); }
         }
 
         // Safe first-import probe: does not require the generated runtime prefab or save a scene.
@@ -420,6 +424,10 @@ namespace SashimiBoy.EditorTools
             }
             var seam = points.Select(p => discontinuities.Contains(new PositionKey(p, positionPrecision))).ToArray();
             report.seamVertices = seam.Count(s => s);
+            // Independent scans contain very different numbers of UV/hard-normal
+            // boundaries. Preserve those attributes rather than forcing every
+            // model into the same preferred render-vertex count.
+            report.vertexBudget = Mathf.Clamp(Mathf.CeilToInt(report.seamVertices * 1.25f), PreferredDerivedVertices, MaximumDerivedVertices);
             Debug.Log("[Stage03Flounder] " + source.role + " attribute-boundary vertices " + report.seamVertices + " / " + points.Length);
             firstAttributes.Clear(); discontinuities.Clear();
 
@@ -433,10 +441,10 @@ namespace SashimiBoy.EditorTools
                     if (candidate != null) Object.DestroyImmediate(candidate);
                     candidate = Cluster(points, normals, source.uv, source.triangles, seam, cell, out map);
                     Debug.Log("[Stage03Flounder] " + source.role + " cluster attempt " + attempt + ": " + candidate.vertexCount + " vertices.");
-                    if (candidate.vertexCount <= MaximumDerivedVertices) break;
+                    if (candidate.vertexCount <= report.vertexBudget) break;
                     cell *= 1.25f;
                 }
-                Require(candidate.vertexCount <= MaximumDerivedVertices,
+                Require(candidate.vertexCount <= report.vertexBudget,
                     source.role + ": preserving source attribute boundaries exceeded the derived vertex budget; no silent seam removal.");
                 Vector3[] derived = candidate.vertices;
                 var errors = new float[points.Length];
@@ -531,6 +539,7 @@ namespace SashimiBoy.EditorTools
         {
             target.derivedVertices = source.derivedVertices; target.derivedTriangles = source.derivedTriangles;
             target.clusterCell = source.clusterCell; target.seamVertices = source.seamVertices;
+            target.vertexBudget = source.vertexBudget;
             target.maximumVertexDisplacement = source.maximumVertexDisplacement; target.p99VertexDisplacement = source.p99VertexDisplacement;
             target.rmsVertexDisplacement = source.rmsVertexDisplacement; target.relativeP99Error = source.relativeP99Error;
             target.relativeMaximumError = source.relativeMaximumError; target.maximumBoundsDeviation = source.maximumBoundsDeviation;
