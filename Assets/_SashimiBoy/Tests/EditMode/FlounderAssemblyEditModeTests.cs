@@ -5,6 +5,7 @@ using System.Linq;
 using System.Security.Cryptography;
 using NUnit.Framework;
 using UnityEditor;
+using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using Object = UnityEngine.Object;
@@ -193,6 +194,52 @@ namespace SashimiBoy.Tests
                 Assert.That(GameObjectUtility.GetMonoBehavioursWithMissingScriptCount(transform.gameObject), Is.Zero);
                 Assert.That(Mathf.Min(transform.localScale.x, transform.localScale.y, transform.localScale.z), Is.GreaterThan(0f));
             }
+            var landingBounds = fillets.Append(head).Select(part =>
+            {
+                var anchor = (Transform)RuntimeReflection.GetField(part, "storageAnchor");
+                Bounds bounds = part.GetComponentInChildren<MeshFilter>(true).sharedMesh.bounds;
+                bounds.center += anchor.localPosition;
+                Assert.That(bounds.min.y, Is.EqualTo(0f).Within(.0001f), "Stored part must rest on the assembly's board plane.");
+                return bounds;
+            }).ToArray();
+            for (int i = 0; i < landingBounds.Length; i++) for (int j = i + 1; j < landingBounds.Length; j++)
+                Assert.That(landingBounds[i].Intersects(landingBounds[j]), Is.False, "Stored parts need independent non-overlapping space.");
+            AssertGeneratedPrefabCanActuallyReparent(prefab);
+        }
+
+        private static void AssertGeneratedPrefabCanActuallyReparent(GameObject prefab)
+        {
+            Scene scene = EditorSceneManager.NewPreviewScene();
+            try
+            {
+                var instance = (GameObject)PrefabUtility.InstantiatePrefab(prefab, scene);
+                RuntimeReflection.InvokeStatic("SashimiBoy.EditorTools.FlounderPreviewDiagnostics", "PrepareRuntimeClone", instance);
+                Assert.That(instance.GetComponentsInChildren<Transform>(true).Any(PrefabUtility.IsPartOfAnyPrefab), Is.False);
+                var view = instance.GetComponent(RuntimeReflection.RuntimeType("SashimiBoy.FlounderAssemblyView"));
+                RuntimeReflection.Invoke(view, "ResetAssembly");
+                Assert.That(RuntimeReflection.Invoke(view, "TryRemoveHead"), Is.EqualTo(true));
+                Assert.That(RuntimeReflection.Invoke(view, "TrySeparateFillet", 0), Is.EqualTo(true));
+                Assert.That(RuntimeReflection.Invoke(view, "TrySeparateFillet", 1), Is.EqualTo(true));
+                Assert.That(RuntimeReflection.Invoke(view, "TryTurnOver"), Is.EqualTo(true));
+                RuntimeReflection.Invoke(view, "AdvancePresentation", 5f);
+                Assert.That(RuntimeReflection.Invoke(view, "TrySeparateFillet", 2), Is.EqualTo(true));
+                Assert.That(RuntimeReflection.Invoke(view, "TrySeparateFillet", 3), Is.EqualTo(true));
+                RuntimeReflection.Invoke(view, "AdvancePresentation", 5f);
+                Assert.That(view.GetType().GetProperty("BodyState").GetValue(view).ToString(), Is.EqualTo("Hidden"));
+                Assert.That(((GameObject[])RuntimeReflection.GetField(view, "bodyStates")).All(b => !b.activeSelf), Is.True);
+                var parts = ((Array)RuntimeReflection.GetField(view, "fillets")).Cast<Component>()
+                    .Append((Component)RuntimeReflection.GetField(view, "head"));
+                foreach (var part in parts)
+                {
+                    var storage = (Transform)RuntimeReflection.GetField(part, "storageAnchor");
+                    Assert.That(part.transform.parent, Is.SameAs(storage));
+                    Assert.That(Vector3.Distance(part.transform.position, storage.position), Is.LessThan(.00001f));
+                    Assert.That(part.GetType().GetProperty("IsStored").GetValue(part), Is.EqualTo(true));
+                    Assert.That(part.gameObject.activeInHierarchy, Is.True);
+                }
+                Assert.That(instance.GetComponentsInChildren<MeshRenderer>(false).Length, Is.EqualTo(5));
+            }
+            finally { EditorSceneManager.ClosePreviewScene(scene); }
         }
 
         [Test]
