@@ -279,8 +279,7 @@ namespace SashimiBoy.Tests
                 AssertScenesEqual(existingScenes, Scenes().Where(s => s.handle != sentinelScene.handle).ToArray());
                 string ownedAbsolute = Absolute(ownedScenePath);
                 AssertSnapshotsEqual(protectedBefore, Snapshot(ProtectedPaths().Where(p =>
-                    !string.Equals(p, ownedAbsolute, StringComparison.OrdinalIgnoreCase) &&
-                    !string.Equals(p, ownedAbsolute + ".meta", StringComparison.OrdinalIgnoreCase))),
+                    !SamePath(p, ownedAbsolute) && !SamePath(p, ownedAbsolute + ".meta"))),
                     "Fixture creation changed an existing asset.");
                 protectedBefore = Snapshot(ProtectedPaths());
                 sentinel = new GameObject("Issue83_UnsavedSentinel");
@@ -385,18 +384,22 @@ namespace SashimiBoy.Tests
         private static string Absolute(string path)
         {
             Assert.That(Path.IsPathRooted(path), Is.False, path);
-            string absolute = Path.GetFullPath(Path.Combine(Root, path));
-            Assert.That(absolute.StartsWith(Path.GetFullPath(Root) + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase), Is.True, path);
+            string absolute = Canonical(Path.Combine(Root, path));
+            Assert.That(absolute.StartsWith(Canonical(Root).TrimEnd('/') + "/", StringComparison.OrdinalIgnoreCase), Is.True, path);
             return absolute;
         }
+        private static string Canonical(string path) => Path.GetFullPath(path).Replace('\\', '/');
+        private static bool SamePath(string first, string second) =>
+            string.Equals(Canonical(first), Canonical(second), StringComparison.OrdinalIgnoreCase);
         private static string Hash(string absolute)
         {
-            using (var file = File.OpenRead(absolute))
+            using (var file = File.OpenRead(Canonical(absolute)))
             using (var sha = SHA256.Create())
                 return BitConverter.ToString(sha.ComputeHash(file)).Replace("-", "").ToLowerInvariant();
         }
         private static Dictionary<string, string> Snapshot(IEnumerable<string> paths) =>
-            paths.OrderBy(p => p, StringComparer.Ordinal).ToDictionary(p => p, Hash, StringComparer.OrdinalIgnoreCase);
+            paths.Select(Canonical).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(p => p, StringComparer.Ordinal)
+                .ToDictionary(p => p, Hash, StringComparer.OrdinalIgnoreCase);
         private static Dictionary<string, string> GeneratedSnapshot()
         {
             string folder = Absolute(Generated);
