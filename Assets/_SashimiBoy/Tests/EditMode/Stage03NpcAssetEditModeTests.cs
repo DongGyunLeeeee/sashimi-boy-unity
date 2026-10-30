@@ -261,6 +261,9 @@ namespace SashimiBoy.Tests
             Dictionary<string, string> generatedBefore = GeneratedSnapshot();
             string[] rawGuids = manifest.assets.Select(e => AssetDatabase.AssetPathToGUID(e.path)).ToArray();
             Scene previousActive = SceneManager.GetActiveScene();
+            SceneSnapshot[] existingScenes = Scenes();
+            string ownedScenePath = "Assets/__Issue83_EditorSentinel_" + Guid.NewGuid().ToString("N") + ".unity";
+            string ownedSceneGuid = null;
             RenderTexture previousTarget = RenderTexture.active;
             Scene sentinelScene = default;
             GameObject sentinel = null, cameraObject = null;
@@ -268,7 +271,18 @@ namespace SashimiBoy.Tests
             RenderTexture target = null;
             try
             {
-                sentinelScene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Additive);
+                CreateOwnedEmptySceneAsset(ownedScenePath, out ownedSceneGuid);
+                sentinelScene = EditorSceneManager.OpenScene(ownedScenePath, OpenSceneMode.Additive);
+                Assert.That(sentinelScene.IsValid() && sentinelScene.isLoaded, Is.True);
+                Assert.That(sentinelScene.GetRootGameObjects(), Is.Empty);
+                Assert.That(SceneManager.SetActiveScene(sentinelScene), Is.True);
+                AssertScenesEqual(existingScenes, Scenes().Where(s => s.handle != sentinelScene.handle).ToArray());
+                string ownedAbsolute = Absolute(ownedScenePath);
+                AssertSnapshotsEqual(protectedBefore, Snapshot(ProtectedPaths().Where(p =>
+                    !string.Equals(p, ownedAbsolute, StringComparison.OrdinalIgnoreCase) &&
+                    !string.Equals(p, ownedAbsolute + ".meta", StringComparison.OrdinalIgnoreCase))),
+                    "Fixture creation changed an existing asset.");
+                protectedBefore = Snapshot(ProtectedPaths());
                 sentinel = new GameObject("Issue83_UnsavedSentinel");
                 SceneManager.MoveGameObjectToScene(sentinel, sentinelScene);
                 cameraObject = new GameObject("Issue83_DisabledSentinelCamera");
@@ -312,8 +326,54 @@ namespace SashimiBoy.Tests
                 if (sentinel != null) Object.DestroyImmediate(sentinel);
                 if (sentinelScene.IsValid() && sentinelScene.isLoaded) EditorSceneManager.CloseScene(sentinelScene, true);
                 if (previousActive.IsValid() && previousActive.isLoaded) SceneManager.SetActiveScene(previousActive);
-                // Never restore unexpected source or serialized asset drift to hide a failure.
+                if (File.Exists(Absolute(ownedScenePath)) || File.Exists(Absolute(ownedScenePath) + ".meta"))
+                {
+                    AssertOwnedSceneAsset(ownedScenePath, ownedSceneGuid);
+                    Assert.That(AssetDatabase.DeleteAsset(ownedScenePath), Is.True, "Could not delete the owned temporary scene asset.");
+                }
+                AssertScenesEqual(existingScenes, Scenes());
+                // Never save, close or mark clean any pre-existing untitled scene, or restore asset drift.
             }
+        }
+
+        // Supplemental warm-Editor assertion probe; it does not replace the fresh NUnit XML run.
+        public static void ProbeAuthoringStateBatch()
+        {
+            new Stage03NpcAssetEditModeTests().GenerateTwice_PreservesBytesGuidsSourcesAndUnsavedEditorState();
+            Debug.Log("[Stage03NpcTests] Authoring-state assertions completed; fresh NUnit/full-suite evidence remains required.");
+        }
+
+        private static void CreateOwnedEmptySceneAsset(string path, out string guid)
+        {
+            guid = null;
+            Assert.That(path, Does.Match("^Assets/__Issue83_EditorSentinel_[a-f0-9]{32}\\.unity$"));
+            string absolute = Absolute(path);
+            Assert.That(File.Exists(absolute) || File.Exists(absolute + ".meta"), Is.False);
+            // Copy a valid scene asset without opening it, then retain only its scene settings.
+            // OpenScene(Additive) supports an existing unsaved untitled scene; NewScene(Additive) does not.
+            bool copied = AssetDatabase.CopyAsset("Assets/_SashimiBoy/Scenes/Bootstrap.unity", path);
+            guid = AssetDatabase.AssetPathToGUID(path);
+            Assert.That(copied, Is.True);
+            AssertOwnedSceneAsset(path, guid);
+            string text = File.ReadAllText(absolute);
+            int firstObject = text.IndexOf("--- !u!1 &", StringComparison.Ordinal);
+            Assert.That(firstObject, Is.GreaterThan(0), "Expected the existing Bootstrap scene settings prefix.");
+            const string emptyRoots = "--- !u!1660057539 &9223372036854775807\nSceneRoots:\n  m_ObjectHideFlags: 0\n  m_Roots: []\n";
+            string settings = text.Substring(0, firstObject);
+            // References without an external GUID are scene-local; stripped objects must not survive here.
+            settings = System.Text.RegularExpressions.Regex.Replace(settings, @"\{fileID:\s*-?\d+\s*\}", "{fileID: 0}");
+            File.WriteAllText(absolute, settings + emptyRoots, new System.Text.UTF8Encoding(false));
+            AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceSynchronousImport | ImportAssetOptions.ForceUpdate);
+        }
+
+        private static void AssertOwnedSceneAsset(string path, string guid)
+        {
+            Assert.That(path, Does.Match("^Assets/__Issue83_EditorSentinel_[a-f0-9]{32}\\.unity$"));
+            Assert.That(guid, Does.Match("^[a-f0-9]{32}$"));
+            Assert.That(AssetDatabase.AssetPathToGUID(path), Is.EqualTo(guid));
+            string meta = File.ReadAllText(Absolute(path) + ".meta");
+            Assert.That(System.Text.RegularExpressions.Regex.IsMatch(meta,
+                "(?m)^guid: " + guid + "\\r?$"), Is.True, "Owned temporary scene GUID changed.");
         }
 
         private static void AssertPackage(Intake m, string name, long bytes, string hash)
