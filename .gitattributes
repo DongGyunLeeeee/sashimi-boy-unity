@@ -65,3 +65,6 @@ Assets/_SashimiBoy/Art/Generated/DayWorld/Misuk_Body.asset filter=lfs diff=lfs m
 # Preserve Unity-generated empty scalar spacing for the new Stage3 audio only.
 Assets/_SashimiBoy/Audio/Music/Stage_03_Flounder.meta whitespace=-blank-at-eol
 Assets/_SashimiBoy/Audio/Music/Stage_03_Flounder/*.meta whitespace=-blank-at-eol
+# Preserve canonical Unity YAML empty scalar spacing for the NPC intake only.
+Assets/_SashimiBoy/Art/Generated/Stage03NpcAssets.meta whitespace=-blank-at-eol
+Assets/_SashimiBoy/Art/Generated/Stage03NpcAssets/** whitespace=-blank-at-eol
