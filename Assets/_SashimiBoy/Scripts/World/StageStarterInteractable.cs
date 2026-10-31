@@ -12,7 +12,7 @@ namespace SashimiBoy
             DayWorldRules.StageId(SaveManager.Instance.Current));
 
         public string Prompt => DayWorldFlow.Active
-            ? (SaveManager.Instance.Current.dayWorld.day == 1 ? "연어 손질 시작" : "우럭 손질 시작")
+            ? ContentDefaults.FindStage(DayWorldRules.StageId(SaveManager.Instance.Current)).displayName + " 손질 시작"
             : stageId == SashimiBoyConstants.StageIds.Salmon && loadStageScene ? "연어 손질 시작" : prompt;
 
         private void Start()

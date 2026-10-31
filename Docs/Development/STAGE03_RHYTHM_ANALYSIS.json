@@ -1,0 +1,129 @@
+{
+  "bpm": 96.53,
+  "firstGridBeatSeconds": 0.16,
+  "sourceSha256": "3572605dec84991aabf1e4911eee443287da0f7e5c403b0a449aee403cf31062",
+  "sourceDurationSeconds": 230.92,
+  "gameplayStartSeconds": 10.176,
+  "gameplayEndSeconds": 133.184,
+  "method": "log spectral flux, 1024 FFT at 12kHz, 256 hop; autocorrelation 72-145 BPM; pulse-grid phase maximization; joint global pulse-grid refinement 94-101 BPM at 0.01 BPM / 10ms phase, +/-20ms onset tolerance; explicit half/double-beat playtest pattern snapped to strongest source onset within 120ms",
+  "ownerApprovedPrototype": true,
+  "ownerMusicalSyncPending": true,
+  "phases": [
+    {
+      "label": "머리 제거",
+      "requiredHits": 4,
+      "noteTimesMs": [
+        10176.0,
+        11242.667,
+        13717.333,
+        15146.667,
+        17621.333,
+        18837.333
+      ]
+    },
+    {
+      "label": "앞면 필렛 1 분리",
+      "requiredHits": 4,
+      "noteTimesMs": [
+        22528.0,
+        23744.0,
+        26218.667,
+        27456.0,
+        29909.333,
+        31317.333
+      ]
+    },
+    {
+      "label": "앞면 필렛 2 분리",
+      "requiredHits": 4,
+      "noteTimesMs": [
+        34858.667,
+        36245.333,
+        38805.333,
+        40042.667,
+        42538.667,
+        43776.0
+      ]
+    },
+    {
+      "label": "뒷면 필렛 1 분리",
+      "requiredHits": 4,
+      "noteTimesMs": [
+        47466.667,
+        48746.667,
+        51200.0,
+        52437.333,
+        54912.0,
+        56128.0
+      ]
+    },
+    {
+      "label": "뒷면 필렛 2 분리",
+      "requiredHits": 4,
+      "noteTimesMs": [
+        59861.333,
+        61098.667,
+        63573.333,
+        64810.667,
+        67285.333,
+        68586.667
+      ]
+    },
+    {
+      "label": "앞면 필렛 1 썰기",
+      "requiredHits": 6,
+      "noteTimesMs": [
+        72256.0,
+        73472.0,
+        75968.0,
+        77205.333,
+        79701.333,
+        80917.333,
+        83413.333,
+        84650.667
+      ]
+    },
+    {
+      "label": "앞면 필렛 2 썰기",
+      "requiredHits": 6,
+      "noteTimesMs": [
+        88362.667,
+        89621.333,
+        92117.333,
+        93397.333,
+        95872.0,
+        97109.333,
+        99605.333,
+        100842.667
+      ]
+    },
+    {
+      "label": "뒷면 필렛 1 썰기",
+      "requiredHits": 6,
+      "noteTimesMs": [
+        104576.0,
+        105834.667,
+        108309.333,
+        109546.667,
+        112085.333,
+        113301.333,
+        115776.0,
+        117034.667
+      ]
+    },
+    {
+      "label": "뒷면 필렛 2 썰기",
+      "requiredHits": 6,
+      "noteTimesMs": [
+        120746.667,
+        121984.0,
+        124480.0,
+        125738.667,
+        128213.333,
+        129450.667,
+        131882.667,
+        133184.0
+      ]
+    }
+  ]
+}

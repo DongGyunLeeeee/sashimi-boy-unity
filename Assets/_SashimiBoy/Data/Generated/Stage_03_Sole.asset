@@ -17,9 +17,9 @@ MonoBehaviour:
   order: 3
   fishType: 2
   hiphopGenre: Jazz Rap
-  bpm: 98
+  bpm: 96.53
   defaultDifficulty: 1
-  sceneName: FishStageTemplate
+  sceneName: Stage03_Flounder
   requiredPreviousStageId: STAGE_02_ROCKFISH
   nextStageId: STAGE_04_MULLET
   rewardEquipment: 2

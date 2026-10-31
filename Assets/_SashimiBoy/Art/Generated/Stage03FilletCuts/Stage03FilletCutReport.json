@@ -1,0 +1,169 @@
+{
+    "issue": 87,
+    "algorithm": "Stage03FilletClip-2",
+    "contract": "Six equal longitudinal cuts; immutable original coordinate frame; cut normal -Z; original skin UV/normals retained; continuous 0..1 planar cap UV; opaque cap albedo sampled from the supplied SashimiSlice flesh; source bytes/importers untouched.",
+    "capFleshReference": {
+        "materialPath": "Assets/_SashimiBoy/Art/Generated/Stage03Flounder/Materials/MAT_SashimiSlice.mat",
+        "texturePath": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/SashimiSlice/raw_chicken_breast_3d_model_basecolor.JPEG",
+        "textureSha256": "cb0e8d98cb31855429385fcc5c4907e630be2bcaec70de214fd2f8e2b733aa69",
+        "materialDependencyHash": "bbf1766b5b1bd5f4cd62f7ab939e6128",
+        "colorSpace": "Gamma",
+        "sampling": "256x256 sRGB readback of the supplied SashimiSlice albedo; component medians of bright warm-flesh pixels; reject dark/neutral atlas regions; no source importer setting changes or invented fallback.",
+        "inspectedPixels": 65536,
+        "acceptedFleshPixels": 39280,
+        "capColor": {
+            "r": 0.9058823585510254,
+            "g": 0.7450980544090271,
+            "b": 0.6470588445663452,
+            "a": 1.0
+        }
+    },
+    "fillets": [
+        {
+            "role": "FrontFillet",
+            "sourceMeshPath": "Assets/_SashimiBoy/Art/Generated/Stage03Flounder/Meshes/MS_FrontFillet.asset",
+            "sourceDependencyHash": "f5c0fa96889d3dcd4f50e46dfdbc6ab5",
+            "cachePath": "Assets/_SashimiBoy/Art/Generated/Stage03FilletCuts/FrontFilletCache.asset",
+            "cutsPerFillet": 6,
+            "sourceVertices": 184316,
+            "remainingVertices": [
+                184316,
+                122845,
+                110870,
+                88241,
+                62816,
+                36687
+            ],
+            "surfaceTriangles": [
+                171275,
+                164698,
+                147565,
+                117030,
+                82296,
+                45924
+            ],
+            "capTriangles": [
+                0,
+                176,
+                474,
+                795,
+                690,
+                780
+            ],
+            "cutPositions": [
+                -0.22828327119350434,
+                -0.11405900120735169,
+                0.0001652538776397705,
+                0.11438953131437302,
+                0.22861376404762269,
+                0.3428380489349365
+            ],
+            "remainingSizes": [
+                {
+                    "x": 0.3891458511352539,
+                    "y": 0.1584436297416687,
+                    "z": 0.6853455901145935
+                },
+                {
+                    "x": 0.3891458511352539,
+                    "y": 0.1502363681793213,
+                    "z": 0.571121335029602
+                },
+                {
+                    "x": 0.3891458511352539,
+                    "y": 0.13506141304969788,
+                    "z": 0.4568970501422882
+                },
+                {
+                    "x": 0.3891458511352539,
+                    "y": 0.13506141304969788,
+                    "z": 0.34267279505729678
+                },
+                {
+                    "x": 0.3869069814682007,
+                    "y": 0.13506141304969788,
+                    "z": 0.2284485101699829
+                },
+                {
+                    "x": 0.38120943307876589,
+                    "y": 0.12782178819179536,
+                    "z": 0.11422428488731384
+                }
+            ],
+            "generationMilliseconds": 0
+        },
+        {
+            "role": "BackFillet",
+            "sourceMeshPath": "Assets/_SashimiBoy/Art/Generated/Stage03Flounder/Meshes/MS_BackFillet.asset",
+            "sourceDependencyHash": "0b622e834271bc8e5938d458396690cf",
+            "cachePath": "Assets/_SashimiBoy/Art/Generated/Stage03FilletCuts/BackFilletCache.asset",
+            "cutsPerFillet": 6,
+            "sourceVertices": 165427,
+            "remainingVertices": [
+                165427,
+                102642,
+                90336,
+                72198,
+                51726,
+                30521
+            ],
+            "surfaceTriangles": [
+                140019,
+                131750,
+                115411,
+                91912,
+                65645,
+                37351
+            ],
+            "capTriangles": [
+                0,
+                226,
+                430,
+                579,
+                571,
+                580
+            ],
+            "cutPositions": [
+                -0.22857427597045899,
+                -0.11436109989881516,
+                -0.00014793872833251953,
+                0.1140652447938919,
+                0.22827838361263276,
+                0.3424915671348572
+            ],
+            "remainingSizes": [
+                {
+                    "x": 0.2890269160270691,
+                    "y": 0.10809953510761261,
+                    "z": 0.6852790117263794
+                },
+                {
+                    "x": 0.2890269160270691,
+                    "y": 0.10809953510761261,
+                    "z": 0.5710658431053162
+                },
+                {
+                    "x": 0.2890269160270691,
+                    "y": 0.10809953510761261,
+                    "z": 0.45685267448425295
+                },
+                {
+                    "x": 0.2890269160270691,
+                    "y": 0.10809953510761261,
+                    "z": 0.3426395058631897
+                },
+                {
+                    "x": 0.2890269160270691,
+                    "y": 0.10809953510761261,
+                    "z": 0.22842632234096528
+                },
+                {
+                    "x": 0.28024446964263918,
+                    "y": 0.10809953510761261,
+                    "z": 0.11421318352222443
+                }
+            ],
+            "generationMilliseconds": 0
+        }
+    ]
+}

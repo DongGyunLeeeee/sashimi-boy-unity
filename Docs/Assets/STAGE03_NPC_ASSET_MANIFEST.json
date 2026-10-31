@@ -1,0 +1,146 @@
+{
+  "issue": 83,
+  "receivedDate": "2026-10-30",
+  "baseCommit": "2ea248e80c5945249f58dc950795f828d9669750",
+  "mappingAuthority": "Owner confirmed internal file names; archive labels are reversed.",
+  "sources": [
+    {
+      "name": "재훈.zip",
+      "bytes": 63943902,
+      "sha256": "5f17ec437f9861a4c5a3e6d999a5be50593b25cd7356ab6f95560f5deddad8e3"
+    },
+    {
+      "name": "준석.zip",
+      "bytes": 63152114,
+      "sha256": "a9fb3e05c326f01e16b5f0e3670efaaf1de34bc180eba4503bc3701eb5dc6913"
+    }
+  ],
+  "mappings": [
+    {
+      "id": "Junseok",
+      "displayName": "준석",
+      "archive": "재훈.zip",
+      "fbxPath": "Assets/_SashimiBoy/Art/Source/DayWorld/Characters/Junseok/tripo_convert_4b828a99-2bf3-439d-b7b8-19988b8469b0.fbm/tripo_convert_4b828a99-2bf3-439d-b7b8-19988b8469b0.fbx",
+      "texturePrefix": "junseok"
+    },
+    {
+      "id": "Jaehoon",
+      "displayName": "재훈",
+      "archive": "준석.zip",
+      "fbxPath": "Assets/_SashimiBoy/Art/Source/DayWorld/Characters/Jaehoon/tripo_convert_994f3d88-2ebb-4bd5-8313-744a6cd4fd47.fbm/tripo_convert_994f3d88-2ebb-4bd5-8313-744a6cd4fd47.fbx",
+      "texturePrefix": "jaehoon"
+    }
+  ],
+  "assets": [
+    {
+      "archive": "재훈.zip",
+      "entry": "tripo_convert_4b828a99-2bf3-439d-b7b8-19988b8469b0.fbm/junseok_roughness.JPEG",
+      "path": "Assets/_SashimiBoy/Art/Source/DayWorld/Characters/Junseok/tripo_convert_4b828a99-2bf3-439d-b7b8-19988b8469b0.fbm/junseok_roughness.JPEG",
+      "character": "Junseok",
+      "role": "roughness",
+      "bytes": 1155015,
+      "sha256": "ad582a14710b33fb493b068bf19461c9eef406bd39d7adb2a8061daa78c86580"
+    },
+    {
+      "archive": "재훈.zip",
+      "entry": "tripo_convert_4b828a99-2bf3-439d-b7b8-19988b8469b0.fbm/junseok_basecolor.JPEG",
+      "path": "Assets/_SashimiBoy/Art/Source/DayWorld/Characters/Junseok/tripo_convert_4b828a99-2bf3-439d-b7b8-19988b8469b0.fbm/junseok_basecolor.JPEG",
+      "character": "Junseok",
+      "role": "basecolor",
+      "bytes": 3542286,
+      "sha256": "a31de8ba5d80196f18fbdd05166b47fe975c7a09428614105806f7f888ef07c5"
+    },
+    {
+      "archive": "재훈.zip",
+      "entry": "tripo_convert_4b828a99-2bf3-439d-b7b8-19988b8469b0.fbm/junseok_rm.JPEG",
+      "path": "Assets/_SashimiBoy/Art/Source/DayWorld/Characters/Junseok/tripo_convert_4b828a99-2bf3-439d-b7b8-19988b8469b0.fbm/junseok_rm.JPEG",
+      "character": "Junseok",
+      "role": "rm",
+      "bytes": 650651,
+      "sha256": "f971c739f839540f72672753c7ef5f1af44732c5592feea4a8cef234778a08c5"
+    },
+    {
+      "archive": "재훈.zip",
+      "entry": "tripo_convert_4b828a99-2bf3-439d-b7b8-19988b8469b0.fbm/junseok_metallic.JPEG",
+      "path": "Assets/_SashimiBoy/Art/Source/DayWorld/Characters/Junseok/tripo_convert_4b828a99-2bf3-439d-b7b8-19988b8469b0.fbm/junseok_metallic.JPEG",
+      "character": "Junseok",
+      "role": "metallic",
+      "bytes": 1264935,
+      "sha256": "fcf245f63de14ca3466562f6c27969af3d2f8e6ced0967160b81cddc21d83397"
+    },
+    {
+      "archive": "재훈.zip",
+      "entry": "tripo_convert_4b828a99-2bf3-439d-b7b8-19988b8469b0.fbm/junseok_normal.JPEG",
+      "path": "Assets/_SashimiBoy/Art/Source/DayWorld/Characters/Junseok/tripo_convert_4b828a99-2bf3-439d-b7b8-19988b8469b0.fbm/junseok_normal.JPEG",
+      "character": "Junseok",
+      "role": "normal",
+      "bytes": 342491,
+      "sha256": "0f23d9ed47684cf89c644a7c0c6939fc0c9bc8a80a39293f2ff64c5f0e72b816"
+    },
+    {
+      "archive": "재훈.zip",
+      "entry": "tripo_convert_4b828a99-2bf3-439d-b7b8-19988b8469b0.fbm/tripo_convert_4b828a99-2bf3-439d-b7b8-19988b8469b0.fbx",
+      "path": "Assets/_SashimiBoy/Art/Source/DayWorld/Characters/Junseok/tripo_convert_4b828a99-2bf3-439d-b7b8-19988b8469b0.fbm/tripo_convert_4b828a99-2bf3-439d-b7b8-19988b8469b0.fbx",
+      "character": "Junseok",
+      "role": "Model",
+      "bytes": 60427340,
+      "sha256": "1b15ad0f6337e894ee25542124a84daa24c5f45d3697d6fbc58950cdc9a3f292"
+    },
+    {
+      "archive": "준석.zip",
+      "entry": "tripo_convert_994f3d88-2ebb-4bd5-8313-744a6cd4fd47.fbm/jaehoon_rm.JPEG",
+      "path": "Assets/_SashimiBoy/Art/Source/DayWorld/Characters/Jaehoon/tripo_convert_994f3d88-2ebb-4bd5-8313-744a6cd4fd47.fbm/jaehoon_rm.JPEG",
+      "character": "Jaehoon",
+      "role": "rm",
+      "bytes": 574798,
+      "sha256": "14e4c4a51fd1a354cb55fe7dde272848d4743bfb5ca1e9c73c448e32e7e65892"
+    },
+    {
+      "archive": "준석.zip",
+      "entry": "tripo_convert_994f3d88-2ebb-4bd5-8313-744a6cd4fd47.fbm/jaehoon_normal.JPEG",
+      "path": "Assets/_SashimiBoy/Art/Source/DayWorld/Characters/Jaehoon/tripo_convert_994f3d88-2ebb-4bd5-8313-744a6cd4fd47.fbm/jaehoon_normal.JPEG",
+      "character": "Jaehoon",
+      "role": "normal",
+      "bytes": 375631,
+      "sha256": "4dc5280c22db589f3966017b890cc77f507a6df956b1504848fcf201ba4f604b"
+    },
+    {
+      "archive": "준석.zip",
+      "entry": "tripo_convert_994f3d88-2ebb-4bd5-8313-744a6cd4fd47.fbm/jaehoon_roughness.JPEG",
+      "path": "Assets/_SashimiBoy/Art/Source/DayWorld/Characters/Jaehoon/tripo_convert_994f3d88-2ebb-4bd5-8313-744a6cd4fd47.fbm/jaehoon_roughness.JPEG",
+      "character": "Jaehoon",
+      "role": "roughness",
+      "bytes": 980753,
+      "sha256": "e72810eeea596a634690e815291915c6bd614b23e919894d479b1651e0e89900"
+    },
+    {
+      "archive": "준석.zip",
+      "entry": "tripo_convert_994f3d88-2ebb-4bd5-8313-744a6cd4fd47.fbm/jaehoon_metallic.JPEG",
+      "path": "Assets/_SashimiBoy/Art/Source/DayWorld/Characters/Jaehoon/tripo_convert_994f3d88-2ebb-4bd5-8313-744a6cd4fd47.fbm/jaehoon_metallic.JPEG",
+      "character": "Jaehoon",
+      "role": "metallic",
+      "bytes": 1109347,
+      "sha256": "ceaac603309cec02c89eb08b043b50daa9d86b4050ce87856a67768c3c914571"
+    },
+    {
+      "archive": "준석.zip",
+      "entry": "tripo_convert_994f3d88-2ebb-4bd5-8313-744a6cd4fd47.fbm/jaehoon_basecolor.JPEG",
+      "path": "Assets/_SashimiBoy/Art/Source/DayWorld/Characters/Jaehoon/tripo_convert_994f3d88-2ebb-4bd5-8313-744a6cd4fd47.fbm/jaehoon_basecolor.JPEG",
+      "character": "Jaehoon",
+      "role": "basecolor",
+      "bytes": 2905963,
+      "sha256": "044cc70f7066d8b138cfb0e6f430fd5867cc2f9e1ab0568ca2457ffd0c1c93fd"
+    },
+    {
+      "archive": "준석.zip",
+      "entry": "tripo_convert_994f3d88-2ebb-4bd5-8313-744a6cd4fd47.fbm/tripo_convert_994f3d88-2ebb-4bd5-8313-744a6cd4fd47.fbx",
+      "path": "Assets/_SashimiBoy/Art/Source/DayWorld/Characters/Jaehoon/tripo_convert_994f3d88-2ebb-4bd5-8313-744a6cd4fd47.fbm/tripo_convert_994f3d88-2ebb-4bd5-8313-744a6cd4fd47.fbx",
+      "character": "Jaehoon",
+      "role": "Model",
+      "bytes": 60610236,
+      "sha256": "087c32e19176a9ddf46f842bc0db3c7d1c4d50bafff86dce2ed08a5eea2aafc6"
+    }
+  ],
+  "rmBinding": "Preserved, unbound: channel meanings were not provided.",
+  "scope": "Originals, explicit PBR materials and static normalized preview wrappers only. No world/story/save/rig/handshake/runtime performance approval."
+}

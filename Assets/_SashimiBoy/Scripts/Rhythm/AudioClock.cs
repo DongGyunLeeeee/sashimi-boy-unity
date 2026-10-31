@@ -142,6 +142,26 @@ namespace SashimiBoy
             return BeginFromStart(AudioSettings.dspTime);
         }
 
+        // A Stage3 phase retry returns to its authored musical pre-roll; ordinary
+        // Play/Replay and the Stage1/2 timing contract keep their existing behavior.
+        public bool PlayFromMilliseconds(double songTimeMs)
+        {
+            if (double.IsNaN(songTimeMs) || double.IsInfinity(songTimeMs) ||
+                songTimeMs < 0d || !TryValidateConfiguration(out string error))
+                return false;
+            if (songTimeMs >= GetClipDurationMs() ||
+                lifecyclePauseReasons != LifecyclePauseReason.None) return false;
+            resumeAfterLifecyclePause = false;
+            StopAudioSource();
+            if (TryRestoreAt(songTimeMs, AudioSettings.dspTime, out error))
+            {
+                LastError = string.Empty;
+                return true;
+            }
+            EnterFaulted(error, songTimeMs);
+            return false;
+        }
+
         private bool BeginFromStart(double dspTime)
         {
             double previousSongTimeMs = CaptureSongTimeMs(dspTime);
