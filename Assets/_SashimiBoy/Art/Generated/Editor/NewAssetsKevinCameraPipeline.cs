@@ -905,24 +905,8 @@ namespace SashimiBoy.EditorTools
                 return null;
             }
 
-            bool metallicReadable = metallicImporter.isReadable;
-            bool roughnessReadable = roughnessImporter.isReadable;
             try
             {
-                if (!metallicReadable)
-                {
-                    metallicImporter.isReadable = true;
-                    metallicImporter.SaveAndReimport();
-                }
-
-                roughnessImporter = AssetImporter.GetAtPath(
-                    textures.RoughnessPath) as TextureImporter;
-                if (roughnessImporter != null && !roughnessReadable)
-                {
-                    roughnessImporter.isReadable = true;
-                    roughnessImporter.SaveAndReimport();
-                }
-
                 Texture2D metallic = AssetDatabase.LoadAssetAtPath<Texture2D>(
                     textures.MetallicPath);
                 Texture2D roughness = AssetDatabase.LoadAssetAtPath<Texture2D>(
@@ -1002,26 +986,6 @@ namespace SashimiBoy.EditorTools
                     "Packed map failed: " + exception.Message);
                 return null;
             }
-            finally
-            {
-                metallicImporter = AssetImporter.GetAtPath(
-                    textures.MetallicPath) as TextureImporter;
-                roughnessImporter = AssetImporter.GetAtPath(
-                    textures.RoughnessPath) as TextureImporter;
-                if (metallicImporter != null &&
-                    metallicImporter.isReadable != metallicReadable)
-                {
-                    metallicImporter.isReadable = metallicReadable;
-                    metallicImporter.SaveAndReimport();
-                }
-
-                if (roughnessImporter != null &&
-                    roughnessImporter.isReadable != roughnessReadable)
-                {
-                    roughnessImporter.isReadable = roughnessReadable;
-                    roughnessImporter.SaveAndReimport();
-                }
-            }
         }
 
         private static Color32[] ReadPixelsAtSize(
@@ -1029,6 +993,11 @@ namespace SashimiBoy.EditorTools
             int width,
             int height)
         {
+            if (!source.isReadable)
+            {
+                return ReadImportedPixelsAtSize(source, width, height);
+            }
+
             if (source.width == width && source.height == height)
             {
                 return source.GetPixels32();
@@ -1061,6 +1030,109 @@ namespace SashimiBoy.EditorTools
             {
                 RenderTexture.active = previous;
                 RenderTexture.ReleaseTemporary(temporary);
+            }
+        }
+
+        private static Color32[] ReadImportedPixelsAtSize(
+            Texture2D source,
+            int width,
+            int height)
+        {
+            string sourcePath = AssetDatabase.GetAssetPath(source);
+            if (string.IsNullOrEmpty(sourcePath))
+            {
+                throw new InvalidOperationException(
+                    "A non-readable packed-map source must be an imported asset.");
+            }
+
+            // Copy the importer as well as its source, preserving compression,
+            // platform overrides, max size and color space. Only the disposable
+            // copy becomes readable: protected source .meta files stay untouched.
+            // CPU decoding also works in the headless (-nographics) test runner.
+            string folderName = "__PackedMapReadback_" + Guid.NewGuid().ToString("N");
+            string temporaryFolder = GeneratedRoot + "/" + folderName;
+            string temporaryPath = temporaryFolder + "/" + Path.GetFileName(sourcePath);
+            string ownedFolderGuid = null;
+            try
+            {
+                if (Directory.Exists(AssetPathToAbsolutePath(temporaryFolder)))
+                {
+                    throw new IOException("The temporary packed-map directory already exists.");
+                }
+
+                ownedFolderGuid = AssetDatabase.CreateFolder(GeneratedRoot, folderName);
+                if (string.IsNullOrEmpty(ownedFolderGuid))
+                {
+                    throw new IOException("The temporary packed-map directory could not be created.");
+                }
+
+                if (!AssetDatabase.CopyAsset(sourcePath, temporaryPath))
+                {
+                    throw new InvalidOperationException(
+                        "The temporary packed-map readback asset could not be copied.");
+                }
+
+                // CopyAsset may inherit the protected source's ReadOnly bit.
+                // These are newly owned temporary files, never the source files.
+                foreach (string path in new[] { temporaryPath, temporaryPath + ".meta" })
+                {
+                    string absolutePath = AssetPathToAbsolutePath(path);
+                    File.SetAttributes(absolutePath,
+                        File.GetAttributes(absolutePath) & ~FileAttributes.ReadOnly);
+                }
+
+                TextureImporter importer = AssetImporter.GetAtPath(temporaryPath)
+                    as TextureImporter;
+                if (importer == null)
+                {
+                    throw new InvalidOperationException(
+                        "The temporary packed-map source importer is unavailable.");
+                }
+
+                importer.isReadable = true;
+                importer.SaveAndReimport();
+                Texture2D readable = AssetDatabase.LoadAssetAtPath<Texture2D>(
+                    temporaryPath);
+                if (readable == null || !readable.isReadable ||
+                    readable.width != source.width || readable.height != source.height ||
+                    readable.graphicsFormat != source.graphicsFormat)
+                {
+                    throw new InvalidOperationException(
+                        "The temporary packed-map source changed imported pixel format or size.");
+                }
+
+                return ReadPixelsAtSize(readable, width, height);
+            }
+            finally
+            {
+                if (!string.IsNullOrEmpty(ownedFolderGuid))
+                {
+                    string generatedAbsolute = Path.GetFullPath(
+                        AssetPathToAbsolutePath(GeneratedRoot));
+                    string temporaryAbsolute = Path.GetFullPath(
+                        AssetPathToAbsolutePath(temporaryFolder));
+                    if (!string.Equals(Path.GetDirectoryName(temporaryAbsolute),
+                            generatedAbsolute, StringComparison.OrdinalIgnoreCase) ||
+                        !string.Equals(temporaryAbsolute,
+                            Path.Combine(generatedAbsolute, folderName),
+                            StringComparison.OrdinalIgnoreCase) ||
+                        AssetDatabase.AssetPathToGUID(temporaryFolder) != ownedFolderGuid ||
+                        (File.GetAttributes(temporaryAbsolute) & FileAttributes.ReparsePoint) != 0 ||
+                        Directory.EnumerateFileSystemEntries(temporaryAbsolute).Any(path =>
+                            (File.GetAttributes(path) &
+                                (FileAttributes.ReparsePoint | FileAttributes.Directory)) != 0))
+                    {
+                        throw new IOException(
+                            "The temporary packed-map directory failed ownership/path validation.");
+                    }
+
+                    if (!AssetDatabase.DeleteAsset(temporaryFolder))
+                    {
+                        throw new IOException(
+                            "The temporary packed-map readback asset could not be removed: " +
+                            temporaryFolder);
+                    }
+                }
             }
         }
 

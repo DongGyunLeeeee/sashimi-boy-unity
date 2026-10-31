@@ -221,6 +221,188 @@ namespace SashimiBoy.Tests
                 "; second run clean: " + secondRunMatches + ".");
         }
 
+        [TestCase("Salmon")]
+        [TestCase("Rockfish")]
+        [TestCase("Mullet")]
+        public void PackedMaskReadback_PreservesSourceFilesAndExistingPackedPixels(
+            string fish)
+        {
+            string textureRoot = "Assets/_SashimiBoy/Art/Source/Environment/" +
+                "FishShop/Fish/" + fish + "/Textures";
+            string[] sources = AssetDatabase.FindAssets("t:Texture2D", new[] { textureRoot })
+                .Select(AssetDatabase.GUIDToAssetPath)
+                .Where(path => Path.GetFileNameWithoutExtension(path).EndsWith(
+                    "_metallic", StringComparison.OrdinalIgnoreCase) ||
+                    Path.GetFileNameWithoutExtension(path).EndsWith(
+                        "_roughness", StringComparison.OrdinalIgnoreCase))
+                .OrderBy(path => path, StringComparer.Ordinal).ToArray();
+            Assert.That(sources.Length, Is.EqualTo(2));
+            string[] protectedPaths = sources.SelectMany(path => new[] { path, path + ".meta" })
+                .Select(AssetPathToAbsolutePath).ToArray();
+            byte[][] protectedBytes = protectedPaths.Select(File.ReadAllBytes).ToArray();
+            FileAttributes[] protectedAttributes = protectedPaths.Select(File.GetAttributes).ToArray();
+            string[] importerSettings = sources.Select(path =>
+                EditorJsonUtility.ToJson(AssetImporter.GetAtPath(path))).ToArray();
+            string generatedRoot = AssetPathToAbsolutePath("Assets/_SashimiBoy/Art/Generated");
+            Assert.That(Directory.GetDirectories(generatedRoot, "__PackedMapReadback_*"), Is.Empty);
+
+            Texture2D expected = new Texture2D(2, 2, TextureFormat.RGBA32, false, true);
+            try
+            {
+                string packedPath = "Assets/_SashimiBoy/Art/Generated/PackedMaps/FishShop/" +
+                    "MS_FishShop_" + fish + "_MetallicSmoothness.png";
+                Assert.That(expected.LoadImage(File.ReadAllBytes(
+                    AssetPathToAbsolutePath(packedPath)), false), Is.True);
+                Color32[] packed = expected.GetPixels32();
+                for (int sourceIndex = 0; sourceIndex < sources.Length; sourceIndex++)
+                {
+                    string path = sources[sourceIndex];
+                    Texture2D source = AssetDatabase.LoadAssetAtPath<Texture2D>(path);
+                    Assert.That(source.isReadable, Is.False,
+                        "Exercise the protected, non-readable source path: " + path);
+                    Color32[] actual = (Color32[])RuntimeReflection.InvokeStatic(
+                        "SashimiBoy.EditorTools.NewAssetsKevinCameraPipeline",
+                        "ReadPixelsAtSize", source, expected.width, expected.height);
+                    Assert.That(actual.Length, Is.EqualTo(packed.Length), path);
+                    bool metallic = Path.GetFileNameWithoutExtension(path).EndsWith(
+                        "_metallic", StringComparison.OrdinalIgnoreCase);
+                    for (int pixel = 0; pixel < actual.Length; pixel++)
+                    {
+                        byte expectedChannel = metallic ? packed[pixel].r :
+                            (byte)(255 - packed[pixel].a);
+                        if (actual[pixel].r != expectedChannel)
+                        {
+                            Assert.Fail(path + " pixel " + pixel + ": expected " +
+                                expectedChannel + ", actual " + actual[pixel].r);
+                        }
+                    }
+
+                    Assert.That(source.isReadable, Is.False, path);
+                    Assert.That(EditorJsonUtility.ToJson(AssetImporter.GetAtPath(path)),
+                        Is.EqualTo(importerSettings[sourceIndex]), path + " importer changed");
+                }
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(expected);
+                for (int i = 0; i < protectedPaths.Length; i++)
+                {
+                    Assert.That(File.ReadAllBytes(protectedPaths[i]),
+                        Is.EqualTo(protectedBytes[i]), protectedPaths[i]);
+                    Assert.That(File.GetAttributes(protectedPaths[i]),
+                        Is.EqualTo(protectedAttributes[i]), protectedPaths[i] + " attributes");
+                }
+
+                Assert.That(Directory.GetDirectories(generatedRoot, "__PackedMapReadback_*"),
+                    Is.Empty, "Temporary readback assets must be removed, including on failure.");
+            }
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void PackedMaskReadback_ReadOnlyCompressedFixture_PreservesCpuPixels(
+            bool srgb)
+        {
+            const string generatedPath = "Assets/_SashimiBoy/Art/Generated";
+            string name = "__PackedMapReadbackFixture_" + Guid.NewGuid().ToString("N");
+            string folder = generatedPath + "/" + name;
+            string ownedGuid = AssetDatabase.CreateFolder(generatedPath, name);
+            Assert.That(ownedGuid, Is.Not.Empty);
+            string path = folder + "/Mask.png";
+            string absolute = AssetPathToAbsolutePath(path);
+            string[] ownedFiles = { absolute, absolute + ".meta" };
+            Texture2D image = new Texture2D(64, 64, TextureFormat.RGBA32, false, true);
+            try
+            {
+                Color32[] pixels = new Color32[64 * 64];
+                for (int i = 0; i < pixels.Length; i++)
+                {
+                    pixels[i] = new Color32((byte)(i * 17), (byte)(i / 7), (byte)(i / 29), 255);
+                }
+
+                image.SetPixels32(pixels);
+                image.Apply(false, false);
+                File.WriteAllBytes(absolute, image.EncodeToPNG());
+                AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceSynchronousImport);
+                TextureImporter importer = (TextureImporter)AssetImporter.GetAtPath(path);
+                importer.sRGBTexture = srgb;
+                importer.mipmapEnabled = false;
+                importer.maxTextureSize = 32;
+                importer.textureCompression = TextureImporterCompression.Compressed;
+                TextureImporterPlatformSettings platform =
+                    importer.GetPlatformTextureSettings("Standalone");
+                platform.overridden = true;
+                platform.format = TextureImporterFormat.DXT1;
+                platform.maxTextureSize = 32;
+                importer.SetPlatformTextureSettings(platform);
+                importer.isReadable = true;
+                importer.SaveAndReimport();
+                Texture2D imported = AssetDatabase.LoadAssetAtPath<Texture2D>(path);
+                Assert.That(imported.width, Is.EqualTo(32), "Retain importer max-size behavior.");
+                Assert.That(imported.format, Is.EqualTo(TextureFormat.DXT1),
+                    "Compare compressed imported pixels, rather than raw PNG decode.");
+                Color32[] expected = imported.GetPixels32();
+                importer.isReadable = false;
+                importer.SaveAndReimport();
+                imported = AssetDatabase.LoadAssetAtPath<Texture2D>(path);
+                string settings = EditorJsonUtility.ToJson(importer);
+                foreach (string file in ownedFiles)
+                {
+                    File.SetAttributes(file, File.GetAttributes(file) | FileAttributes.ReadOnly);
+                }
+
+                byte[][] before = ownedFiles.Select(File.ReadAllBytes).ToArray();
+                FileAttributes[] attributes = ownedFiles.Select(File.GetAttributes).ToArray();
+                try
+                {
+                    Color32[] actual = (Color32[])RuntimeReflection.InvokeStatic(
+                        "SashimiBoy.EditorTools.NewAssetsKevinCameraPipeline",
+                        "ReadPixelsAtSize", imported, imported.width, imported.height);
+                    Assert.That(actual, Is.EqualTo(expected),
+                        "Readback must equal legacy readable CPU decoding, including sRGB.");
+                    Assert.That(imported.isReadable, Is.False);
+                    Assert.That(EditorJsonUtility.ToJson(AssetImporter.GetAtPath(path)),
+                        Is.EqualTo(settings));
+                }
+                finally
+                {
+                    for (int i = 0; i < ownedFiles.Length; i++)
+                    {
+                        Assert.That(File.ReadAllBytes(ownedFiles[i]), Is.EqualTo(before[i]));
+                        Assert.That(File.GetAttributes(ownedFiles[i]), Is.EqualTo(attributes[i]));
+                    }
+
+                    Assert.That(Directory.GetDirectories(AssetPathToAbsolutePath(generatedPath),
+                        "__PackedMapReadback_*"), Is.Empty);
+                }
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(image);
+                string generatedAbsolute = Path.GetFullPath(AssetPathToAbsolutePath(generatedPath));
+                string fixtureAbsolute = Path.GetFullPath(AssetPathToAbsolutePath(folder));
+                if (!string.Equals(Path.GetDirectoryName(fixtureAbsolute), generatedAbsolute,
+                        StringComparison.OrdinalIgnoreCase) ||
+                    !string.Equals(fixtureAbsolute, Path.Combine(generatedAbsolute, name),
+                        StringComparison.OrdinalIgnoreCase) ||
+                    AssetDatabase.AssetPathToGUID(folder) != ownedGuid ||
+                    (File.GetAttributes(fixtureAbsolute) & FileAttributes.ReparsePoint) != 0 ||
+                    Directory.EnumerateFileSystemEntries(fixtureAbsolute).Any(file =>
+                        (File.GetAttributes(file) &
+                            (FileAttributes.ReparsePoint | FileAttributes.Directory)) != 0))
+                {
+                    throw new IOException("Readback fixture ownership/path validation failed.");
+                }
+
+                foreach (string file in ownedFiles.Where(File.Exists))
+                {
+                    File.SetAttributes(file, File.GetAttributes(file) & ~FileAttributes.ReadOnly);
+                }
+
+                Assert.That(AssetDatabase.DeleteAsset(folder), Is.True);
+            }
+        }
+
         private static void AssertPrefabPath(
             Scene scene,
             string objectName,

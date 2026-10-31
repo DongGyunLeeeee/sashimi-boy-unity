@@ -46,6 +46,99 @@ namespace SashimiBoy.EditorTools
             public List<FaceGeometry> faces = new List<FaceGeometry>();
             public List<SurfaceTransform> surfaces = new List<SurfaceTransform>();
         }
+        [Serializable] private sealed class LegacyCameraPose
+        {
+            public string scene;
+            public int phase;
+            public float aspect,fieldOfView;
+            public Vector3 position,forward,fishMinimum,fishMaximum,viewportMinimum,viewportMaximum,rightPalm,leftPalm;
+            public bool framingSatisfied;
+        }
+        [Serializable] private sealed class LegacyCameraReport
+        {
+            public string evidenceKind="Editor-authored stable phase/zero remaining tool action and synthetic note events; actual Game camera and fresh posed body. Not runtime input/music/save or Owner approval.";
+            public List<LegacyCameraPose> poses=new List<LegacyCameraPose>();
+        }
+
+        public static void InspectLegacyGameCamerasBatch()
+        {
+            if(EditorApplication.isPlayingOrWillChangePlaymode)throw new InvalidOperationException("Exit Play mode first.");
+            for(int i=0;i<SceneManager.sceneCount;i++)
+                if(SceneManager.GetSceneAt(i).isDirty)throw new InvalidOperationException("Save unsaved scenes first.");
+            Directory.CreateDirectory(KevinRiggedBodyAuthoring.EvidenceDirectory);
+            var report=new LegacyCameraReport();
+            foreach(string scene in new[]{"Stage01_Salmon","Stage02_Rockfish"})
+            {
+                EditorSceneManager.OpenScene("Assets/_SashimiBoy/Scenes/"+scene+".unity",OpenSceneMode.Single);
+                var cooking=Object.FindFirstObjectByType<Stage01CookingView>();var view=cooking.butchery;var timing=view.timing;
+                Invoke(timing,"Awake");Invoke(view,"Awake");view.Bind(timing);Invoke(cooking,"Awake");
+                for(int phase=0;phase<6;phase++)
+                {
+                    if((int)view.VisiblePhase!=phase)throw new InvalidOperationException("Stable editor phase did not advance: "+scene+"/"+phase);
+                    view.GetType().GetField("actionTime",BindingFlags.Instance|BindingFlags.NonPublic).SetValue(view,0f);
+                    Invoke(view,"Update");view.handRoot.gameObject.SetActive(true);
+                    foreach(float aspect in new[]{16f/9f,4f/3f})
+                    {
+                        var camera=cooking.gameCamera;camera.aspect=aspect;
+                        Vector3 work=view.GetCueWorldPosition(timing.PhasePerformance.NoteCursor);
+                        Vector3 stance=cooking.standingPosition;stance.x=Mathf.Clamp(work.x-.14f,-.65f,.55f);
+                        cooking.body.transform.position=stance;
+                        Invoke(cooking,"LateUpdate");
+                        var root=phase<2?view.assembly.body.transform:phase<4?view.assembly.fillet.transform:view.filletHalf.transform;
+                        var renderers=root.GetComponentsInChildren<Renderer>(true).Where(r=>r.enabled&&r.gameObject.activeInHierarchy).ToArray();
+                        if(renderers.Length==0)throw new InvalidOperationException("Active fish geometry missing: "+scene+"/"+phase);
+                        Bounds fish=renderers[0].bounds;foreach(var renderer in renderers)fish.Encapsulate(renderer.bounds);
+                        Vector3 minimum=Vector3.one*float.PositiveInfinity,maximum=Vector3.one*float.NegativeInfinity;
+                        for(int i=0;i<8;i++)
+                        {
+                            Vector3 corner=fish.center+Vector3.Scale(fish.extents,new Vector3((i&1)==0?-1:1,(i&2)==0?-1:1,(i&4)==0?-1:1));
+                            Vector3 viewport=camera.WorldToViewportPoint(corner);minimum=Vector3.Min(minimum,viewport);maximum=Vector3.Max(maximum,viewport);
+                        }
+                        report.poses.Add(new LegacyCameraPose{scene=scene,phase=phase,aspect=aspect,position=camera.transform.position,
+                            forward=camera.transform.forward,fieldOfView=camera.fieldOfView,fishMinimum=fish.min,fishMaximum=fish.max,
+                            viewportMinimum=minimum,viewportMaximum=maximum,rightPalm=camera.WorldToViewportPoint(cooking.body.right.palm.position),
+                            leftPalm=camera.WorldToViewportPoint(cooking.body.left.palm.position),framingSatisfied=cooking.FramingSatisfied});
+                        CaptureActualGameCamera(cooking,scene+"-phase-"+phase+"-"+(aspect>1.5f?"16x9":"4x3")+"-game.png");
+                    }
+                    var gate=timing.semanticBeatmap.chart.phases[phase];
+                    if(phase<5)for(int note=gate.firstNoteId;note<=gate.lastNoteId;note++)
+                        Invoke(timing,"ResolveGameplayInput",timing.notePatternProvider.RuntimeNotes[note].songTimeSeconds);
+                }
+            }
+            File.WriteAllText(Path.Combine(KevinRiggedBodyAuthoring.EvidenceDirectory,"legacy-game-camera-evidence.json"),JsonUtility.ToJson(report,true));
+            EditorSceneManager.NewScene(NewSceneSetup.EmptyScene,NewSceneMode.Single);
+            Debug.Log("[OwnerFeedback87LegacyCamera] Authored stable Game-camera framing recorded, not runtime PASS: "+KevinRiggedBodyAuthoring.EvidenceDirectory);
+        }
+
+        private static void CaptureActualGameCamera(Stage01CookingView cooking,string file)
+        {
+            Camera camera=cooking.gameCamera;
+            var originalRenderers=cooking.body.GetComponentsInChildren<Renderer>(true);
+            var enabledStates=originalRenderers.Select(r=>r.enabled).ToArray();
+            var snapshot=CloneHierarchy(cooking.body.transform,cooking.body.gameObject.scene);
+            var sourceAppearance=cooking.body.GetComponent<KevinAppearance>();
+            if(sourceAppearance!=null)snapshot.GetComponent<KevinAppearance>()?.ApplyFace(sourceAppearance.SelectedFaceId);
+            var previousTarget=camera.targetTexture;var previousActive=RenderTexture.active;
+            var target=new RenderTexture(1280,Mathf.RoundToInt(1280/camera.aspect),24);
+            var pixels=new Texture2D(target.width,target.height,TextureFormat.RGB24,false);
+            var canvases=Object.FindObjectsByType<Canvas>(FindObjectsSortMode.None).Where(c=>c.renderMode==RenderMode.ScreenSpaceOverlay)
+                .Select(c=>(canvas:c,camera:c.worldCamera,distance:c.planeDistance)).ToArray();
+            try
+            {
+                foreach(var renderer in originalRenderers)renderer.enabled=false;
+                foreach(var item in canvases){item.canvas.renderMode=RenderMode.ScreenSpaceCamera;item.canvas.worldCamera=camera;item.canvas.planeDistance=.15f;}
+                Canvas.ForceUpdateCanvases();camera.targetTexture=target;camera.Render();RenderTexture.active=target;
+                pixels.ReadPixels(new Rect(0,0,target.width,target.height),0,0);pixels.Apply();
+                File.WriteAllBytes(Path.Combine(KevinRiggedBodyAuthoring.EvidenceDirectory,file),pixels.EncodeToPNG());
+            }
+            finally
+            {
+                foreach(var item in canvases){item.canvas.renderMode=RenderMode.ScreenSpaceOverlay;item.canvas.worldCamera=item.camera;item.canvas.planeDistance=item.distance;}
+                for(int i=0;i<originalRenderers.Length;i++)originalRenderers[i].enabled=enabledStates[i];
+                camera.targetTexture=previousTarget;RenderTexture.active=previousActive;
+                Object.DestroyImmediate(snapshot);Object.DestroyImmediate(target);Object.DestroyImmediate(pixels);
+            }
+        }
 
         public static void InspectBatch()
         {

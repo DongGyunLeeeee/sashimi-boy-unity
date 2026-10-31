@@ -134,6 +134,13 @@ namespace SashimiBoy.Tests
             RuntimeReflection.SetField(progress,"beat",Enum.Parse(RuntimeReflection.RuntimeType("SashimiBoy.DayWorldBeat"),"Sleep"));
             ((IList)RuntimeReflection.GetField(progress,"placedEquipment")).Add(equipment);
             ((IList)RuntimeReflection.GetField(progress,"practicedDays")).Add(day);
+            // A valid Day3 sleep checkpoint has already completed the revised
+            // pre-shop encounter; the missing-dialogue gate is tested separately.
+            if(day==3)
+            {
+                Assert.That(RuntimeReflection.InvokeStatic("SashimiBoy.DayWorldRules","Sleep",save),Is.EqualTo(false),"Day3 cannot skip Jaehoon's earlier conversation.");
+                ((IList)RuntimeReflection.GetField(progress,"completedDialogues")).Add("3:jaehoon");
+            }
             Assert.That(RuntimeReflection.InvokeStatic("SashimiBoy.DayWorldRules","Sleep",save),Is.EqualTo(true));
             Assert.That(RuntimeReflection.GetField(progress,"pendingStageClear"),Is.EqualTo(day));
             string json=JsonUtility.ToJson(save);
