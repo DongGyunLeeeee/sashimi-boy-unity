@@ -32,11 +32,19 @@ namespace SashimiBoy.EditorTools
             public bool finite, allBonesAssigned;
             public Vector3 worldMinimum, worldMaximum;
         }
+        [Serializable] private sealed class SurfaceTransform
+        {
+            public string capture, renderer;
+            public Vector3 originalScale, cloneScale;
+            public Vector3 originalMinimum, originalMaximum, cloneMinimum, cloneMaximum;
+            public Vector3 bakedLocalMinimum, bakedLocalMaximum, bakedTransformPointMinimum, bakedTransformPointMaximum;
+        }
         [Serializable] private sealed class Report
         {
-            public string evidenceKind = "Authored-scene targets and actual CPU-baked posed skins rendered as isolated static previews; not physical input, runtime face switching, DSP, story/save or Owner approval.";
+            public string evidenceKind = "Authored-scene targets and freshly cloned posed skinned hierarchies rendered in isolated previews; separate CPU BakeMesh bounds are diagnostic only. Not physical input, runtime face switching, DSP, story/save or Owner approval.";
             public List<Pose> poses = new List<Pose>();
             public List<FaceGeometry> faces = new List<FaceGeometry>();
+            public List<SurfaceTransform> surfaces = new List<SurfaceTransform>();
         }
 
         public static void InspectBatch()
@@ -67,16 +75,16 @@ namespace SashimiBoy.EditorTools
                 {
                     appearance.ApplyFace(id);
                     RecordFace(report,id,appearance.faceRenderer);
-                    Capture(rig,new Vector3(1.3f,1.6f,1.7f),Vector3.up*1.05f,"face-"+id+"-body.png",52f);
-                    Capture(rig,new Vector3(.55f,1.61f,.7f),new Vector3(0f,1.48f,0f),"face-"+id+"-neck.png",42f);
+                    Capture(report,rig,new Vector3(1.3f,1.6f,1.7f),Vector3.up*1.05f,"face-"+id+"-body.png",52f);
+                    Capture(report,rig,new Vector3(.55f,1.61f,.7f),new Vector3(0f,1.48f,0f),"face-"+id+"-neck.png",42f);
                 }
                 rig.working=true;rig.rightTarget=new Vector3(.24f,1.02f,-.4f);rig.leftTarget=new Vector3(-.13f,1.02f,-.4f);
                 rig.rightRotation=Quaternion.Euler(0,180,0)*rig.right.handWorldRest;
                 rig.leftRotation=Quaternion.Euler(0,90,0)*rig.left.handWorldRest;
                 rig.ApplyWorkingPoseAtRoot(new Vector3(.12f,0,-.82f));
                 Record(report,"prefab-grip-fixture",rig);
-                Capture(rig,rig.right.palm.position+new Vector3(.16f,.14f,.24f),rig.right.palm.position,"right-fingers-fixture.png",42f);
-                Capture(rig,rig.left.palm.position+new Vector3(-.16f,.14f,.24f),rig.left.palm.position,"support-fingers-fixture.png",42f);
+                Capture(report,rig,rig.right.palm.position+new Vector3(.16f,.14f,.24f),rig.right.palm.position,"right-fingers-fixture.png",42f);
+                Capture(report,rig,rig.left.palm.position+new Vector3(-.16f,.14f,.24f),rig.left.palm.position,"support-fingers-fixture.png",42f);
             }
             finally{Object.DestroyImmediate(actor);}
         }
@@ -97,7 +105,7 @@ namespace SashimiBoy.EditorTools
                 view.handRoot.gameObject.SetActive(true);
                 Invoke(cooking,"LateUpdate");
                 Record(report,name+"/"+phase, cooking.body);
-                CaptureSide(cooking.body,name+"-phase-"+phase,view.knifeRoot);
+                CaptureSide(report,cooking.body,name+"-phase-"+phase,view.knifeRoot);
                 var gate=timing.semanticBeatmap.chart.phases[phase];
                 if(phase==timing.semanticBeatmap.chart.phases.Length-1)break;
                 for(int note=gate.firstNoteId;note<=gate.lastNoteId;note++)
@@ -113,7 +121,7 @@ namespace SashimiBoy.EditorTools
             if(cooking==null||controller==null)throw new InvalidOperationException("Stage3 authored view missing.");
             Invoke(cooking,"Awake");cooking.SetWorkPoint(controller.PreparationWorkPoint(0));Invoke(cooking,"LateUpdate");
             Record(report,"Stage03/rest-before-first-cut",cooking.body);
-            CaptureSide(cooking.body,"Stage03-rest",cooking.knifeRoot);
+            CaptureSide(report,cooking.body,"Stage03-rest",cooking.knifeRoot);
         }
 
         private static void InspectInstruments(Report report)
@@ -137,8 +145,8 @@ namespace SashimiBoy.EditorTools
                         rig.leftTarget=station.leftHandTarget.position+Vector3.up*(.03f+Mathf.Max(0,-stroke)*.07f);
                         rig.ApplyWorkingPoseAtRoot(preferred);Record(report,"instrument/"+station.equipmentId+"/"+stroke,rig);
                         string label="instrument-"+station.equipmentId+"-"+(stroke<0?"minus":stroke>0?"plus":"rest");
-                        Capture(rig,station.practiceCamera.position,actor.transform.position+Vector3.up*1.05f,label+"-body.png",52f,station.equipmentVisual.transform);
-                        Capture(rig,rig.right.palm.position+new Vector3(.18f,.13f,-.23f),rig.right.palm.position,label+"-grip.png",42f,station.equipmentVisual.transform);
+                        Capture(report,rig,station.practiceCamera.position,actor.transform.position+Vector3.up*1.05f,label+"-body.png",52f,station.equipmentVisual.transform);
+                        Capture(report,rig,rig.right.palm.position+new Vector3(.18f,.13f,-.23f),rig.right.palm.position,label+"-grip.png",42f,station.equipmentVisual.transform);
                     }
                 }
                 finally{station.equipmentVisual.SetActive(instrumentActive);Object.DestroyImmediate(actor);}
@@ -180,22 +188,21 @@ namespace SashimiBoy.EditorTools
             }
             finally{Object.DestroyImmediate(baked);}
         }
-        private static void CaptureSide(KevinBodyRig rig,string label,Transform extraGeometry=null)
+        private static void CaptureSide(Report report,KevinBodyRig rig,string label,Transform extraGeometry=null)
         {
             var modes=rig.headRenderers.Select(r=>r.shadowCastingMode).ToArray();
             try
             {
                 rig.SetHeadHidden(false);Vector3 origin=rig.transform.position;
-                Capture(rig,origin+new Vector3(1.3f,1.6f,1.7f),origin+Vector3.up*1.05f,label+"-body.png",52f,extraGeometry);
-                Capture(rig,rig.right.palm.position+new Vector3(.18f,.13f,.23f),rig.right.palm.position,label+"-grip.png",42f,extraGeometry);
+                Capture(report,rig,origin+new Vector3(1.3f,1.6f,1.7f),origin+Vector3.up*1.05f,label+"-body.png",52f,extraGeometry);
+                Capture(report,rig,rig.right.palm.position+new Vector3(.18f,.13f,.23f),rig.right.palm.position,label+"-grip.png",42f,extraGeometry);
             }
             finally{for(int i=0;i<modes.Length;i++)rig.headRenderers[i].shadowCastingMode=modes[i];}
         }
         private static void Invoke(object target,string method,params object[] arguments)=>target.GetType().GetMethod(method,BindingFlags.Instance|BindingFlags.Public|BindingFlags.NonPublic).Invoke(target,arguments);
-        private static void Capture(KevinBodyRig rig,Vector3 position,Vector3 focus,string file,float fov,Transform extraGeometry=null)
+        private static void Capture(Report report,KevinBodyRig rig,Vector3 position,Vector3 focus,string file,float fov,Transform extraGeometry=null)
         {
             var preview=EditorSceneManager.NewPreviewScene();
-            var bakedMeshes=new List<Mesh>();
             var camera=new GameObject("BodyDiagnosticCamera").AddComponent<Camera>();
             var light=new GameObject("BodyDiagnosticLight").AddComponent<Light>();
             var texture=new RenderTexture(1200,800,24);var pixels=new Texture2D(1200,800,TextureFormat.RGB24,false);
@@ -204,44 +211,62 @@ namespace SashimiBoy.EditorTools
             {
                 SceneManager.MoveGameObjectToScene(camera.gameObject,preview);camera.scene=preview;
                 SceneManager.MoveGameObjectToScene(light.gameObject,preview);
-                CloneSurfaces(rig.transform,preview,bakedMeshes);
-                if(extraGeometry!=null)CloneSurfaces(extraGeometry,preview,bakedMeshes);
+                var snapshot=CloneHierarchy(rig.transform,preview);
+                // Apply the explicitly inspected choice after cloning. Its
+                // nonserialized SelectedFaceId property defaults to CuteFace.
+                var originalAppearance=rig.GetComponent<KevinAppearance>();
+                if(originalAppearance!=null)snapshot.GetComponent<KevinAppearance>()?.ApplyFace(originalAppearance.SelectedFaceId);
+                if(extraGeometry!=null)CloneHierarchy(extraGeometry,preview);
                 camera.transform.SetPositionAndRotation(position,Quaternion.LookRotation(focus-position));camera.fieldOfView=fov;
                 camera.nearClipPlane=.01f;camera.farClipPlane=20f;camera.clearFlags=CameraClearFlags.SolidColor;camera.backgroundColor=new Color(.10f,.12f,.14f);
                 light.type=LightType.Directional;light.transform.rotation=Quaternion.Euler(35,-140,0);light.intensity=1.2f;
                 camera.targetTexture=texture;camera.Render();RenderTexture.active=texture;
                 pixels.ReadPixels(new Rect(0,0,1200,800),0,0);pixels.Apply();
                 File.WriteAllBytes(Path.Combine(KevinRiggedBodyAuthoring.EvidenceDirectory,file),pixels.EncodeToPNG());
+                RecordSurfaceTransforms(report,file,rig.transform,snapshot.transform);
             }
             finally
             {
                 RenderTexture.active=previous;camera.targetTexture=null;
                 Object.DestroyImmediate(texture);Object.DestroyImmediate(pixels);Object.DestroyImmediate(camera.gameObject);Object.DestroyImmediate(light.gameObject);
                 EditorSceneManager.ClosePreviewScene(preview);
-                foreach(var mesh in bakedMeshes)Object.DestroyImmediate(mesh);
             }
         }
-        private static void CloneSurfaces(Transform root,Scene preview,List<Mesh> bakedMeshes)
+        private static GameObject CloneHierarchy(Transform original,Scene preview)
         {
-            foreach(var original in root.GetComponentsInChildren<Renderer>(true))
+            // Preserve the complete attached skeleton and its actual pose.
+            // A new renderer InstanceID avoids same-frame skin cache reuse;
+            // no BakeMesh scale convention is used to draw this evidence.
+            var snapshot=Object.Instantiate(original.gameObject);
+            SceneManager.MoveGameObjectToScene(snapshot,preview);
+            snapshot.transform.SetPositionAndRotation(original.position,original.rotation);
+            snapshot.transform.localScale=original.lossyScale;
+            foreach(var behaviour in snapshot.GetComponentsInChildren<MonoBehaviour>(true))behaviour.enabled=false;
+            return snapshot;
+        }
+        private static void RecordSurfaceTransforms(Report report,string capture,Transform original,Transform snapshot)
+        {
+            var sources=original.GetComponentsInChildren<SkinnedMeshRenderer>(true);
+            var copies=snapshot.GetComponentsInChildren<SkinnedMeshRenderer>(true);
+            if(sources.Length!=copies.Length)throw new InvalidOperationException("The diagnostic hierarchy lost a skin.");
+            for(int i=0;i<sources.Length;i++)
             {
-                if(!original.enabled||!original.gameObject.activeInHierarchy)continue;
-                Mesh mesh;
-                if(original is SkinnedMeshRenderer skin)
+                var source=sources[i];var copy=copies[i];var baked=new Mesh();
+                try
                 {
-                    mesh=new Mesh{name=skin.name+"_ActualBakedPose"};skin.BakeMesh(mesh);bakedMeshes.Add(mesh);
+                    source.BakeMesh(baked,false);
+                    var points=baked.vertices;
+                    if(points.Length==0)throw new InvalidOperationException("Diagnostic BakeMesh has no vertices: "+source.name);
+                    var world=new Bounds(source.transform.TransformPoint(points[0]),Vector3.zero);
+                    foreach(var point in points)world.Encapsulate(source.transform.TransformPoint(point));
+                    report.surfaces.Add(new SurfaceTransform{capture=capture,renderer=source.name,
+                        originalScale=source.transform.lossyScale,cloneScale=copy.transform.lossyScale,
+                        originalMinimum=source.bounds.min,originalMaximum=source.bounds.max,
+                        cloneMinimum=copy.bounds.min,cloneMaximum=copy.bounds.max,
+                        bakedLocalMinimum=baked.bounds.min,bakedLocalMaximum=baked.bounds.max,
+                        bakedTransformPointMinimum=world.min,bakedTransformPointMaximum=world.max});
                 }
-                else
-                {
-                    var filter=original.GetComponent<MeshFilter>();if(filter==null||filter.sharedMesh==null)continue;
-                    mesh=filter.sharedMesh;
-                }
-                var snapshot=new GameObject(original.name+"_StaticDiagnostic",typeof(MeshFilter),typeof(MeshRenderer));
-                SceneManager.MoveGameObjectToScene(snapshot,preview);
-                snapshot.transform.SetPositionAndRotation(original.transform.position,original.transform.rotation);
-                snapshot.transform.localScale=original.transform.lossyScale;
-                snapshot.GetComponent<MeshFilter>().sharedMesh=mesh;
-                snapshot.GetComponent<MeshRenderer>().sharedMaterials=original.sharedMaterials;
+                finally{Object.DestroyImmediate(baked);}
             }
         }
     }
