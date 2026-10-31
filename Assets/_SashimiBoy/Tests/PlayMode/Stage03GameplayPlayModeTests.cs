@@ -127,6 +127,21 @@ namespace SashimiBoy.Tests
             yield return new WaitForSecondsRealtime(.4f);
         }
 
+        static Bounds WorldBoundsOfMesh(MeshFilter filter)
+        {
+            Bounds local = filter.sharedMesh.bounds;
+            Vector3 min = local.min, max = local.max;
+            Bounds world = new Bounds(filter.transform.TransformPoint(min), Vector3.zero);
+            for (int x = 0; x < 2; x++)
+                for (int y = 0; y < 2; y++)
+                    for (int z = 0; z < 2; z++)
+                        world.Encapsulate(filter.transform.TransformPoint(new Vector3(
+                            x == 0 ? min.x : max.x,
+                            y == 0 ? min.y : max.y,
+                            z == 0 ? min.z : max.z)));
+            return world;
+        }
+
         [UnityTest]
         public IEnumerator AuthoredScene_LoadsActualBodyMeshes_FourIndependentCutSurfaces_And24PlateSlots()
         {
@@ -200,6 +215,40 @@ namespace SashimiBoy.Tests
             HitCurrentPhase();
             yield return AdvanceCurrentPhase();
             Assert.That(Call(Assembly, "get_BodyState").ToString(), Is.EqualTo("HeadRemovedFish"));
+        }
+
+        [UnityTest]
+        public IEnumerator FirstFilletCut_StrikesTheAcceptedPlane_AndSupportsTheRemainingMesh()
+        {
+            StartRun();
+            yield return ReachPhase(5);
+            var surface = Surfaces[0];
+            var cooking = Get(controller, "cooking");
+            var filter = (MeshFilter)Get(surface, "meshFilter");
+            var cache = Get(surface, "cutCache");
+            var meshes = (Mesh[])Get(cache, "remainingMeshes");
+            Assert.That(Value<int>(surface, "CutCount"), Is.Zero);
+            Assert.That(filter.sharedMesh, Is.SameAs(meshes[0]));
+            Vector3 acceptedPlane = Value<Vector3>(surface, "NextCutPosition");
+            double note = Notes[0];
+            Assert.That(Call(controller, "SubmitAt", note), Is.EqualTo(true));
+            Assert.That(Value<int>(surface, "CutCount"), Is.EqualTo(1));
+            Assert.That(filter.sharedMesh, Is.SameAs(meshes[1]), "The accepted cut removes real mesh geometry.");
+            Assert.That(Value<bool>(cooking, "IsStriking"), Is.True);
+            Vector3 strike = (Vector3)Get(cooking, "workPoint");
+            Vector3 nextPlane = Value<Vector3>(surface, "NextCutPosition");
+            Assert.That(Vector3.Distance(strike, acceptedPlane), Is.LessThan(.0001f), "The current stroke uses the plane accepted before the mesh advances.");
+            Assert.That(Vector3.Distance(strike, nextPlane), Is.GreaterThan(.0001f), "Advancing the remaining mesh must not move an in-flight stroke to the next plane.");
+            Assert.That(Get(cooking, "hasSupportPoint"), Is.EqualTo(true));
+            Vector3 support = (Vector3)Get(cooking, "supportPoint");
+            Bounds remaining = WorldBoundsOfMesh(filter);
+            Assert.That(support.x, Is.InRange(remaining.min.x - .0001f, remaining.max.x + .0001f));
+            Assert.That(support.z, Is.InRange(remaining.min.z - .0001f, remaining.max.z + .0001f));
+            Assert.That(support.y, Is.EqualTo(remaining.max.y + .012f).Within(.0001f), "The support hand follows the top of the mesh still on the board.");
+            Assert.That(Call(surface, "TryCut", 0), Is.EqualTo(false), "Repeating the accepted ordinal cannot remove another part.");
+            Assert.That(Call(controller, "SubmitAt", note), Is.EqualTo(false));
+            Assert.That(Value<int>(surface, "CutCount"), Is.EqualTo(1));
+            Assert.That(Value<int>(controller, "SpawnedSlices"), Is.EqualTo(1));
         }
 
         [UnityTest]

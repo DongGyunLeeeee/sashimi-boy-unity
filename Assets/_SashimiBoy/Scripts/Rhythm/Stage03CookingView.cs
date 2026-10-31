@@ -11,9 +11,14 @@ namespace SashimiBoy
         public float eyeHeight=1.64f,cookingPitch=48f;
         private Quaternion knifeRotation;
         private Vector3 workPoint;
+        private Vector3 supportPoint;
+        private bool hasSupportPoint;
         private float pulse;
         private bool ready;
         public void SetWorkPoint(Vector3 value) {workPoint=value;ready=true;}
+        public void SetSupportPoint(Vector3 value) {supportPoint=value;hasSupportPoint=true;}
+        public void ClearSupportPoint() {hasSupportPoint=false;}
+        public bool IsStriking=>pulse>0;
         public void Pulse() {pulse=.28f;}
         private void Awake() {if(body!=null)body.SetHeadHidden(true);if(knifeRoot!=null)knifeRotation=knifeRoot.rotation;}
         private void LateUpdate()
@@ -28,8 +33,8 @@ namespace SashimiBoy
             body.working=true;
             body.rightTarget=grip.position;
             body.rightRotation=knifeRoot.rotation*Quaternion.Euler(0,180,0)*body.right.handWorldRest;
-            body.leftTarget=workPoint+new Vector3(-.13f,.012f,-.035f);
-            body.leftTarget=new Vector3(body.leftTarget.x,body.leftTarget.y,Mathf.Min(body.leftTarget.z,-.16f));
+            body.leftTarget=hasSupportPoint?supportPoint:workPoint+new Vector3(-.13f,.012f,-.035f);
+            if(!hasSupportPoint)body.leftTarget=new Vector3(body.leftTarget.x,body.leftTarget.y,Mathf.Min(body.leftTarget.z,-.16f));
             body.leftRotation=Quaternion.Euler(0,90,0)*body.left.handWorldRest;
             body.ApplyPose();
             if(gameCamera!=null)

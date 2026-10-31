@@ -61,6 +61,19 @@ namespace SashimiBoy.Tests
         }
 
         [UnityTest]
+        public IEnumerator Day3WorkstationPrompt_UsesFlounderDisplayNameAndApprovedStage()
+        {
+            Set(Progress,"active",true);Set(Progress,"day",3);Set(Progress,"beat",Beat("Work"));
+            Call(Current,"UnlockStage","STAGE_03_SOLE");
+            yield return SceneManager.LoadSceneAsync("FishShopDialogue");
+            yield return null;
+            var starter=Find("StageStarterInteractable");
+            Assert.That(starter,Is.Not.Null);
+            Assert.That(Call(starter,"get_Prompt"),Is.EqualTo("가자미 손질 시작"));
+            Assert.That(Call(starter,"get_IsAvailable"),Is.EqualTo(true));
+        }
+
+        [UnityTest]
         public IEnumerator LegacyStage2DiskSave_OffersDay3WithoutRepeatingClearOrPurchase()
         {
             Set(Progress, "active", true);
@@ -114,6 +127,16 @@ namespace SashimiBoy.Tests
             Set(Progress, "pendingStageClear", 3);
             Set(Progress, "checkpointScene", "KevinHome");
             Set(Progress, "checkpointSpawn", "Wake");
+            // A supported completed Day3 checkpoint already passed all prior
+            // clears and purchases; a new-game Stage1 ID is a migration fixture.
+            Set(Current,"currentStageId","STAGE_04_MULLET");
+            foreach(string id in new[]{"STAGE_01_SALMON","STAGE_02_ROCKFISH","STAGE_03_SOLE"})
+            {
+                Call(Current,"UnlockStage",id);Call(Current,"MarkStageCleared",id);
+            }
+            Call(Current,"UnlockStage","STAGE_04_MULLET");
+            ((IList)Get(Current,"ownedEquipmentIds")).Add("SamplePackDrumKit");
+            ((IList)Get(Current,"ownedEquipmentIds")).Add("DawSoftware");
             ((IList)Get(Current, "ownedEquipmentIds")).Add("Plugin");
             Call(save, "Save");
             Call(flow, "ContinueGame");

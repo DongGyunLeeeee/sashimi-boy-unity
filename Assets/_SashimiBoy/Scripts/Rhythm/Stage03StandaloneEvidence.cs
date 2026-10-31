@@ -39,7 +39,7 @@ namespace SashimiBoy
             public bool defaultSavePreserved;
             public bool syntheticApiInput = true;
             public string humanVerification = "Pending: this is NOT a human input, visual, music-sync or save-flow approval.";
-            public string fixture = "Day3 Work with prior days and Junseok seeded in a NEW isolated validation profile.";
+            public string fixture = "Only prior Day1/2 completion is seeded in a NEW isolated validation profile. Day3 Junseok, work entry and optional extended progression use actual public interaction APIs; navigation/keyboard input remain synthetic QA.";
             public bool coreCompleted, extendedRequested, extendedCompleted;
             public int spawnedSlices, resultCount, errorLogCount;
             public float clipLengthSeconds, elapsedSeconds, maximumObservedGripError, maximumFrameMs;
@@ -124,27 +124,37 @@ namespace SashimiBoy
             save.MarkStageCleared(SashimiBoyConstants.StageIds.Rockfish);
             save.AddEquipment(EquipmentId.SamplePackDrumKit);
             save.AddEquipment(EquipmentId.DawSoftware);
-            save.dayWorld.active = true; save.dayWorld.day = 3; save.dayWorld.beat = DayWorldBeat.Work;
+            save.dayWorld.active = true; save.dayWorld.day = 3; save.dayWorld.beat = DayWorldBeat.MorningConversation;
             save.dayWorld.nightsSlept = 2; save.dayWorld.pendingStageClear = 0;
-            save.dayWorld.checkpointScene = SashimiBoyConstants.Scenes.FishShopDialogue;
-            save.dayWorld.checkpointSpawn = "StageReturn";
-            save.dayWorld.completedDialogues.AddRange(new[] { "1:misuk", "1:cheolsu", "2:seongho", "2:minjae", "3:junseok" });
+            save.dayWorld.checkpointScene = DayWorldRules.Home;
+            save.dayWorld.checkpointSpawn = "Entry";
+            save.dayWorld.completedDialogues.AddRange(new[] { "1:misuk", "1:cheolsu", "2:seongho", "2:minjae" });
             save.dayWorld.placedEquipment.AddRange(new[] { "SamplePackDrumKit", "DawSoftware" });
             save.dayWorld.practicedDays.AddRange(new[] { 1, 2 });
             SaveManager.Instance.RaiseChanged();
-            GameFlowManager.Instance.RequestStage(SashimiBoyConstants.StageIds.Sole);
+            yield return Travel(SashimiBoyConstants.Scenes.Street, "KevinHome");
+            yield return Talk("junseok", "junseok-first-encounter");
+            Require(SaveManager.Instance.Current.dayWorld.beat == DayWorldBeat.Work &&
+                SaveManager.Instance.Current.dayWorld.completedDialogues.Contains("3:junseok"),
+                "Actual Junseok conversation did not unlock Day3 work.");
+            yield return Travel(SashimiBoyConstants.Scenes.FishShopDialogue, "Entry");
+            yield return WaitFor(() => !DayWorldFlow.InputSuppressed, 30f, "Work entry input ownership");
+            var starter = FindObjectsByType<StageStarterInteractable>(FindObjectsInactive.Include, FindObjectsSortMode.None)
+                .Single(value => value.gameObject.activeInHierarchy && value.IsAvailable);
+            var workActor = FindAnyObjectByType<SimpleTopDownPlayerController>().gameObject;
+            yield return Capture("day-three-work-entry");
+            // Enter through the same interactable/EnterWork path as the E action.
+            // Do not separately RequestStage or LoadScene and hide a broken entry route.
+            starter.Interact(workActor);
             Require(GameFlowManager.Instance.PendingStageId == SashimiBoyConstants.StageIds.Sole,
-                "Stage3 pending-stage request was rejected.");
-            SceneTransitionService.Instance.LoadScene(DayWorldRules.StageThreeScene);
-            yield return WaitFor(() => SceneManager.GetActiveScene().name == DayWorldRules.StageThreeScene &&
-                !SceneTransitionService.Instance.IsLoading, 30f, "Stage3 scene load");
-            yield return null; yield return null;
+                "The actual work interactable did not request Stage3.");
+            yield return WaitScene(DayWorldRules.StageThreeScene);
             controller = FindAnyObjectByType<Stage03GameController>();
             Require(controller != null, "Loaded Stage3 has no controller.");
             report.sourceAudioSha256 = controller.chart.sourceSha256;
             report.clipLengthSeconds = controller.chart.music.length;
-            yield return Capture("whole");
             Require(controller.StartRun(), "Stage3 StartRun was rejected.");
+            yield return Capture("whole");
 
             float coreDeadline = Time.realtimeSinceStartup + 240f;
             bool head = false, front = false, turned = false, back = false, slice = false, cap = false, plate = false;
@@ -170,7 +180,12 @@ namespace SashimiBoy
                 if (!back && controller.assembly.DetachedFilletCount == 4 && !controller.assembly.HasBody)
                 { back = true; yield return Capture("back-four-body-cleared"); }
                 if (!slice && controller.SpawnedSlices >= 1) { slice = true; yield return Capture("slice-one"); }
-                if (!cap && controller.SpawnedSlices >= 3) { cap = true; yield return Capture("partial-cut-cap"); }
+                if (!cap && controller.SpawnedSlices >= 3)
+                {
+                    cap = true;
+                    yield return Capture("partial-cut-cap");
+                    yield return CapturePartialCutSide();
+                }
                 if (!plate && controller.SpawnedSlices == 24) { plate = true; yield return Capture("slice-twenty-four"); }
                 yield return null;
             }
@@ -187,6 +202,53 @@ namespace SashimiBoy
             report.outcome = "SyntheticApiQaCompleted";
             FinishReport();
             Debug.Log("[Stage3Evidence] Synthetic public-API QA completed. Human input/visual/music/save approval remains pending. " + outputDirectory);
+        }
+
+        private IEnumerator CapturePartialCutSide()
+        {
+            Require(controller != null && !controller.Paused && controller.Run.Phase >= 5 && controller.Run.Phase < 9,
+                "The side-view probe requires an active slicing phase.");
+            var cooking = controller.cooking;
+            var camera = cooking != null ? cooking.gameCamera : null;
+            var surface = controller.fillets[controller.Run.Phase - 5];
+            Require(camera != null && surface != null && surface.meshRenderer != null && !surface.IsEmpty,
+                "The remaining fillet and its actual gameplay camera are required for the side view.");
+            Vector3 originalPosition = camera.transform.position;
+            Quaternion originalRotation = camera.transform.rotation;
+            float originalFov = camera.fieldOfView;
+            bool cookingEnabled = cooking.enabled;
+            bool pausePanelActive = controller.pausePanel != null && controller.pausePanel.activeSelf;
+            bool ownPause = false;
+            try
+            {
+                // Use the real pause path: musical time, judged input and presentation
+                // remain stopped while the QA camera inspects the already-cut mesh.
+                controller.TogglePause();
+                ownPause = controller.Paused;
+                Require(ownPause, "The normal pause path rejected the cap side-view probe.");
+                if (controller.pausePanel != null) controller.pausePanel.SetActive(false);
+                cooking.enabled = false;
+                Bounds bounds = surface.meshRenderer.bounds;
+                Vector3 position = bounds.center + Vector3.right * .35f + Vector3.up * .08f;
+                camera.transform.SetPositionAndRotation(position,
+                    Quaternion.LookRotation(bounds.center - position, Vector3.up));
+                camera.fieldOfView = 42f;
+                yield return Capture("partial-cut-side");
+            }
+            finally
+            {
+                if (camera != null)
+                {
+                    camera.transform.SetPositionAndRotation(originalPosition, originalRotation);
+                    camera.fieldOfView = originalFov;
+                }
+                if (cooking != null) cooking.enabled = cookingEnabled;
+                if (controller != null)
+                {
+                    if (controller.pausePanel != null) controller.pausePanel.SetActive(pausePanelActive);
+                    if (ownPause && controller.Paused) controller.TogglePause();
+                }
+            }
         }
 
         private IEnumerator ExtendedDay3()
@@ -254,6 +316,8 @@ namespace SashimiBoy
             var npc = FindObjectsByType<DayWorldNpc>(FindObjectsInactive.Include, FindObjectsSortMode.None)
                 .Single(value => value.npcId == id && value.IsAvailable);
             var actor = FindAnyObjectByType<SimpleTopDownPlayerController>().gameObject;
+            PlaceActorForConversation(actor, npc);
+            yield return null;
             bool autoLine = false;
             Action<DialogueLine> shown = line => autoLine = line.autoAdvanceDelay > 0f;
             npc.runner.OnLineShown += shown;
@@ -271,6 +335,40 @@ namespace SashimiBoy
                 }
             }
             finally { npc.runner.OnLineShown -= shown; }
+        }
+
+        private static void PlaceActorForConversation(GameObject actor, DayWorldNpc npc)
+        {
+            // A collision-checked fixture position exercises the real conversation
+            // camera and body, but is not evidence of walking or sensor/key input.
+            var character = actor.GetComponent<CharacterController>();
+            float height = character != null ? character.height * Mathf.Abs(actor.transform.lossyScale.y) : 1.8f;
+            float radius = character != null ? character.radius * Mathf.Max(Mathf.Abs(actor.transform.lossyScale.x),
+                Mathf.Abs(actor.transform.lossyScale.z)) : .3f;
+            Vector3 centerOffset = character != null ? character.bounds.center - actor.transform.position : Vector3.zero;
+            Vector3 candidate = actor.transform.position;
+            bool found = false;
+            foreach (float angle in new[] { 0f, 35f, -35f, 55f, -55f, 75f, -75f, 100f, -100f })
+            {
+                Vector3 point = npc.transform.position + Quaternion.AngleAxis(angle, Vector3.up) * npc.transform.forward * 1.45f;
+                point.y = actor.transform.position.y;
+                Vector3 center = point + centerOffset;
+                float halfSegment = Mathf.Max(0f, height * .5f - radius);
+                var blockers = Physics.OverlapCapsule(center + Vector3.up * halfSegment,
+                    center - Vector3.up * halfSegment, radius * .95f, ~0, QueryTriggerInteraction.Ignore);
+                bool blocked = blockers.Any(value => !value.transform.IsChildOf(actor.transform) &&
+                    value.bounds.max.y > center.y - height * .5f + .08f);
+                if (blocked) continue;
+                candidate = point; found = true; break;
+            }
+            Require(found, "No clear conversation fixture position near " + npc.npcId);
+            Vector3 forward = npc.transform.position - candidate; forward.y = 0f;
+            Quaternion rotation = forward.sqrMagnitude > .001f ? Quaternion.LookRotation(forward, Vector3.up) : actor.transform.rotation;
+            bool characterEnabled = character != null && character.enabled;
+            if (character != null) character.enabled = false;
+            actor.transform.SetPositionAndRotation(candidate, rotation);
+            if (character != null) character.enabled = characterEnabled;
+            actor.GetComponent<KevinFirstPersonCameraRig>()?.RestoreStageEntryView(0f, 12f);
         }
 
         private IEnumerator Travel(string scene, string spawn)

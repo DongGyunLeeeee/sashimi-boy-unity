@@ -38,6 +38,8 @@ namespace SashimiBoy.EditorTools
             var controller=Find<Stage03GameController>(scene);
             if(controller==null)controller=BuildScene(scene);
             PlaceAssembly(controller,scene);
+            if(controller.startPanel.transform.Find("Abort")==null)
+                Button(controller.startPanel.transform,"Abort","식당으로 돌아가기",controller.titleText.font,new Vector2(.5f,.08f),controller.ReturnToShop);
             controller.chart=AssetDatabase.LoadAssetAtPath<Stage03Chart>(ChartPath);
             controller.clock.audioSource.clip=controller.chart.music;
             controller.clock.playOnStart=false;
@@ -170,6 +172,7 @@ namespace SashimiBoy.EditorTools
             fill.pivot=new Vector2(0,.5f);c.songFill=fill.GetComponent<Image>();c.songFill.type=Image.Type.Filled;c.songFill.fillMethod=Image.FillMethod.Horizontal;c.songFill.fillAmount=0;
             c.startPanel=Overlay(canvas.transform,"StartPanel","가자미 손질\n\n머리 → 앞면 필렛 2개 → E 뒤집기 → 뒷면 필렛 2개\n필렛 4개를 썰어 회 24점의 한 접시를 완성하세요\n\n노란 박자가 중앙선에 닿을 때 Space\nEsc 일시 정지 · 실패 시 R로 현재 구간 재시도",font,out _);
             Button(c.startPanel.transform,"Start","손질 시작 · Enter",font,new Vector2(.5f,.21f),c.StartFromButton);
+            Button(c.startPanel.transform,"Abort","식당으로 돌아가기",font,new Vector2(.5f,.08f),c.ReturnToShop);
             c.pausePanel=Overlay(canvas.transform,"PausePanel","일시 정지\n\n음악과 손질 진행이 멈췄습니다",font,out _);
             Button(c.pausePanel.transform,"Resume","계속하기 · Esc",font,new Vector2(.5f,.32f),c.TogglePause);
             Button(c.pausePanel.transform,"Abort","손질 중단 · 식당으로",font,new Vector2(.5f,.19f),c.ReturnToShop);
@@ -220,6 +223,7 @@ namespace SashimiBoy.EditorTools
         }
         public static void Scan(Scene scene)
         {
+            Stage01PlayableAuthoring.ScanScene(scene);
             foreach(var t in All<Transform>(scene))if(GameObjectUtility.GetMonoBehavioursWithMissingScriptCount(t.gameObject)>0)throw new InvalidOperationException("Missing Script: "+t.name);
             if(All<AudioListener>(scene).Count(a=>a.enabled&&a.gameObject.activeInHierarchy)!=1)throw new InvalidOperationException("Stage3 needs exactly one AudioListener.");
             if(All<EventSystem>(scene).Count(e=>e.enabled&&e.gameObject.activeInHierarchy)!=1)throw new InvalidOperationException("Stage3 needs exactly one EventSystem.");
@@ -254,7 +258,7 @@ namespace SashimiBoy.EditorTools
                 assembly.filletStorageAnchors[i].SetPositionAndRotation(new Vector3(-.36f+i*.23f-fillet.center.x*scale,
                     top+.008f-fillet.min.y*scale,.23f-fillet.center.z*scale),Quaternion.identity);
             }
-            assembly.filletWorkAnchor.SetPositionAndRotation(new Vector3(0,top+.008f,-.12f),Quaternion.Euler(0,90,0));
+            assembly.filletWorkAnchor.SetPositionAndRotation(new Vector3(0,top+.008f,-.12f),Quaternion.Euler(0,-90,0));
             foreach(var transform in fish.GetComponentsInChildren<Transform>(true))
                 PrefabUtility.RecordPrefabInstancePropertyModifications(transform);
         }

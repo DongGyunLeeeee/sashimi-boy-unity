@@ -24,6 +24,8 @@ namespace SashimiBoy
         public Stage03RunState Run {get;}=new Stage03RunState();
         public int Score {get;private set;}
         public int Combo {get;private set;}
+        public int MissCount {get;private set;}
+        public float Accuracy01=>Mathf.Clamp01(Score/(1000f*Mathf.Max(1,hitAttempts+MissCount)));
         public bool Started {get;private set;}
         public bool Paused {get;private set;}
         public bool ResultShown {get;private set;}
@@ -35,6 +37,7 @@ namespace SashimiBoy
         private readonly List<GameObject> slices=new List<GameObject>();
         private readonly List<int> sliceOwners=new List<int>();
         private int phaseBaseScore;
+        private int hitAttempts;
         private int preparedFillet=-1;
         private bool returning;
         private bool clearApplied;
@@ -81,6 +84,8 @@ namespace SashimiBoy
             if(clock.State==AudioClockState.Faulted){Fail("음원 재생을 확인한 뒤 R로 다시 시도하세요.");RefreshHUD();return;}
             if(clock.State!=AudioClockState.Playing&&clock.State!=AudioClockState.Scheduled){RefreshHUD();return;}
             TickAt(clock.SongTimeMs);
+            if(Run.Phase>=5&&Run.Phase<9&&!Run.PhaseSatisfied&&!Run.Failed&&!cooking.IsStriking)
+                cooking.SetWorkPoint(fillets[Run.Phase-5].NextCutPosition);
             if(Input.GetKeyDown(KeyCode.Space))SubmitAt(clock.SongTimeMs);
             RefreshHUD();
         }
@@ -95,7 +100,7 @@ namespace SashimiBoy
         public void RetryFromButton()=>RetryPhase();
         public void ResetRun()
         {
-            clock.Stop();Run.Reset();Score=Combo=NoteCursor=phaseBaseScore=0;
+            clock.Stop();Run.Reset();Score=Combo=NoteCursor=phaseBaseScore=MissCount=hitAttempts=0;
             Started=Paused=ResultShown=ClearRecorded=returning=clearApplied=false;resultDelay=-1;preparedFillet=-1;
             for(int i=0;i<fillets.Length;i++){fillets[i].ResetCuts();fillets[i].SetCuttingEnabled(false);}
             assembly.ResetAssembly();
@@ -112,7 +117,7 @@ namespace SashimiBoy
             var phase=chart.phases[Run.Phase];
             while(NoteCursor<phase.noteTimesMs.Length&&nowMs-phase.noteTimesMs[NoteCursor]-Offset>WindowMs)
             {
-                if(!Run.PhaseSatisfied){Combo=0;ShowJudge("놓침",Color.red);}
+                if(!Run.PhaseSatisfied){MissCount++;Combo=0;ShowJudge("놓침",Color.red);}
                 NoteCursor++;
             }
             if(nowMs<phase.noteTimesMs[phase.noteTimesMs.Length-1]+Offset+WindowMs+400d)return;
@@ -139,15 +144,16 @@ namespace SashimiBoy
             var judged=RhythmJudge.Judge(chart.bpm,inputMs,NextNoteMs,Offset,RhythmDifficulty.Casual);
             if(!judged.IsHit)return false;
             int phase=Run.Phase;
+            Vector3 strikePoint=phase>=5?fillets[phase-5].NextCutPosition:PreparationWorkPoint(phase);
             if(phase>=5&&!fillets[phase-5].TryCut(Run.Hits))return false;
             if(!Run.TryHit())throw new InvalidOperationException("Stage3 state rejected a validated cut.");
-            NoteCursor++;Combo++;Score+=(int)(1000*judged.ScoreCoefficient);
+            NoteCursor++;Combo++;hitAttempts++;Score+=(int)(1000*judged.ScoreCoefficient);
             ShowJudge(judged.grade.ToString(),new Color(1,.78f,.25f));
-            cooking.Pulse();
+            cooking.SetWorkPoint(strikePoint);cooking.Pulse();
             if(phase>=5)
             {
                 SpawnSlice(phase-5);
-                cooking.SetWorkPoint(fillets[phase-5].NextCutPosition);
+                UpdateFilletSupport(phase-5);
             }
             else if(Run.PhaseSatisfied)
             {
@@ -174,9 +180,11 @@ namespace SashimiBoy
                 }
                 fillets[index].SetCuttingEnabled(true);
                 cooking.SetWorkPoint(fillets[index].NextCutPosition);
+                UpdateFilletSupport(index);
             }
             else
             {
+                cooking.ClearSupportPoint();
                 cooking.SetWorkPoint(PreparationWorkPoint(Run.Phase));
             }
         }
@@ -197,6 +205,13 @@ namespace SashimiBoy
         }
         private void SetSurfacesEnabled(bool enabled)
         {foreach(var fillet in fillets)fillet.SetCuttingEnabled(enabled);}
+        private void UpdateFilletSupport(int index)
+        {
+            var filter=fillets[index].meshFilter;
+            if(filter.sharedMesh==null)return;
+            Bounds bounds=filter.sharedMesh.bounds;
+            cooking.SetSupportPoint(filter.transform.TransformPoint(new Vector3(bounds.center.x,bounds.max.y,bounds.center.z))+Vector3.up*.012f);
+        }
         private void GroundBody()
         {
             if(!assembly.HasBody)return;
@@ -244,7 +259,7 @@ namespace SashimiBoy
         }
         public void TogglePause()
         {
-            if(!Started||ResultShown||returning||Run.Completed)return;
+            if(!Started||ResultShown||returning||Run.Completed||Run.Failed)return;
             Paused=!Paused;pausePanel.SetActive(Paused);
             if(Paused){clock.Pause();SetSurfacesEnabled(false);}
             else if(!Run.Failed&&!Run.WaitingForTurn){clock.Resume();if(Run.Phase>=5)fillets[Run.Phase-5].SetCuttingEnabled(true);}
@@ -270,7 +285,7 @@ namespace SashimiBoy
                 {
                     GameFlowManager.Instance.CompleteStage(new StageClearPayload
                     {stageId=SashimiBoyConstants.StageIds.Sole,nextStageId=SashimiBoyConstants.StageIds.Mullet,
-                     fishType=FishType.Sole,rewardPlates=1,accuracy01=Mathf.Clamp01(Score/44000f),yield01=1,score=Score,allNasty=false});
+                     fishType=FishType.Sole,rewardPlates=1,accuracy01=Accuracy01,yield01=1,score=Score,allNasty=false});
                     clearApplied=!DayWorldFlow.Active||manager.Current.dayWorld.beat!=before;
                 }
                 catch(IOException){clearApplied=manager.Current.dayWorld.beat!=before;}
@@ -287,6 +302,7 @@ namespace SashimiBoy
         {
             if(returning)return;
             if(ResultShown&&!TrySaveClear())return;
+            if(SceneTransitionService.Instance==null||SceneTransitionService.Instance.IsLoading)return;
             returning=true;clock.Stop();Time.timeScale=1;
             if(DayWorldFlow.Active)DayWorldFlow.Instance.LoadWorld(SashimiBoyConstants.Scenes.FishShopDialogue,"StageReturn");
             else Stage01ShopReturn.Request();
@@ -303,7 +319,9 @@ namespace SashimiBoy
             {
                 double first=chart.phases[0].noteTimesMs[0]-2500d;
                 var final=chart.phases[8].noteTimesMs;
-                songFill.fillAmount=Mathf.Clamp01((float)((clock.SongTimeMs-first)/(final[final.Length-1]+2000d-first)));
+                float progress=Mathf.Clamp01((float)((clock.SongTimeMs-first)/(final[final.Length-1]+2000d-first)));
+                songFill.fillAmount=progress;
+                if(songFill.sprite==null)songFill.rectTransform.localScale=new Vector3(progress,1,1);
             }
             if(Run.WaitingForTurn)noteText.text=assembly.IsTurningOver?"생선을 뒤집고 있습니다":"앞면 필렛 분리 완료 · E를 눌러 뒤집기";
             else if(Run.PhaseSatisfied)noteText.text="이 구간 완료 · 다음 손질을 준비하세요";

@@ -34,6 +34,7 @@ namespace SashimiBoy.Tests
         public void SuppliedFishAndWorkFilletCrossTheBlade_AndHeadCueIsInsideTheFish()
         {
             var scene=EditorSceneManager.OpenScene("Assets/_SashimiBoy/Scenes/Stage03_Flounder.unity",OpenSceneMode.Single);
+            RuntimeReflection.InvokeStatic("SashimiBoy.EditorTools.Stage01PlayableAuthoring","ScanScene",scene);
             var controller=scene.GetRootGameObjects().SelectMany(g=>g.GetComponentsInChildren<MonoBehaviour>(true))
                 .Single(c=>c.GetType().FullName=="SashimiBoy.Stage03GameController");
             var assembly=(Component)RuntimeReflection.GetField(controller,"assembly");
