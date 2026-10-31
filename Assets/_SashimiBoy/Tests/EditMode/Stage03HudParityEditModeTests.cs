@@ -243,10 +243,29 @@ namespace SashimiBoy.Tests
         {
             Assert.That(actual, Is.Not.Null);
             Assert.That(actual.color, Is.EqualTo(expected.color), expected.name);
-            Assert.That(actual.sprite, Is.SameAs(expected.sprite), expected.name);
+            // Unity can expose distinct managed wrappers for the same native
+            // object, including an empty sprite. Compare Unity object identity
+            // while retaining a strict serialized check for genuinely empty refs.
+            if (expected.sprite == null)
+            {
+                Assert.That(actual.sprite == null, Is.True, expected.name + " sprite must remain Unity-null");
+                AssertEmptySpriteReference(expected);
+                AssertEmptySpriteReference(actual);
+            }
+            else
+                Assert.That(actual.sprite == expected.sprite, Is.True, expected.name + " sprite asset identity");
             Assert.That(actual.material, Is.SameAs(expected.material), expected.name);
             Assert.That(actual.type, Is.EqualTo(expected.type), expected.name);
             Assert.That(actual.preserveAspect, Is.EqualTo(expected.preserveAspect), expected.name);
+        }
+        private static void AssertEmptySpriteReference(Image image)
+        {
+            var serialized = new SerializedObject(image);
+            var sprite = serialized.FindProperty("m_Sprite");
+            Assert.That(sprite, Is.Not.Null, image.name + " serialized sprite field");
+            Assert.That(sprite.objectReferenceValue == null, Is.True, image.name + " must have an empty sprite reference");
+            Assert.That(sprite.objectReferenceEntityIdValue.Equals(default(UnityEngine.EntityId)), Is.True,
+                image.name + " must not hide a dangling sprite reference behind Unity null semantics");
         }
     }
 }
