@@ -86,6 +86,20 @@ namespace SashimiBoy.Tests
             public bool importedMainAssetTypesMatch;
             public bool riggedBodyHasSkinAndBones;
             public bool audioMatchesManifest;
+            public string originalReceiptPath;
+            public string originalReceiptSha256;
+            public bool audioRevisionApplied;
+            public int audioRevisionIssue;
+            public int unchangedReceiptOriginalCount;
+            public string sourceIdentityScope;
+            public string originalMusicSha256;
+            public long originalMusicBytes;
+            public string currentMusicSourceName;
+            public string currentMusicPath;
+            public string currentMusicGuid;
+            public string currentMusicSha256;
+            public long currentMusicBytes;
+            public AudioMetadata currentMusicMetadata;
             public bool fontImported;
             public bool planningProvided;
             public string textureBindingScope;
@@ -124,12 +138,42 @@ namespace SashimiBoy.Tests
             return absolute;
         }
 
+        private static AssetEntry EffectiveEntry(AssetEntry original, Stage03AudioRevisionContract.Revision revision)
+        {
+            if (revision == null || original.path != Stage03AudioRevisionContract.MusicPath) return original;
+            Assert.That(original.role, Is.EqualTo("Music"), "A revision may affect only the one canonical Music entry.");
+            return new AssetEntry
+            {
+                archive = original.archive,
+                entry = revision.replacement.sourceName,
+                path = original.path,
+                role = original.role,
+                bytes = revision.replacement.bytes,
+                sha256 = revision.replacement.sha256
+            };
+        }
+
+        private static AudioMetadata EffectiveAudio(IntakeManifest manifest, Stage03AudioRevisionContract.Revision revision)
+        {
+            if (revision == null) return manifest.audio;
+            var audio = revision.replacement.audio;
+            return new AudioMetadata
+            {
+                encoding = audio.encoding, channels = audio.channels, sampleRate = audio.sampleRate,
+                bitsPerSample = audio.bitsPerSample, frames = audio.frames, durationSeconds = audio.durationSeconds
+            };
+        }
+
         [Test]
         public void SuppliedOriginals_MatchAllManifestSizesAndSha256Hashes()
         {
             var manifest = ReadManifest();
-            foreach (var entry in manifest.assets)
+            var revision = Stage03AudioRevisionContract.LoadOptional(ProjectRoot);
+            int revisedEntries = 0;
+            foreach (var original in manifest.assets)
             {
+                var entry = EffectiveEntry(original, revision);
+                if (!ReferenceEquals(entry, original)) revisedEntries++;
                 string path = SourcePath(entry);
                 Assert.That(File.Exists(path), Is.True, entry.path);
                 Assert.That(new FileInfo(path).Length, Is.EqualTo(entry.bytes), entry.path);
@@ -142,6 +186,8 @@ namespace SashimiBoy.Tests
                     Assert.That(hash, Is.EqualTo(entry.sha256), entry.path);
                 }
             }
+            Assert.That(revisedEntries, Is.EqualTo(revision == null ? 0 : 1),
+                "No hash is skipped: 67 receipt originals and exactly one validated Music revision are checked.");
         }
 
         [Test]
@@ -246,12 +292,14 @@ namespace SashimiBoy.Tests
             var manifest = ReadManifest();
             var entries = manifest.assets.Where(a => Extension(a) == ".wav").ToArray();
             Assert.That(entries.Length, Is.EqualTo(1));
+            var revision = Stage03AudioRevisionContract.LoadOptional(ProjectRoot);
+            var audio = EffectiveAudio(manifest, revision);
             var clip = AssetDatabase.LoadAssetAtPath<AudioClip>(entries[0].path);
             Assert.That(clip, Is.Not.Null);
-            Assert.That(clip.channels, Is.EqualTo(manifest.audio.channels));
-            Assert.That(clip.frequency, Is.EqualTo(manifest.audio.sampleRate));
-            Assert.That(clip.samples, Is.EqualTo(manifest.audio.frames));
-            Assert.That((double)clip.length, Is.EqualTo(manifest.audio.durationSeconds).Within(.001d));
+            Assert.That(clip.channels, Is.EqualTo(audio.channels));
+            Assert.That(clip.frequency, Is.EqualTo(audio.sampleRate));
+            Assert.That(clip.samples, Is.EqualTo(audio.frames));
+            Assert.That((double)clip.length, Is.EqualTo(audio.durationSeconds).Within(.001d));
         }
 
         [Test]
@@ -276,6 +324,16 @@ namespace SashimiBoy.Tests
             tests.SuppliedMusic_RetainsSourceDurationChannelsAndSampleRate();
             tests.SuppliedFont_ImportsAsAFontAsset();
             var manifest = ReadManifest();
+            var revision = Stage03AudioRevisionContract.LoadOptional(ProjectRoot);
+            var originalMusic = manifest.assets.Single(a => Extension(a) == ".wav");
+            var currentMusic = EffectiveEntry(originalMusic, revision);
+            if (revision != null)
+            {
+                var revisionTests = new Stage03AudioRevisionEditModeTests();
+                revisionTests.ApprovedRevision_BindsFrozenReceiptAndExactRawReplacement();
+                revisionTests.ExistingImporterMetaAndGuid_ArePreservedByteForByte();
+                revisionTests.ActualWavHeader_RetainsFullPcmDataAndUnknownMetadataChunks();
+            }
             var models = manifest.assets.Where(a => Extension(a) == ".fbx").Select(InspectModel).ToArray();
             var report = new AuditReport
             {
@@ -288,6 +346,21 @@ namespace SashimiBoy.Tests
                 importedMainAssetTypesMatch = true,
                 riggedBodyHasSkinAndBones = true,
                 audioMatchesManifest = true,
+                originalReceiptPath = ManifestPath,
+                originalReceiptSha256 = Stage03AudioRevisionContract.FileHash(Path.Combine(ProjectRoot, ManifestPath)),
+                audioRevisionApplied = revision != null,
+                audioRevisionIssue = revision == null ? 0 : revision.issue,
+                unchangedReceiptOriginalCount = manifest.assets.Length - (revision == null ? 0 : 1),
+                sourceIdentityScope = revision == null ? "68 historical receipt originals" :
+                    "67 historical receipt originals plus the exact Owner-approved raw audio revision; old instrumental bytes are historical.",
+                originalMusicSha256 = originalMusic.sha256,
+                originalMusicBytes = originalMusic.bytes,
+                currentMusicSourceName = currentMusic.entry,
+                currentMusicPath = currentMusic.path,
+                currentMusicGuid = AssetDatabase.AssetPathToGUID(currentMusic.path),
+                currentMusicSha256 = currentMusic.sha256,
+                currentMusicBytes = currentMusic.bytes,
+                currentMusicMetadata = EffectiveAudio(manifest, revision),
                 fontImported = true,
                 planningProvided = manifest.planningProvided,
                 textureBindingScope = "Unbound main textures are reported only; material authoring belongs to later implementation.",
@@ -297,7 +370,9 @@ namespace SashimiBoy.Tests
             Directory.CreateDirectory(directory);
             string path = Path.Combine(directory, "asset-audit.json");
             File.WriteAllText(path, JsonUtility.ToJson(report, true));
-            Debug.Log("[Stage03AssetIntake] 68 source files, 11 model imports, 55 textures, source audio and font verified. " + path);
+            Debug.Log("[Stage03AssetIntake] 68 effective source identities, 11 model imports, 55 textures and font verified. " +
+                "Current audio revision issue: " + report.audioRevisionIssue + "; source: " + report.currentMusicSourceName +
+                "; duration: " + report.currentMusicMetadata.durationSeconds + " seconds. Owner lyric/sync confirmation remains pending. " + path);
         }
     }
 }
