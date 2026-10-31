@@ -3,6 +3,7 @@ using System.IO;
 using System.Linq;
 using NUnit.Framework;
 using UnityEngine;
+using UnityEngine.UI;
 using UnityEditor.SceneManagement;
 namespace SashimiBoy.Tests
 {
@@ -50,6 +51,48 @@ namespace SashimiBoy.Tests
             Assert.That(cue.x,Is.InRange(bounds.min.x-.0001f,bounds.max.x+.0001f));
             Assert.That(cue.z,Is.InRange(bounds.min.z-.0001f,bounds.max.z+.0001f));
             Assert.That(cue.y,Is.EqualTo(bounds.max.y).Within(.0001f));
+        }
+
+        [Test]
+        public void CompletedPlate_HasNoVisibleLegacyDemonstration_AndKeepsKnifeSlotsAndClearCenter()
+        {
+            var scene=EditorSceneManager.OpenScene("Assets/_SashimiBoy/Scenes/Stage03_Flounder.unity",OpenSceneMode.Single);
+            var transforms=scene.GetRootGameObjects().SelectMany(g=>g.GetComponentsInChildren<Transform>(true)).ToArray();
+            foreach(var legacy in transforms.Where(t=>t.name=="Stage01_BossDemoVisuals"||t.name=="Stage01_BossKnife_Demo"))
+                Assert.That(legacy.gameObject.activeInHierarchy,Is.False,"The old demonstration cannot occupy the serving plate or cover stored fillets: "+legacy.name);
+            var scripts=scene.GetRootGameObjects().SelectMany(g=>g.GetComponentsInChildren<MonoBehaviour>(true)).ToArray();
+            Assert.That(scripts.Any(c=>c!=null&&c.GetType().FullName=="SashimiBoy.BossDemoPresenter"),Is.False,"The copied presenter no longer has a timing owner.");
+            var controller=scripts.Single(c=>c!=null&&c.GetType().FullName=="SashimiBoy.Stage03GameController");
+            var cooking=RuntimeReflection.GetField(controller,"cooking");
+            var knife=(Transform)RuntimeReflection.GetField(cooking,"knifeRoot");
+            Assert.That(knife,Is.Not.Null);Assert.That(knife.name,Is.EqualTo("SashimiKnife_ProvidedAsset"));
+            Assert.That(knife.gameObject.activeInHierarchy,Is.True,"Cleanup must preserve the actual cooking knife.");
+            Assert.That(RuntimeReflection.GetField(cooking,"grip"),Is.Not.Null);
+            Assert.That(RuntimeReflection.GetField(cooking,"contact"),Is.Not.Null);
+            var plate=transforms.Single(t=>t.name=="CompletedFishPlate");
+            var renderers=plate.GetComponentsInChildren<Renderer>(true);
+            Assert.That(renderers,Is.Not.Empty);
+            Bounds bounds=renderers[0].bounds;foreach(var renderer in renderers)bounds.Encapsulate(renderer.bounds);
+            var slots=(Transform[])RuntimeReflection.GetField(controller,"plateSlots");
+            Assert.That(slots.Length,Is.EqualTo(24));
+            foreach(var slot in slots)
+            {
+                Assert.That(slot,Is.Not.Null);
+                Assert.That(slot.position.x,Is.InRange(bounds.min.x,bounds.max.x));
+                Assert.That(slot.position.z,Is.InRange(bounds.min.z,bounds.max.z));
+                Assert.That(slot.position.y,Is.EqualTo(bounds.max.y+.006f).Within(.0001f));
+            }
+            var result=(GameObject)RuntimeReflection.GetField(controller,"resultPanel");
+            var panel=result.GetComponent<RectTransform>();
+            Assert.That(Vector2.Distance(panel.anchorMin,new Vector2(.12f,.035f)),Is.LessThan(.0001f));
+            Assert.That(Vector2.Distance(panel.anchorMax,new Vector2(.88f,.31f)),Is.LessThan(.0001f),"The dish at screen center must remain exposed above the bottom result panel.");
+            var text=(Text)RuntimeReflection.GetField(controller,"resultText");
+            Assert.That(text.fontSize,Is.EqualTo(24));
+            Assert.That(Vector2.Distance(text.rectTransform.anchorMin,new Vector2(.05f,.30f)),Is.LessThan(.0001f));
+            Assert.That(Vector2.Distance(text.rectTransform.anchorMax,new Vector2(.95f,.95f)),Is.LessThan(.0001f));
+            var button=(RectTransform)result.transform.Find("Return");
+            Assert.That(button,Is.Not.Null);
+            Assert.That(button.anchorMax.y,Is.LessThan(text.rectTransform.anchorMin.y),"The return action remains below the compact result text.");
         }
     }
 }

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Security.Cryptography;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.Rendering;
@@ -17,15 +18,23 @@ namespace SashimiBoy.EditorTools
     {
         public const string Root = "Assets/_SashimiBoy/Art/Generated/Stage03FilletCuts";
         private const string PresentationRoot = Stage03FlounderAuthoring.Root;
-        private const string Algorithm = "Stage03FilletClip-1";
+        private const string Algorithm = "Stage03FilletClip-2";
         private static readonly string[] Roles = { "FrontFillet", "BackFillet" };
 
         [Serializable] private sealed class Receipt
         {
             public int issue = 87;
             public string algorithm = Algorithm;
-            public string contract = "Six equal longitudinal cuts; immutable original coordinate frame; cut normal -Z; original skin UV and normals retained; source bytes/importers untouched.";
+            public string contract = "Six equal longitudinal cuts; immutable original coordinate frame; cut normal -Z; original skin UV/normals retained; continuous 0..1 planar cap UV; opaque cap albedo sampled from the supplied SashimiSlice flesh; source bytes/importers untouched.";
+            public FleshReference capFleshReference;
             public Entry[] fillets;
+        }
+        [Serializable] private sealed class FleshReference
+        {
+            public string materialPath, texturePath, textureSha256, materialDependencyHash, colorSpace;
+            public string sampling = "256x256 sRGB readback of the supplied SashimiSlice albedo; component medians of bright warm-flesh pixels; reject dark/neutral atlas regions; no source importer setting changes or invented fallback.";
+            public int inspectedPixels, acceptedFleshPixels;
+            public Color capColor;
         }
         [Serializable] private sealed class Entry
         {
@@ -47,6 +56,7 @@ namespace SashimiBoy.EditorTools
             EnsureFolder(Root + "/Materials");
             try
             {
+            var flesh = ReadFleshReference();
             var entries = new List<Entry>();
             foreach (string role in Roles)
             {
@@ -69,7 +79,7 @@ namespace SashimiBoy.EditorTools
                 }
                 cache.modelRole = role;
                 cache.surfaceMaterial = sourceRenderer.sharedMaterial;
-                cache.capMaterial = SaveCapMaterial(sourceRenderer.sharedMaterial, role);
+                cache.capMaterial = SaveCapMaterial(flesh.capColor, role);
                 cache.remainingMeshes = new Mesh[Stage03FilletCutCache.ApprovedCutsPerFillet + 1];
                 cache.remainingMeshes[0] = source;
                 cache.cutPositions = new float[Stage03FilletCutCache.ApprovedCutsPerFillet];
@@ -111,7 +121,7 @@ namespace SashimiBoy.EditorTools
                 Debug.Log("[Stage03FilletCuts] " + role + " cached five closed residual meshes in " + watch.ElapsedMilliseconds + " ms; gameplay changes only immutable mesh references.");
             }
             string reportPath = Root + "/Stage03FilletCutReport.json";
-            string report = JsonUtility.ToJson(new Receipt { fillets = entries.ToArray() }, true) + "\n";
+            string report = JsonUtility.ToJson(new Receipt { capFleshReference = flesh, fillets = entries.ToArray() }, true) + "\n";
             if (!File.Exists(reportPath) || File.ReadAllText(reportPath) != report) File.WriteAllText(reportPath, report);
             AssetDatabase.ImportAsset(reportPath, ImportAssetOptions.ForceSynchronousImport);
             Debug.Log("[Stage03FilletCuts] Six cuts per fillet, four independent fillets; cap and edge appearance still require final Player visual review.");
@@ -128,19 +138,90 @@ namespace SashimiBoy.EditorTools
             return new ClipBuilder(source, cutZ).Build();
         }
 
-        private static Material SaveCapMaterial(Material source, string role)
+        private static FleshReference ReadFleshReference()
+        {
+            string materialPath = PresentationRoot + "/Materials/MAT_SashimiSlice.mat";
+            var material = AssetDatabase.LoadAssetAtPath<Material>(materialPath);
+            Require(material != null && material.mainTexture != null, "The supplied SashimiSlice flesh reference is missing.");
+            string texturePath = AssetDatabase.GetAssetPath(material.mainTexture);
+            Require(!string.IsNullOrWhiteSpace(texturePath) && File.Exists(ProjectFile(texturePath)), "The supplied flesh albedo has no readable source file identity.");
+            Require(SystemInfo.graphicsDeviceType != GraphicsDeviceType.Null, "Flesh-reference sampling requires the approved graphics-enabled Editor mode.");
+            var reference = new FleshReference
+            {
+                materialPath = materialPath, texturePath = texturePath,
+                materialDependencyHash = AssetDatabase.GetAssetDependencyHash(materialPath).ToString(),
+                colorSpace = QualitySettings.activeColorSpace.ToString()
+            };
+            using (var sha = SHA256.Create())
+                reference.textureSha256 = BitConverter.ToString(sha.ComputeHash(File.ReadAllBytes(ProjectFile(texturePath)))).Replace("-", "").ToLowerInvariant();
+            var previousTarget = RenderTexture.active;
+            bool previousSrgbWrite = GL.sRGBWrite;
+            RenderTexture target = null;
+            Texture2D readback = null;
+            try
+            {
+                target = RenderTexture.GetTemporary(256, 256, 0, RenderTextureFormat.ARGB32, RenderTextureReadWrite.sRGB);
+                GL.sRGBWrite = QualitySettings.activeColorSpace == ColorSpace.Linear;
+                Graphics.Blit(material.mainTexture, target);
+                RenderTexture.active = target;
+                readback = new Texture2D(256, 256, TextureFormat.RGBA32, false, false) { hideFlags = HideFlags.HideAndDontSave };
+                readback.ReadPixels(new Rect(0, 0, 256, 256), 0, 0, false);
+                readback.Apply(false, false);
+                var reds = new List<byte>(); var greens = new List<byte>(); var blues = new List<byte>();
+                Color32[] pixels = readback.GetPixels32();
+                reference.inspectedPixels = pixels.Length;
+                foreach (Color32 pixel in pixels)
+                {
+                    float r = pixel.r / 255f, g = pixel.g / 255f, b = pixel.b / 255f;
+                    float luminance = .2126f * r + .7152f * g + .0722f * b;
+                    // Accept the light pink/peach flesh in the provided slice,
+                    // excluding black seams, white padding and saturated blood/skin.
+                    if (pixel.a < 250 || r < .60f || g < .45f || b < .35f ||
+                        r - g < .025f || r - g > .20f || g - b < -.08f || g - b > .15f ||
+                        r - b > .35f || luminance < .62f || luminance > .93f) continue;
+                    reds.Add(pixel.r); greens.Add(pixel.g); blues.Add(pixel.b);
+                }
+                Require(reds.Count >= 64, "The supplied SashimiSlice albedo has insufficient actual flesh pixels; no fallback cap color was invented.");
+                reds.Sort(); greens.Sort(); blues.Sort();
+                int middle = reds.Count / 2;
+                reference.acceptedFleshPixels = reds.Count;
+                reference.capColor = new Color(reds[middle] / 255f, greens[middle] / 255f, blues[middle] / 255f, 1f);
+                return reference;
+            }
+            finally
+            {
+                RenderTexture.active = previousTarget;
+                GL.sRGBWrite = previousSrgbWrite;
+                if (readback != null) Object.DestroyImmediate(readback);
+                if (target != null) RenderTexture.ReleaseTemporary(target);
+            }
+        }
+
+        private static Material SaveCapMaterial(Color flesh, string role)
         {
             string path = Root + "/Materials/MAT_" + role + "_CutFace.mat";
             var material = AssetDatabase.LoadAssetAtPath<Material>(path);
-            var generated = new Material(source) { name = "MAT_" + role + "_CutFace" };
-            // Keep the supplied flesh/base-color texture. A fresh cross section
-            // is smooth and does not inherit the exterior scan's normal map.
+            var shader = Shader.Find("Standard");
+            Require(shader != null, "The opaque Standard cut-face shader is unavailable.");
+            var generated = new Material(shader) { name = "MAT_" + role + "_CutFace", color = flesh };
+            // A source exterior atlas is not a cross-section texture: sampling
+            // arbitrary islands produces black/white patchwork. Use the actual
+            // supplied slice's representative flesh color without that atlas.
+            generated.SetTexture("_MainTex", null);
             generated.DisableKeyword("_NORMALMAP");
             generated.DisableKeyword("_METALLICGLOSSMAP");
+            generated.DisableKeyword("_ALPHATEST_ON");
+            generated.DisableKeyword("_ALPHABLEND_ON");
+            generated.DisableKeyword("_ALPHAPREMULTIPLY_ON");
             generated.SetTexture("_BumpMap", null);
             generated.SetTexture("_MetallicGlossMap", null);
+            generated.SetFloat("_Mode", 0f);
+            generated.SetInt("_SrcBlend", (int)BlendMode.One);
+            generated.SetInt("_DstBlend", (int)BlendMode.Zero);
+            generated.SetInt("_ZWrite", 1);
             generated.SetFloat("_Metallic", 0f);
             generated.SetFloat("_Glossiness", .26f);
+            generated.renderQueue = -1;
             if (material == null) { material = generated; AssetDatabase.CreateAsset(material, path); }
             else { EditorUtility.CopySerialized(generated, material); Object.DestroyImmediate(generated); }
             EditorUtility.SetDirty(material); AssetDatabase.SaveAssetIfDirty(material);
@@ -423,8 +504,8 @@ namespace SashimiBoy.EditorTools
                 {
                     Vector3 point = boundary[node].Position;
                     capIndex[node] = output.Count; output.Add(point); outputNormals.Add(Vector3.back);
-                    outputUv.Add(new Vector2(Mathf.Lerp(.2f, .8f, Mathf.InverseLerp(minX, maxX, point.x)),
-                        Mathf.Lerp(.2f, .8f, Mathf.InverseLerp(minY, maxY, point.y))));
+                    outputUv.Add(new Vector2(Mathf.InverseLerp(minX, maxX, point.x),
+                        Mathf.InverseLerp(minY, maxY, point.y)));
                 }
                 int remaining = contour.Count, attempts = 0;
                 while (remaining > 2)

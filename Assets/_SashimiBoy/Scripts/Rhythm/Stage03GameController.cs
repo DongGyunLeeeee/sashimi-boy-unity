@@ -100,6 +100,7 @@ namespace SashimiBoy
         public void RetryFromButton()=>RetryPhase();
         public void ResetRun()
         {
+            cooking.ResetPresentation();
             clock.Stop();Run.Reset();Score=Combo=NoteCursor=phaseBaseScore=MissCount=hitAttempts=0;
             Started=Paused=ResultShown=ClearRecorded=returning=clearApplied=false;resultDelay=-1;preparedFillet=-1;
             for(int i=0;i<fillets.Length;i++){fillets[i].ResetCuts();fillets[i].SetCuttingEnabled(false);}
@@ -131,6 +132,9 @@ namespace SashimiBoy
             if(Run.Completed)
             {
                 SetSurfacesEnabled(false);
+                Vector3 focus=Vector3.zero;
+                foreach(var slot in plateSlots)focus+=slot.position;
+                cooking.BeginPlatePresentation(focus/plateSlots.Length);
                 resultDelay=2f;
             }
             else PreparePhase();
@@ -295,7 +299,7 @@ namespace SashimiBoy
             try {manager.Save();ClearRecorded=true;}
             catch(IOException){resultText.text="회 한 접시 완성\n클리어 기록을 저장하지 못했습니다.\nF 또는 버튼으로 저장을 다시 시도하세요.";return false;}
             catch(UnauthorizedAccessException){resultText.text="회 한 접시 완성\n저장할 수 없습니다. F 또는 버튼으로 다시 시도하세요.";return false;}
-            resultText.text="가자미 손질 완료\n회 24점 · 한 접시 완성\n점수 "+Score+"\n\n식당으로 돌아가 철수와 이야기하세요";
+            resultText.text="가자미 손질 완료 · 회 24점 · 점수 "+Score+"\n식당으로 돌아가 철수와 이야기하세요";
             return true;
         }
         public void ReturnToShop()

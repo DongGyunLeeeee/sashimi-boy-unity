@@ -38,11 +38,13 @@ namespace SashimiBoy
             public string defaultSaveHashBefore, defaultSaveHashAfter;
             public bool defaultSavePreserved;
             public bool syntheticApiInput = true;
+            public bool backgroundExecutionDuringProbe = true;
             public string humanVerification = "Pending: this is NOT a human input, visual, music-sync or save-flow approval.";
             public string fixture = "Only prior Day1/2 completion is seeded in a NEW isolated validation profile. Day3 Junseok, work entry and optional extended progression use actual public interaction APIs; navigation/keyboard input remain synthetic QA.";
             public bool coreCompleted, extendedRequested, extendedCompleted;
             public int spawnedSlices, resultCount, errorLogCount;
             public float clipLengthSeconds, elapsedSeconds, maximumObservedGripError, maximumFrameMs;
+            public float maximumRightPalmError, maximumLeftPalmError;
             public float[] phaseMaximumGripError = new float[9];
             public List<HitEvidence> hits = new List<HitEvidence>();
             public List<string> captures = new List<string>();
@@ -56,6 +58,7 @@ namespace SashimiBoy
         private float startedAt;
         private int captureIndex;
         private bool stopped;
+        private bool originalRunInBackground;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void StartOptInProbe()
@@ -69,6 +72,8 @@ namespace SashimiBoy
 
         private void Start()
         {
+            originalRunInBackground=Application.runInBackground;
+            Application.runInBackground=true;
             report = new Report { outcome = "Running", startedUtc = DateTime.UtcNow.ToString("o"),
                 extendedRequested = Has("-stage3EvidenceExtended") };
             startedAt = Time.realtimeSinceStartup;
@@ -396,6 +401,7 @@ namespace SashimiBoy
 
         private IEnumerator Capture(string label)
         {
+            yield return null; // Capture the HUD and pose after the accepted-input frame has refreshed.
             string prefix = (++captureIndex).ToString("00") + "-" + label;
             string png = Path.Combine(outputDirectory, prefix + ".png");
             yield return new WaitForEndOfFrame();
@@ -428,6 +434,12 @@ namespace SashimiBoy
             report.maximumFrameMs = Mathf.Max(report.maximumFrameMs, Time.unscaledDeltaTime * 1000f);
             if (controller.cooking == null || controller.cooking.body == null) return;
             float error = controller.cooking.body.MaximumGripError;
+            var body=controller.cooking.body;
+            if(body.working)
+            {
+                report.maximumRightPalmError=Mathf.Max(report.maximumRightPalmError,Vector3.Distance(body.right.palm.position,body.rightTarget));
+                report.maximumLeftPalmError=Mathf.Max(report.maximumLeftPalmError,Vector3.Distance(body.left.palm.position,body.leftTarget));
+            }
             report.maximumObservedGripError = Mathf.Max(report.maximumObservedGripError, error);
             int phase = controller.Run.Phase;
             if (phase >= 0 && phase < 9)
@@ -498,9 +510,11 @@ namespace SashimiBoy
             if (!string.IsNullOrEmpty(outputDirectory))
                 File.WriteAllText(Path.Combine(outputDirectory, "report.json"), JsonUtility.ToJson(report, true));
             Application.logMessageReceived -= ObserveLog;
+            Application.runInBackground=originalRunInBackground;
             enabled = false;
         }
-        private void OnDestroy() { Application.logMessageReceived -= ObserveLog; }
+        private void OnDestroy()
+        { Application.logMessageReceived -= ObserveLog;Application.runInBackground=originalRunInBackground; }
     }
 }
 #endif

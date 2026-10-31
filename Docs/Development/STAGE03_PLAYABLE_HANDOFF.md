@@ -36,6 +36,10 @@ All supplied English role folders, source bytes, GUIDs and model names remain in
 
 `Stage03FilletCutAuthoring` precomputes five remaining-mesh states per front/back source and a sixth exhausted state. Each remaining mesh includes the original exterior and a closed cut face. Runtime changes shared mesh references; it does not boolean the high-density source every frame or replace real cutting with scale shrinkage. The support hand follows the remaining fillet bounds and the knife stroke stays at the accepted cut plane before moving to the next plane.
 
+Player inspection exposed two presentation defects despite the passing functional suite: an inherited demonstration hand obscured serving slots, and planar cap UVs sampled unrelated islands from the exterior atlas. The Stage3 generator now disables only those inherited demonstration objects and removes their unused presenter. Cut faces use an opaque, nonmetallic flesh color sampled deterministically from the supplied SashimiSlice reference; exterior mesh UVs and materials remain unchanged.
+
+The Stage3 stance solver fits the grounded body to both arms' actual wrist reach regions before posing, preserving bone lengths, palm targets, body height and scale. This addresses the late-filleting reach error rather than stretching an arm. Completion moves the camera to the served dish, hides the working body/knife, and leaves the dish visible above the result actions. A reset restores their authored visibility.
+
 Authoritative generation:
 
 - `SashimiBoy.EditorTools.Stage03PlayableAuthoring.ApplyBatch`
@@ -76,6 +80,8 @@ A newly managed worktree can contain Git LFS pointer files even when Git status 
 Executed native commands, exact commits, XML counts, skipped/inconclusive results, integrity checks, failures and independent review are recorded in the delivery PR and external run artifacts. This handoff is not itself a test PASS.
 
 An explicitly enabled development Player evidence probe uses a fresh isolated validation profile, real music-clock time and public gameplay APIs. It can capture Junseok → work → 24 slices → Cheolsu → Plugin → Jaehoon → sleep, including a cut-face side view. It distinguishes synthetic API input and fixture travel from physical keyboard/mouse/navigation evidence. It hashes the default save before/after and does not overwrite it. Normal players do not run this probe.
+
+The opt-in probe temporarily enables background execution and restores the previous setting when it finishes or is destroyed. It waits for the accepted-input frame to refresh before capturing the HUD, and records each palm's error separately. This does not change normal Player focus behavior or turn synthetic input into human verification. Earlier failed and superseded runs remain retained evidence.
 
 ## Owner verification
 

@@ -303,6 +303,11 @@ namespace SashimiBoy.Tests
         [UnityTest]
         public IEnumerator ActualJudgedPath_Completes24RealSlices_AndRecordsOnePlateOnlyOnce()
         {
+            var cooking=Get(controller,"cooking");
+            var body=(Component)Get(cooking,"body");
+            var bodyRenderers=body.GetComponentsInChildren<Renderer>(true);
+            var rendererStates=bodyRenderers.Select(r=>r.enabled).ToArray();
+            var knife=(Transform)Get(cooking,"knifeRoot");
             StartRun();
             yield return ReachPhase(8);
             Assert.That(Value<int>(controller, "SpawnedSlices"), Is.EqualTo(18));
@@ -321,6 +326,17 @@ namespace SashimiBoy.Tests
             yield return new WaitForSecondsRealtime(2.25f);
             Assert.That(Value<bool>(controller, "ResultShown"), Is.True);
             Assert.That(Value<bool>(controller, "ClearRecorded"), Is.True);
+            var camera=(Camera)Get(cooking,"gameCamera");
+            var slots=(Transform[])Get(controller,"plateSlots");
+            foreach(var slot in slots)
+            {
+                Vector3 viewport=camera.WorldToViewportPoint(slot.position);
+                Assert.That(viewport.z,Is.GreaterThan(0));
+                Assert.That(viewport.x,Is.InRange(.03f,.97f),"Every serving slot stays inside the completion shot.");
+                Assert.That(viewport.y,Is.InRange(.32f,.78f),"The completed dish stays between the header and result actions.");
+            }
+            Assert.That(bodyRenderers.All(r=>!r.enabled),Is.True,"Hands must not obscure the served dish.");
+            Assert.That(knife.gameObject.activeSelf,Is.False);
             Assert.That(((IList)Get(Current, "clearedStageIds")).Cast<string>().Count(id => id == "STAGE_03_SOLE"), Is.EqualTo(1));
             Assert.That(Get(Progress, "beat").ToString(), Is.EqualTo("AfterWorkConversation"));
             var sole = Enum.Parse(RuntimeReflection.RuntimeType("SashimiBoy.FishType"), "Sole");
@@ -331,6 +347,9 @@ namespace SashimiBoy.Tests
             Assert.That(Call(controller, "SubmitAt", 230000d), Is.EqualTo(false));
             Assert.That(JsonUtility.ToJson(Current), Is.EqualTo(once));
             Assert.That(Value<int>(controller, "SpawnedSlices"), Is.EqualTo(24));
+            Call(controller,"ResetRun");
+            Assert.That(bodyRenderers.Select(r=>r.enabled).ToArray(),Is.EqualTo(rendererStates),"A fresh run restores the authored connected body.");
+            Assert.That(knife.gameObject.activeSelf,Is.True);
         }
 
         [UnityTest]

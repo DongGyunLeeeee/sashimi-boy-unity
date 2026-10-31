@@ -37,7 +37,9 @@ namespace SashimiBoy.EditorTools
             Scene scene=EditorSceneManager.OpenScene(ScenePath,OpenSceneMode.Single);
             var controller=Find<Stage03GameController>(scene);
             if(controller==null)controller=BuildScene(scene);
+            CleanupLegacyDemo(scene);
             PlaceAssembly(controller,scene);
+            ConfigureResultPanel(controller);
             if(controller.startPanel.transform.Find("Abort")==null)
                 Button(controller.startPanel.transform,"Abort","식당으로 돌아가기",controller.titleText.font,new Vector2(.5f,.08f),controller.ReturnToShop);
             controller.chart=AssetDatabase.LoadAssetAtPath<Stage03Chart>(ChartPath);
@@ -64,6 +66,37 @@ namespace SashimiBoy.EditorTools
             if(!File.ReadAllBytes(Stage01PlayableAuthoring.ScenePath).SequenceEqual(salmon)||!File.ReadAllBytes(Stage02RockfishAuthoring.ScenePath).SequenceEqual(rockfish))
                 throw new InvalidOperationException("Stage1/2 scenes changed during Stage3 authoring.");
             Debug.Log("[Stage03Playable] Created 9-phase, four-fillet, 24-slice play and Day3 world. Stage1/2 bytes preserved.");
+        }
+        private static void CleanupLegacyDemo(Scene scene)
+        {
+            // The cloned Stage2 presenter loses its timing owner in Stage3. Its
+            // early return leaves the old demonstration hand and knife visible
+            // over the serving plate unless the new scene explicitly hides them.
+            foreach(var presenter in All<BossDemoPresenter>(scene).ToArray())Object.DestroyImmediate(presenter);
+            foreach(var transform in All<Transform>(scene).Where(t=>t.name=="Stage01_BossDemoVisuals"||t.name=="Stage01_BossKnife_Demo").ToArray())
+            {
+                transform.gameObject.SetActive(false);
+                if(PrefabUtility.IsPartOfPrefabInstance(transform.gameObject))
+                    PrefabUtility.RecordPrefabInstancePropertyModifications(transform.gameObject);
+                EditorUtility.SetDirty(transform.gameObject);
+            }
+        }
+        private static void ConfigureResultPanel(Stage03GameController controller)
+        {
+            // Keep the completed dish visible in the center of the game camera.
+            var panel=controller.resultPanel.GetComponent<RectTransform>();
+            panel.anchorMin=new Vector2(.12f,.035f);panel.anchorMax=new Vector2(.88f,.31f);
+            panel.offsetMin=panel.offsetMax=Vector2.zero;
+            var text=controller.resultText;
+            text.fontSize=24;text.resizeTextForBestFit=false;
+            text.horizontalOverflow=HorizontalWrapMode.Wrap;text.verticalOverflow=VerticalWrapMode.Truncate;
+            var textRect=text.rectTransform;
+            textRect.anchorMin=new Vector2(.05f,.30f);textRect.anchorMax=new Vector2(.95f,.95f);
+            textRect.offsetMin=textRect.offsetMax=Vector2.zero;
+            var button=(RectTransform)controller.resultPanel.transform.Find("Return");
+            if(button==null)throw new InvalidOperationException("Stage3 result return button is missing.");
+            button.anchorMin=button.anchorMax=new Vector2(.5f,.15f);button.anchoredPosition=Vector2.zero;
+            EditorUtility.SetDirty(panel);EditorUtility.SetDirty(text);EditorUtility.SetDirty(button);
         }
         private static void BuildChart()
         {
