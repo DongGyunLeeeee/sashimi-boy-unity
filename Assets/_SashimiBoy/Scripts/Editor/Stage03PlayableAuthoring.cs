@@ -301,7 +301,6 @@ namespace SashimiBoy.EditorTools
             {
                 ScenePath,ScenePath+".meta",ChartPath,ChartPath+".meta",
                 "Assets/_SashimiBoy/Data/Generated/Stage_03_Sole.asset",
-                "Assets/_SashimiBoy/Scenes/Street.unity","Assets/_SashimiBoy/Scenes/KevinHome.unity",
                 Stage03DayWorldAuthoring.GeneratedRoot+".meta"
             };
             if(Directory.Exists(Stage03DayWorldAuthoring.GeneratedRoot))
