@@ -20,9 +20,9 @@ namespace SashimiBoy
         {
             if(!ready||body==null||knifeRoot==null||grip==null||contact==null)return;
             pulse=Mathf.Max(0,pulse-Time.deltaTime);
-            float lift=pulse>0?Mathf.Sin(pulse/.28f*Mathf.PI)*.075f:0;
+            float vertical=pulse>0?-Mathf.Sin(pulse/.28f*Mathf.PI)*.055f:.035f;
             knifeRoot.rotation=knifeRotation;
-            knifeRoot.position+=workPoint+Vector3.up*(.025f+lift)-contact.position;
+            knifeRoot.position+=workPoint+Vector3.up*vertical-contact.position;
             var stance=standingPosition;stance.x=Mathf.Clamp(workPoint.x-.14f,-.65f,.55f);
             body.transform.position=Vector3.Lerp(body.transform.position,stance,1-Mathf.Exp(-12*Time.deltaTime));
             body.working=true;

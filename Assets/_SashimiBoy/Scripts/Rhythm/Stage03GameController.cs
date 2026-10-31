@@ -177,15 +177,23 @@ namespace SashimiBoy
             }
             else
             {
-                Vector3 focus=assembly.transform.position+new Vector3(0,.05f,0);
-                if(assembly.HasBody)
-                {
-                    var renderers=assembly.bodyStates[(int)assembly.BodyState].GetComponentsInChildren<Renderer>(true);
-                    if(renderers.Length>0)focus=renderers[0].bounds.center;
-                }
-                if(Run.Phase==0)focus+=new Vector3(.24f,0,0);
-                cooking.SetWorkPoint(focus);
+                cooking.SetWorkPoint(PreparationWorkPoint(Run.Phase));
             }
+        }
+        public Vector3 PreparationWorkPoint(int phase)
+        {
+            var bodyRenderers=assembly.bodyStates[Mathf.Min(phase,5)].GetComponentsInChildren<Renderer>(true);
+            Bounds body=bodyRenderers[0].bounds;
+            foreach(var renderer in bodyRenderers)body.Encapsulate(renderer.bounds);
+            var part=phase==0?assembly.head:assembly.fillets[Mathf.Clamp(phase-1,0,3)];
+            var partRenderers=part.GetComponentsInChildren<Renderer>(true);
+            Bounds region=partRenderers[0].bounds;
+            foreach(var renderer in partRenderers)region.Encapsulate(renderer.bounds);
+            Vector3 point=region.center;
+            point.x=Mathf.Clamp(point.x,body.min.x,body.max.x);
+            point.z=Mathf.Clamp(point.z,body.min.z,body.max.z);
+            point.y=body.max.y;
+            return point;
         }
         private void SetSurfacesEnabled(bool enabled)
         {foreach(var fillet in fillets)fillet.SetCuttingEnabled(enabled);}

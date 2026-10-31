@@ -23,6 +23,7 @@ namespace SashimiBoy.EditorTools
         public static void ApplyBatch()
         {
             if(EditorApplication.isPlayingOrWillChangePlaymode)throw new InvalidOperationException("Exit Play mode first.");
+            Stage03BuildInputGuard.ValidateMaterializedAssets();
             for(int i=0;i<SceneManager.sceneCount;i++)if(SceneManager.GetSceneAt(i).isDirty)throw new InvalidOperationException("Save unsaved scenes first.");
             byte[] salmon=File.ReadAllBytes(Stage01PlayableAuthoring.ScenePath),rockfish=File.ReadAllBytes(Stage02RockfishAuthoring.ScenePath);
             Stage03FilletCutAuthoring.BuildBatch();
@@ -36,6 +37,7 @@ namespace SashimiBoy.EditorTools
             Scene scene=EditorSceneManager.OpenScene(ScenePath,OpenSceneMode.Single);
             var controller=Find<Stage03GameController>(scene);
             if(controller==null)controller=BuildScene(scene);
+            PlaceAssembly(controller,scene);
             controller.chart=AssetDatabase.LoadAssetAtPath<Stage03Chart>(ChartPath);
             controller.clock.audioSource.clip=controller.chart.music;
             controller.clock.playOnStart=false;
@@ -206,6 +208,7 @@ namespace SashimiBoy.EditorTools
         }
         public static void BuildPlayerBatch()
         {
+            Stage03BuildInputGuard.ValidateMaterializedAssets();
             string output=Environment.GetEnvironmentVariable("SASHIMI_STAGE3_PLAYER");
             if(string.IsNullOrWhiteSpace(output))throw new InvalidOperationException("Set a unique SASHIMI_STAGE3_PLAYER output path.");
             if(File.Exists(output))throw new InvalidOperationException("Never overwrite a prepared player.");
@@ -228,6 +231,33 @@ namespace SashimiBoy.EditorTools
             var b=renderers[0].bounds;foreach(var r in renderers.Skip(1))b.Encapsulate(r.bounds);return b;
         }
         private static T Find<T>(Scene scene)where T:Component=>All<T>(scene).FirstOrDefault();
+        private static void PlaceAssembly(Stage03GameController controller,Scene scene)
+        {
+            var fish=controller.assembly.transform;
+            var assembly=controller.assembly;
+            var board=All<Transform>(scene).Single(t=>t.name=="Stage01_BoardRoot");
+            float top=board.GetComponentsInChildren<Renderer>(true).Max(r=>r.bounds.max.y);
+            controller.boardTop=top;
+            // The supplied fish's +Z length is placed along the already-tested
+            // workstation +X. The existing blade +Z then crosses its cut planes.
+            fish.position=Vector3.zero;fish.rotation=Quaternion.Euler(0,90,0);fish.localScale=Vector3.one;
+            Bounds unscaled=BoundsOf(assembly.bodyStates[0]);
+            fish.localScale=Vector3.one*(.67f/Mathf.Max(unscaled.size.x,unscaled.size.z));
+            Bounds body=BoundsOf(assembly.bodyStates[0]);
+            fish.position=new Vector3(-body.center.x,top+.01f-body.min.y,-.12f-body.center.z);
+            float scale=fish.lossyScale.x;
+            Bounds head=assembly.head.GetComponentInChildren<MeshFilter>(true).sharedMesh.bounds;
+            assembly.headStorageAnchor.SetPositionAndRotation(new Vector3(.47f-head.center.x*scale,top+.008f-head.min.y*scale,.20f-head.center.z*scale),Quaternion.identity);
+            for(int i=0;i<4;i++)
+            {
+                Bounds fillet=assembly.fillets[i].GetComponentInChildren<MeshFilter>(true).sharedMesh.bounds;
+                assembly.filletStorageAnchors[i].SetPositionAndRotation(new Vector3(-.36f+i*.23f-fillet.center.x*scale,
+                    top+.008f-fillet.min.y*scale,.23f-fillet.center.z*scale),Quaternion.identity);
+            }
+            assembly.filletWorkAnchor.SetPositionAndRotation(new Vector3(0,top+.008f,-.12f),Quaternion.Euler(0,90,0));
+            foreach(var transform in fish.GetComponentsInChildren<Transform>(true))
+                PrefabUtility.RecordPrefabInstancePropertyModifications(transform);
+        }
         private static void NormalizeOwnedOutputs()
         {
             var paths=new System.Collections.Generic.List<string>
