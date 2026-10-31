@@ -20,8 +20,11 @@ namespace SashimiBoy
         private readonly List<Vector3> framingPoints = new List<Vector3>(96);
         private Renderer[] bodyRenderers,filletRenderers,halfRenderers,knifeRenderers,tweezerRenderers;
         private int fittedPhase=-1;
-        private float fittedPitch,fittedLens,fittedAspect;
+        private float fittedPitch,fittedYaw,fittedLens,fittedAspect;
+        private int fishPointCount,yawCount;
+        private readonly float[] yawCandidates=new float[10];
         public bool FramingSatisfied { get; private set; }
+        public bool WorkAreaBelowHud { get; private set; }
 
         private void Awake()
         {
@@ -93,6 +96,7 @@ namespace SashimiBoy
             framingPoints.Clear();
             int phase=(int)butchery.VisiblePhase;
             AddVisibleBounds(phase<2?bodyRenderers:phase<4?filletRenderers:halfRenderers);
+            fishPointCount=framingPoints.Count;
             AddVisibleBounds(knifeRenderers);
             AddVisibleBounds(tweezerRenderers);
             AddBounds(new Bounds(body.right.palm.position,Vector3.one*.055f));
@@ -118,55 +122,94 @@ namespace SashimiBoy
         // camera down enough to see the current fish and attached tool hands.
         private void FitWorkingView(float yaw,float authoredPitch,float authoredLens)
         {
-            const float minimumPitch=42f,maximumPitch=105f,maximumLens=100f;
-            authoredLens=Mathf.Min(authoredLens,maximumLens);
+            authoredLens=Mathf.Min(authoredLens,100f);
             int phase=(int)butchery.VisiblePhase;
-            if(RequiredLens(authoredPitch,yaw)<=authoredLens)
+            if(RequiredLens(authoredPitch,yaw,true)<=authoredLens)
             {ApplyFraming(authoredPitch,yaw,authoredLens,phase);return;}
             // Reuse a valid pose throughout a phase rather than re-searching or
             // nodding the camera on every small knife pulse.
-            if(fittedPhase==phase&&Mathf.Abs(fittedAspect-gameCamera.aspect)<.001f&&RequiredLens(fittedPitch,yaw)<=fittedLens)
-            {ApplyFraming(fittedPitch,yaw,fittedLens,phase);return;}
-            float selectedPitch=authoredPitch,selectedLens=authoredLens;
-            float bestDistance=float.PositiveInfinity;
-            // Retain the authored lens whenever a bounded pitch can fit it.
-            for(float pitch=minimumPitch;pitch<=maximumPitch;pitch+=1f)
+            if(fittedPhase==phase&&Mathf.Abs(fittedAspect-gameCamera.aspect)<.001f&&RequiredLens(fittedPitch,fittedYaw,true)<=fittedLens)
+            {ApplyFraming(fittedPitch,fittedYaw,fittedLens,phase);return;}
+            BuildYawCandidates(yaw);
+            if(TryFindFraming(yaw,authoredPitch,authoredLens,true,out var selected))
+            {ApplyFraming(selected.x,selected.y,selected.z,phase);return;}
+            // Keep the strict geometry framing when fitting below the overlay
+            // is physically incompatible with the fixed eyes and 100-degree cap.
+            TryFindFraming(yaw,authoredPitch,authoredLens,false,out selected);
+            ApplyFraming(selected.x,selected.y,selected.z,phase);
+        }
+
+        private void BuildYawCandidates(float authoredYaw)
+        {
+            yawCount=0;AddYaw(authoredYaw);if(fittedPhase>=0)AddYaw(fittedYaw);
+            Bounds all=new Bounds(framingPoints[0],Vector3.zero),fish=all;
+            Vector3 rays=Vector3.zero;
+            for(int i=0;i<framingPoints.Count;i++)
             {
-                float required=RequiredLens(pitch,yaw);
-                float distance=Mathf.Abs(pitch-authoredPitch);
-                if(required<=authoredLens&&distance<bestDistance)
-                {selectedPitch=pitch;bestDistance=distance;}
+                all.Encapsulate(framingPoints[i]);if(i<fishPointCount)fish.Encapsulate(framingPoints[i]);
+                rays+=(framingPoints[i]-gameCamera.transform.position).normalized;
             }
-            if(float.IsPositiveInfinity(bestDistance))
-            {
-                float bestCost=float.PositiveInfinity;
-                for(float pitch=minimumPitch;pitch<=maximumPitch;pitch+=1f)
-                {
-                    float required=RequiredLens(pitch,yaw);
-                    float cost=required+.35f*Mathf.Abs(pitch-authoredPitch);
-                    if(cost>=bestCost)continue;
-                    bestCost=cost;selectedPitch=pitch;selectedLens=Mathf.Clamp(required+.5f,authoredLens,maximumLens);
-                }
-            }
-            ApplyFraming(selectedPitch,yaw,selectedLens,phase);
+            Vector3 direction=all.center-gameCamera.transform.position;
+            float center=Mathf.Atan2(direction.x,direction.z)*Mathf.Rad2Deg;
+            AddYaw(center);AddYaw(Mathf.DeltaAngle(0,center+180f));
+            AddYaw(Mathf.Atan2(rays.x,rays.z)*Mathf.Rad2Deg);
+            Vector3 fishDirection=fish.center-gameCamera.transform.position;
+            AddYaw(Mathf.Atan2(fishDirection.x,fishDirection.z)*Mathf.Rad2Deg);
+            AddYaw(center-15f);AddYaw(center+15f);AddYaw(Mathf.LerpAngle(authoredYaw,center,.5f));
+        }
+        private void AddYaw(float yaw)
+        {
+            yaw=Mathf.Clamp(Mathf.DeltaAngle(0,yaw),-80f,80f);
+            for(int i=0;i<yawCount;i++)if(Mathf.Abs(yawCandidates[i]-yaw)<.5f)return;
+            if(yawCount<yawCandidates.Length)yawCandidates[yawCount++]=yaw;
+        }
+        private bool TryFindFraming(float authoredYaw,float authoredPitch,float authoredLens,bool belowHud,out Vector3 selected)
+        {
+            selected=new Vector3(authoredPitch,authoredYaw,authoredLens);
+            float bestCost=float.PositiveInfinity,bestOutside=float.PositiveInfinity;
+            Vector3 outside=selected;
+            for(int i=0;i<yawCount;i++)
+                for(float pitch=42f;pitch<=105f;pitch+=2f)
+                    ConsiderFraming(pitch,yawCandidates[i],authoredYaw,authoredPitch,authoredLens,belowHud,
+                        ref selected,ref bestCost,ref outside,ref bestOutside);
+            if(float.IsPositiveInfinity(bestCost)) {selected=outside;return false;}
+            // Refine only the winning neighborhood rather than running a full
+            // two-dimensional grid at every rhythm frame.
+            Vector3 coarse=selected;
+            for(float yaw=coarse.y-6f;yaw<=coarse.y+6f;yaw+=3f)
+                for(float pitch=coarse.x-2f;pitch<=coarse.x+2f;pitch+=1f)
+                    ConsiderFraming(Mathf.Clamp(pitch,42f,105f),Mathf.Clamp(yaw,-80f,80f),authoredYaw,authoredPitch,authoredLens,belowHud,
+                        ref selected,ref bestCost,ref outside,ref bestOutside);
+            return true;
+        }
+        private void ConsiderFraming(float pitch,float yaw,float authoredYaw,float authoredPitch,float authoredLens,bool belowHud,
+            ref Vector3 selected,ref float bestCost,ref Vector3 outside,ref float bestOutside)
+        {
+            float required=RequiredLens(pitch,yaw,belowHud);
+            float lens=Mathf.Max(authoredLens,required+.5f);
+            float cost=lens+.35f*Mathf.Abs(pitch-authoredPitch)+.12f*Mathf.Abs(yaw-authoredYaw);
+            if(cost<bestOutside){bestOutside=cost;outside=new Vector3(pitch,yaw,Mathf.Min(lens,100f));}
+            if(lens<=100f&&cost<bestCost){bestCost=cost;selected=new Vector3(pitch,yaw,lens);}
         }
         private void ApplyFraming(float pitch,float yaw,float lens,int phase)
         {
             gameCamera.fieldOfView=lens;gameCamera.transform.rotation=Quaternion.Euler(pitch,yaw,0f);
-            fittedPhase=phase;fittedPitch=pitch;fittedLens=lens;fittedAspect=gameCamera.aspect;
-            FramingSatisfied=RequiredLens(pitch,yaw)<=lens;
+            fittedPhase=phase;fittedPitch=pitch;fittedYaw=yaw;fittedLens=lens;fittedAspect=gameCamera.aspect;
+            FramingSatisfied=RequiredLens(pitch,yaw,false)<=lens;
+            WorkAreaBelowHud=RequiredLens(pitch,yaw,true)<=lens;
         }
-        private float RequiredLens(float pitch,float yaw)
+        private float RequiredLens(float pitch,float yaw,bool belowHud)
         {
             Quaternion inverse=Quaternion.Inverse(Quaternion.Euler(pitch,yaw,0f));
             float tangent=0f;
-            foreach(var point in framingPoints)
+            for(int i=0;i<framingPoints.Count;i++)
             {
-                Vector3 local=inverse*(point-gameCamera.transform.position);
+                Vector3 local=inverse*(framingPoints[i]-gameCamera.transform.position);
                 if(local.z<=gameCamera.nearClipPlane+.005f)return float.PositiveInfinity;
                 // Aim inside 4% so the existing strict 2% regression still
                 // holds while hands, cuts and camera stance move each frame.
-                tangent=Mathf.Max(tangent,Mathf.Max(Mathf.Abs(local.y)/(.92f*local.z),
+                float vertical=belowHud&&i<fishPointCount&&local.y>0f?.20f:.92f;
+                tangent=Mathf.Max(tangent,Mathf.Max(Mathf.Abs(local.y)/(vertical*local.z),
                     Mathf.Abs(local.x)/(.92f*gameCamera.aspect*local.z)));
             }
             return 2f*Mathf.Atan(tangent)*Mathf.Rad2Deg;

@@ -51,8 +51,9 @@ namespace SashimiBoy.EditorTools
             public string scene;
             public int phase;
             public float aspect,fieldOfView;
-            public Vector3 position,forward,fishMinimum,fishMaximum,viewportMinimum,viewportMaximum,rightPalm,leftPalm;
-            public bool framingSatisfied;
+            public Vector3 position,forward,fishMinimum,fishMaximum,viewportMinimum,viewportMaximum,rightPalm,leftPalm,allViewportMinimum,allViewportMaximum;
+            public bool framingSatisfied,workAreaBelowHud;
+            public int framingPointCount,outsidePointCount;
         }
         [Serializable] private sealed class LegacyCameraReport
         {
@@ -94,10 +95,20 @@ namespace SashimiBoy.EditorTools
                             Vector3 corner=fish.center+Vector3.Scale(fish.extents,new Vector3((i&1)==0?-1:1,(i&2)==0?-1:1,(i&4)==0?-1:1));
                             Vector3 viewport=camera.WorldToViewportPoint(corner);minimum=Vector3.Min(minimum,viewport);maximum=Vector3.Max(maximum,viewport);
                         }
+                        var framing=(List<Vector3>)cooking.GetType().GetField("framingPoints",BindingFlags.Instance|BindingFlags.NonPublic).GetValue(cooking);
+                        Vector3 allMin=Vector3.one*float.PositiveInfinity,allMax=Vector3.one*float.NegativeInfinity;
+                        int outside=0;
+                        foreach(var point in framing)
+                        {
+                            Vector3 viewport=camera.WorldToViewportPoint(point);allMin=Vector3.Min(allMin,viewport);allMax=Vector3.Max(allMax,viewport);
+                            if(viewport.z<=camera.nearClipPlane||viewport.x<.02f||viewport.x>.98f||viewport.y<.02f||viewport.y>.98f)outside++;
+                        }
                         report.poses.Add(new LegacyCameraPose{scene=scene,phase=phase,aspect=aspect,position=camera.transform.position,
                             forward=camera.transform.forward,fieldOfView=camera.fieldOfView,fishMinimum=fish.min,fishMaximum=fish.max,
                             viewportMinimum=minimum,viewportMaximum=maximum,rightPalm=camera.WorldToViewportPoint(cooking.body.right.palm.position),
-                            leftPalm=camera.WorldToViewportPoint(cooking.body.left.palm.position),framingSatisfied=cooking.FramingSatisfied});
+                            leftPalm=camera.WorldToViewportPoint(cooking.body.left.palm.position),framingSatisfied=cooking.FramingSatisfied,
+                            workAreaBelowHud=cooking.WorkAreaBelowHud,allViewportMinimum=allMin,allViewportMaximum=allMax,
+                            framingPointCount=framing.Count,outsidePointCount=outside});
                         CaptureActualGameCamera(cooking,scene+"-phase-"+phase+"-"+(aspect>1.5f?"16x9":"4x3")+"-game.png");
                     }
                     var gate=timing.semanticBeatmap.chart.phases[phase];
