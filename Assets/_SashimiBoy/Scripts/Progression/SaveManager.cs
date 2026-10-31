@@ -88,6 +88,14 @@ namespace SashimiBoy
 
             current.dayWorld ??= new DayWorldProgress();
             current.dayWorld.Normalize();
+            // Legacy saves at the former Day2 endpoint already finished the day.
+            // Restore access to Day3 without replaying clear rewards or purchases.
+            if (DayWorldRules.Active(current) && current.dayWorld.day == 3 && current.dayWorld.nightsSlept >= 2)
+            {
+                current.UnlockStage(SashimiBoyConstants.StageIds.Sole);
+                if (current.currentStageId == SashimiBoyConstants.StageIds.Salmon || current.currentStageId == SashimiBoyConstants.StageIds.Rockfish)
+                    current.currentStageId = SashimiBoyConstants.StageIds.Sole;
+            }
 
             OnSaveLoaded?.Invoke(current);
         }

@@ -172,11 +172,11 @@ namespace SashimiBoy.Tests
         {
             yield return ChooseNewGameFace();
             yield return WaitScene("KevinHome");
-            for(int day=1;day<=2;day++)
+            for(int day=1;day<=3;day++)
             {
-                if(day==2)
+                if(day>1)
                 {
-                    RuntimeReflection.SetField(Progress,"day",2);
+                    RuntimeReflection.SetField(Progress,"day",day);
                     RuntimeReflection.SetField(Progress,"beat",Enum.Parse(RuntimeReflection.RuntimeType("SashimiBoy.DayWorldBeat"),"Wake"));
                     RuntimeReflection.SetField(Progress,"checkpointScene","Street");
                     RuntimeReflection.SetField(Progress,"checkpointSpawn","Entry");
@@ -215,9 +215,17 @@ namespace SashimiBoy.Tests
             yield return WaitScene("KevinHome");
             var screen=Find("DayWorldStageClearScreen");Assert.That(screen,Is.Not.Null);
             Assert.That(((Text)Field(screen,"title")).text,Is.EqualTo("2스테이지 클리어"));
-            Assert.That(((Button)Field(screen,"continueButton")).interactable,Is.False);
+            Assert.That(((Button)Field(screen,"continueButton")).interactable,Is.True);
             Assert.That(((IList)Field(Current,"clearedStageIds")).Count,Is.Zero,"Migration does not grant rewards.");
             Assert.That(Call(Find("SimpleTopDownPlayerController"),"get_InputEnabled"),Is.EqualTo(false));
+            Assert.That(Day,Is.EqualTo(3));
+            ((Button)Field(screen,"continueButton")).onClick.Invoke();
+            yield return new WaitForSecondsRealtime(.8f);
+            Assert.That(Beat,Is.EqualTo("MorningConversation"));
+            Assert.That(Field(Progress,"pendingStageClear"),Is.EqualTo(0));
+            Assert.That(((IList)Field(Current,"clearedStageIds")).Count,Is.Zero);
+            Assert.That(((IList)Field(Current,"ownedEquipmentIds")).Count,Is.Zero);
+            Assert.That(((IList)Field(Current,"unlockedStageIds")).Contains("STAGE_03_SOLE"),Is.True);
         }
 
         [UnityTest]
@@ -377,14 +385,14 @@ namespace SashimiBoy.Tests
             Assert.That(Call(Find("SimpleTopDownPlayerController"),"get_InputEnabled"),Is.EqualTo(false));
             Assert.That(Cursor.lockState,Is.EqualTo(CursorLockMode.None));
             var continueStage=(Button)Field(complete,"continueButton");
-            if(clearedDay==2)
+            if(clearedDay==3)
             {
                 Assert.That(continueStage.interactable,Is.False);
                 Assert.That(continueStage.GetComponentInChildren<Text>().text,Is.EqualTo("다음 스테이지 준비 중"));
                 string unchanged=JsonUtility.ToJson(Current);
                 continueStage.onClick.Invoke();
                 Assert.That(JsonUtility.ToJson(Current),Is.EqualTo(unchanged));
-                Assert.That(Field(Progress,"pendingStageClear"),Is.EqualTo(2));
+                Assert.That(Field(Progress,"pendingStageClear"),Is.EqualTo(3));
                 Assert.That(Call(flow,"get_Busy"),Is.EqualTo(true));
                 Assert.That(EventSystem.current.currentSelectedGameObject,Is.EqualTo(((Button)Field(complete,"saveAndExitButton")).gameObject));
                 RoundTrip();
@@ -858,7 +866,7 @@ namespace SashimiBoy.Tests
             yield return Door("Street");yield return Talk("minjae");yield return BuyAndGoHome("DawSoftware");
             var oldStation=All("HomeEquipmentStation").Single(c=>Field(c,"equipmentId").ToString()=="SamplePackDrumKit");
             Assert.That(((GameObject)Field(oldStation,"equipmentVisual")).activeSelf,Is.True);
-            yield return PlaceAndPractice("DawSoftware");Assert.That(Beat,Is.EqualTo("Complete"));Assert.That(Field(Progress,"nightsSlept"),Is.EqualTo(2));
+            yield return PlaceAndPractice("DawSoftware");Assert.That(Beat,Is.EqualTo("MorningConversation"));Assert.That(Day,Is.EqualTo(3));Assert.That(Field(Progress,"nightsSlept"),Is.EqualTo(2));
             Assert.That(((IList)Field(Progress,"placedEquipment")).Count,Is.EqualTo(2));Capture("day2-complete-after-real-stage2");
         }
 

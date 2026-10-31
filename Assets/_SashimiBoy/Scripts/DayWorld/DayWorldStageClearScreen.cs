@@ -25,9 +25,9 @@ namespace SashimiBoy
             if (!visible) return;
             int stage = save.dayWorld.pendingStageClear;
             title.text = stage + "스테이지 클리어";
-            description.text = stage == 1 ? "오늘의 일과를 마쳤습니다. 다음 날을 시작해 볼까요?" : "다음 스테이지를 준비하고 있습니다. 진행 상황을 저장하고 나갈 수 있습니다.";
-            continueButton.interactable = stage == 1;
-            continueButton.GetComponentInChildren<Text>().text = stage == 1 ? "이어서 하기" : "다음 스테이지 준비 중";
+            description.text = stage < 3 ? "오늘의 일과를 마쳤습니다. 다음 날을 시작해 볼까요?" : "다음 스테이지를 준비하고 있습니다. 진행 상황을 저장하고 나갈 수 있습니다.";
+            continueButton.interactable = stage < 3;
+            continueButton.GetComponentInChildren<Text>().text = stage < 3 ? "이어서 하기" : "다음 스테이지 준비 중";
             DayWorldFlow.Instance.SetBusy(true);
             Cursor.lockState = CursorLockMode.None;
             Cursor.visible = true;

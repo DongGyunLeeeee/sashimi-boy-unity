@@ -39,6 +39,9 @@ namespace SashimiBoy
                 if (FindAnyObjectByType<DayWorldStageBridge>() == null) new GameObject("DayWorldStageBridge").AddComponent<DayWorldStageBridge>();
                 return;
             }
+            // Stage3 owns pause/abort and its music clock. Keep the world checkpoint
+            // at the shop rather than persisting an unsupported mid-cut scene.
+            if (scene.name == DayWorldRules.StageThreeScene) return;
             if (scene.name != SashimiBoyConstants.Scenes.Bootstrap)
             {
                 Save.dayWorld.checkpointScene = scene.name;
@@ -88,7 +91,7 @@ namespace SashimiBoy
                 return;
             }
             string scene = Save.dayWorld.checkpointScene;
-            if (scene == SashimiBoyConstants.Scenes.Stage01Salmon || scene == DayWorldRules.StageTwoScene) scene = SashimiBoyConstants.Scenes.FishShopDialogue;
+            if (scene == SashimiBoyConstants.Scenes.Stage01Salmon || scene == DayWorldRules.StageTwoScene || scene == DayWorldRules.StageThreeScene) scene = SashimiBoyConstants.Scenes.FishShopDialogue;
             LoadWorld(scene, Save.dayWorld.checkpointSpawn);
         }
         public void ReturnToTitle()

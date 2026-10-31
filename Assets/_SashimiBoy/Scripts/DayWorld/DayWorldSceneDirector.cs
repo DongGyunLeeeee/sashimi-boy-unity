@@ -78,7 +78,7 @@ namespace SashimiBoy
         public void Refresh(SaveData save)
         {
             bool active=DayWorldRules.Active(save);
-            if(dayText != null) dayText.text=active ? (save.dayWorld.day==1 ? "첫째 날" : "둘째 날") : "SASHIMI BOY";
+            if(dayText != null) dayText.text=active ? (save.dayWorld.day==1 ? "첫째 날" : save.dayWorld.day==2 ? "둘째 날" : "셋째 날") : "SASHIMI BOY";
             if(objectiveText != null) objectiveText.text=DayWorldRules.Objective(save);
             if(continueButton != null) continueButton.interactable=active;
             if (stageClearScreen != null) stageClearScreen.Refresh(save);

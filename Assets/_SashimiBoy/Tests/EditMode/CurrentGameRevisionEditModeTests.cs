@@ -122,6 +122,7 @@ namespace SashimiBoy.Tests
 
         [TestCase(1,"SamplePackDrumKit")]
         [TestCase(2,"DawSoftware")]
+        [TestCase(3,"Plugin")]
         public void Sleep_SavesPendingClear_ContinueIsIdempotent(int day,string equipment)
         {
             var save=RuntimeReflection.InvokeStatic("SashimiBoy.SaveData","CreateNew");
@@ -136,11 +137,11 @@ namespace SashimiBoy.Tests
             var restored=JsonUtility.FromJson(json,save.GetType());
             Assert.That(RuntimeReflection.InvokeStatic("SashimiBoy.DayWorldRules","Sleep",restored),Is.EqualTo(false));
             Assert.That(JsonUtility.ToJson(restored),Is.EqualTo(json));
-            Assert.That(RuntimeReflection.InvokeStatic("SashimiBoy.DayWorldRules","ContinueAfterStageClear",restored),Is.EqualTo(day==1));
+            Assert.That(RuntimeReflection.InvokeStatic("SashimiBoy.DayWorldRules","ContinueAfterStageClear",restored),Is.EqualTo(day<3));
             var after=RuntimeReflection.GetField(restored,"dayWorld");
-            Assert.That(RuntimeReflection.GetField(after,"pendingStageClear"),Is.EqualTo(day==1?0:2));
+            Assert.That(RuntimeReflection.GetField(after,"pendingStageClear"),Is.EqualTo(day<3?0:3));
             Assert.That(RuntimeReflection.GetField(after,"nightsSlept"),Is.EqualTo(day));
-            Assert.That(RuntimeReflection.GetField(after,"beat").ToString(),Is.EqualTo(day==1?"MorningConversation":"Complete"));
+            Assert.That(RuntimeReflection.GetField(after,"beat").ToString(),Is.EqualTo(day<3?"MorningConversation":"Complete"));
             string once=JsonUtility.ToJson(restored);
             Assert.That(RuntimeReflection.InvokeStatic("SashimiBoy.DayWorldRules","ContinueAfterStageClear",restored),Is.EqualTo(false));
             Assert.That(JsonUtility.ToJson(restored),Is.EqualTo(once));

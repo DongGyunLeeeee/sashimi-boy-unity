@@ -114,8 +114,9 @@ namespace SashimiBoy.EditorTools
             foreach (var station in root.GetComponentsInChildren<HomeEquipmentStation>(true))
             {
                 bool drum = station.equipmentId == EquipmentId.SamplePackDrumKit;
-                Vector3 oldCenter = drum ? new Vector3(-2.5f, 0f, 1.65f) : new Vector3(.1f, 0f, 2.1f);
-                Vector3 center = EquipmentPositions[drum ? 0 : 1];
+                bool plugin = station.equipmentId == EquipmentId.Plugin;
+                Vector3 oldCenter = plugin ? Vector3.zero : drum ? new Vector3(-2.5f, 0f, 1.65f) : new Vector3(.1f, 0f, 2.1f);
+                Vector3 center = EquipmentPositions[plugin ? 2 : drum ? 0 : 1];
                 Quaternion rotation = Quaternion.identity;
                 station.transform.SetPositionAndRotation(center - rotation * oldCenter, rotation);
                 station.practiceCamera.position = center + new Vector3(1.55f, 1.83f, .65f);
