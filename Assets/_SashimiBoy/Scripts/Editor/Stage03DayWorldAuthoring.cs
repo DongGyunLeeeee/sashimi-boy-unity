@@ -80,12 +80,14 @@ namespace SashimiBoy.EditorTools
             visual.localRotation = Quaternion.identity;
             visual.localScale = Vector3.one;
             PrefabUtility.RecordPrefabInstancePropertyModifications(visual);
-            var npc = root.GetComponent<DayWorldNpc>() ?? root.gameObject.AddComponent<DayWorldNpc>();
+            var npc = root.GetComponent<DayWorldNpc>();
+            if (npc == null) npc = root.gameObject.AddComponent<DayWorldNpc>();
             npc.npcId = id; npc.displayName = displayName; npc.day = 3; npc.runner = runner;
             npc.faceAnchor = Child(root, "FaceAnchor");
             npc.faceAnchor.localPosition = new Vector3(0f, 1.56f, .10f);
             npc.faceAnchor.localRotation = Quaternion.identity;
-            var collision = root.GetComponent<BoxCollider>() ?? root.gameObject.AddComponent<BoxCollider>();
+            var collision = root.GetComponent<BoxCollider>();
+            if (collision == null) collision = root.gameObject.AddComponent<BoxCollider>();
             collision.center = new Vector3(0f, .875f, 0f);
             collision.size = new Vector3(.65f, 1.75f, .55f);
             collision.isTrigger = false;
@@ -98,9 +100,11 @@ namespace SashimiBoy.EditorTools
             Transform root = Child(world, "HomeStation_Plugin");
             root.SetPositionAndRotation(DayWorldHomeAuthoring.EquipmentPositions[2], Quaternion.identity);
             root.localScale = Vector3.one;
-            var station = root.GetComponent<HomeEquipmentStation>() ?? root.gameObject.AddComponent<HomeEquipmentStation>();
+            var station = root.GetComponent<HomeEquipmentStation>();
+            if (station == null) station = root.gameObject.AddComponent<HomeEquipmentStation>();
             station.equipmentId = EquipmentId.Plugin;
-            var collision = root.GetComponent<BoxCollider>() ?? root.gameObject.AddComponent<BoxCollider>();
+            var collision = root.GetComponent<BoxCollider>();
+            if (collision == null) collision = root.gameObject.AddComponent<BoxCollider>();
             collision.center = new Vector3(0f, .65f, 0f);
             collision.size = new Vector3(1.5f, 1.3f, 1.5f);
             collision.isTrigger = true;
@@ -153,7 +157,8 @@ namespace SashimiBoy.EditorTools
         {
             Transform root = Anchor(parent, name, position);
             root.localRotation = Quaternion.Euler(0f, yaw, 0f);
-            TextMesh text = root.GetComponent<TextMesh>() ?? root.gameObject.AddComponent<TextMesh>();
+            TextMesh text = root.GetComponent<TextMesh>();
+            if (text == null) text = root.gameObject.AddComponent<TextMesh>();
             text.text = value;
             text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
             text.fontSize = 64; text.characterSize = size;

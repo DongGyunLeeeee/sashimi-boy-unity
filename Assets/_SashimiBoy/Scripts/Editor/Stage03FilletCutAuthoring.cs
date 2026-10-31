@@ -45,6 +45,8 @@ namespace SashimiBoy.EditorTools
             EnsureFolder(Root);
             EnsureFolder(Root + "/Meshes");
             EnsureFolder(Root + "/Materials");
+            try
+            {
             var entries = new List<Entry>();
             foreach (string role in Roles)
             {
@@ -113,6 +115,8 @@ namespace SashimiBoy.EditorTools
             if (!File.Exists(reportPath) || File.ReadAllText(reportPath) != report) File.WriteAllText(reportPath, report);
             AssetDatabase.ImportAsset(reportPath, ImportAssetOptions.ForceSynchronousImport);
             Debug.Log("[Stage03FilletCuts] Six cuts per fillet, four independent fillets; cap and edge appearance still require final Player visual review.");
+            }
+            finally { NormalizeGeneratedText(); }
         }
 
         /// <summary>Retains z >= cutZ and seals the intersection. Public for deterministic geometry regression tests.</summary>
@@ -160,6 +164,35 @@ namespace SashimiBoy.EditorTools
             EnsureFolder(parent);
             AssetDatabase.CreateFolder(parent, path.Substring(path.LastIndexOf('/') + 1));
         }
+        private static void NormalizeGeneratedText()
+        {
+            // Match the presentation generator's text policy without rewriting
+            // its assets or any Source file. Unity adds spaces to empty scalars.
+            string absoluteRoot = ProjectFile(Root);
+            foreach (string path in Directory.GetFiles(absoluteRoot, "*", SearchOption.AllDirectories))
+            {
+                if (!new[] { ".asset", ".mat", ".meta", ".json" }.Contains(
+                    Path.GetExtension(path), StringComparer.OrdinalIgnoreCase)) continue;
+                NormalizeOwnedText(Root + "/" + Path.GetRelativePath(absoluteRoot, path).Replace('\\', '/'));
+            }
+            NormalizeOwnedText(Root + ".meta");
+        }
+        private static void NormalizeOwnedText(string path)
+        {
+            Require(path == Root + ".meta" || path.StartsWith(Root + "/", StringComparison.Ordinal),
+                "Fillet normalization is limited to its owned generated assets.");
+            string absolute = ProjectFile(path);
+            if (!File.Exists(absolute)) return;
+            if (Path.GetExtension(path).Equals(".asset", StringComparison.OrdinalIgnoreCase))
+            {
+                using var input = File.OpenRead(absolute);
+                if (input.ReadByte() != '%') return; // Preserve binary mesh payloads byte-for-byte.
+            }
+            string original = File.ReadAllText(absolute);
+            string normalized = string.Join("\n", File.ReadAllLines(absolute).Select(line => line.TrimEnd(' ', '\t'))) + "\n";
+            if (original != normalized) File.WriteAllText(absolute, normalized, new System.Text.UTF8Encoding(false));
+        }
+        private static string ProjectFile(string path) => Path.GetFullPath(Path.Combine(Path.GetDirectoryName(Application.dataPath), path));
         private static void Require(bool condition, string message)
         { if (!condition) throw new InvalidOperationException(message); }
 

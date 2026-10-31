@@ -1,0 +1,32 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a116f5b48c344d9e9d8d59da09b1cd52, type: 3}
+  m_Name: BackFilletCache
+  m_EditorClassIdentifier: Assembly-CSharp::SashimiBoy.Stage03FilletCutCache
+  modelRole: BackFillet
+  remainingMeshes:
+  - {fileID: 4300000, guid: 9ff256f6045436f4ab7da85b07b993f7, type: 2}
+  - {fileID: 4300000, guid: ddda44643f306d3448f45b62bbd61b23, type: 2}
+  - {fileID: 4300000, guid: 736930ea369ad8448aeb9143ff2072fb, type: 2}
+  - {fileID: 4300000, guid: 82dbeb50bd3e65149b612f86ced866da, type: 2}
+  - {fileID: 4300000, guid: f697564db57faac419c12bfa06a10c8d, type: 2}
+  - {fileID: 4300000, guid: b5587b8e1d43aa249a661509db25451a, type: 2}
+  - {fileID: 0}
+  surfaceMaterial: {fileID: 2100000, guid: 121ac1931fa65814a9fde6a136b190b3, type: 2}
+  capMaterial: {fileID: 2100000, guid: b6b3ca2683b53f94ab70c77cfcd94056, type: 2}
+  cutPositions:
+  - -0.22857428
+  - -0.1143611
+  - -0.00014793873
+  - 0.114065245
+  - 0.22827838
+  - 0.34249157

@@ -14,6 +14,8 @@ namespace SashimiBoy
         public Stage03CookingView cooking;
         public Transform sliceRoot;
         public Transform[] plateSlots;
+        public float boardTop;
+        public float sliceUniformScale = .6f;
         public Text titleText,statusText,noteText,judgementText;
         public RectTransform noteMarker,noteLane;
         public GameObject startPanel,pausePanel,failurePanel,resultPanel;
@@ -66,7 +68,7 @@ namespace SashimiBoy
                 RefreshHUD();return;
             }
             bool canPresent=clock.State==AudioClockState.Playing||clock.State==AudioClockState.Scheduled||Run.WaitingForTurn;
-            if(canPresent)assembly.AdvancePresentation(Time.deltaTime);
+            if(canPresent){assembly.AdvancePresentation(Time.deltaTime);GroundBody();}
             if(Run.WaitingForTurn)
             {
                 if(!assembly.IsTurningOver&&!assembly.IsBackFacing&&Input.GetKeyDown(KeyCode.E))assembly.TryTurnOver();
@@ -97,6 +99,7 @@ namespace SashimiBoy
             Started=Paused=ResultShown=ClearRecorded=returning=clearApplied=false;resultDelay=-1;preparedFillet=-1;
             for(int i=0;i<fillets.Length;i++){fillets[i].ResetCuts();fillets[i].SetCuttingEnabled(false);}
             assembly.ResetAssembly();
+            GroundBody();
             foreach(var slice in slices)if(slice!=null)Destroy(slice);
             slices.Clear();sliceOwners.Clear();
             startPanel.SetActive(true);pausePanel.SetActive(false);failurePanel.SetActive(false);resultPanel.SetActive(false);
@@ -164,7 +167,9 @@ namespace SashimiBoy
                     var part=assembly.GetStoredFillet(index);
                     if(part==null)throw new InvalidOperationException("Stage3 fillet is not stored.");
                     part.transform.SetParent(assembly.filletWorkAnchor,false);
-                    part.transform.localPosition=Vector3.zero;part.transform.localRotation=Quaternion.identity;
+                    Bounds meshBounds=fillets[index].cutCache.remainingMeshes[0].bounds;
+                    part.transform.localPosition=new Vector3(-meshBounds.center.x,-meshBounds.min.y,-meshBounds.center.z);
+                    part.transform.localRotation=Quaternion.identity;
                     part.gameObject.SetActive(true);preparedFillet=index;
                 }
                 fillets[index].SetCuttingEnabled(true);
@@ -173,12 +178,26 @@ namespace SashimiBoy
             else
             {
                 Vector3 focus=assembly.transform.position+new Vector3(0,.05f,0);
+                if(assembly.HasBody)
+                {
+                    var renderers=assembly.bodyStates[(int)assembly.BodyState].GetComponentsInChildren<Renderer>(true);
+                    if(renderers.Length>0)focus=renderers[0].bounds.center;
+                }
                 if(Run.Phase==0)focus+=new Vector3(.24f,0,0);
                 cooking.SetWorkPoint(focus);
             }
         }
         private void SetSurfacesEnabled(bool enabled)
         {foreach(var fillet in fillets)fillet.SetCuttingEnabled(enabled);}
+        private void GroundBody()
+        {
+            if(!assembly.HasBody)return;
+            var renderers=assembly.bodyStates[(int)assembly.BodyState].GetComponentsInChildren<Renderer>(true);
+            if(renderers.Length==0)return;
+            float bottom=float.PositiveInfinity;
+            foreach(var renderer in renderers)bottom=Mathf.Min(bottom,renderer.bounds.min.y);
+            assembly.bodyPivot.position+=Vector3.up*(boardTop+.008f-bottom);
+        }
         private void SpawnSlice(int owner)
         {
             if(slices.Count>=24)throw new InvalidOperationException("Too many Stage3 slices.");
@@ -186,7 +205,10 @@ namespace SashimiBoy
             var slot=plateSlots[slices.Count];
             go.name="Stage03_Slice_"+slices.Count;
             go.transform.SetPositionAndRotation(slot.position,slot.rotation);
-            go.transform.localScale=Vector3.one*.13f;
+            go.transform.localScale=Vector3.one*sliceUniformScale;
+            float bottom=float.PositiveInfinity;
+            foreach(var renderer in go.GetComponentsInChildren<Renderer>(true))bottom=Mathf.Min(bottom,renderer.bounds.min.y);
+            if(!float.IsInfinity(bottom))go.transform.position+=Vector3.up*(slot.position.y-bottom);
             slices.Add(go);sliceOwners.Add(owner);
         }
         private void Fail(string message)

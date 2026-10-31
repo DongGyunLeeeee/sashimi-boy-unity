@@ -56,6 +56,7 @@ namespace SashimiBoy.EditorTools
             int index=scenes.FindIndex(s=>s.path==ScenePath);
             if(index<0)scenes.Add(new EditorBuildSettingsScene(ScenePath,true));else scenes[index].enabled=true;
             EditorBuildSettings.scenes=scenes.ToArray();AssetDatabase.SaveAssets();
+            NormalizeOwnedOutputs();
             if(!File.ReadAllBytes(Stage01PlayableAuthoring.ScenePath).SequenceEqual(salmon)||!File.ReadAllBytes(Stage02RockfishAuthoring.ScenePath).SequenceEqual(rockfish))
                 throw new InvalidOperationException("Stage1/2 scenes changed during Stage3 authoring.");
             Debug.Log("[Stage03Playable] Created 9-phase, four-fillet, 24-slice play and Day3 world. Stage1/2 bytes preserved.");
@@ -103,18 +104,22 @@ namespace SashimiBoy.EditorTools
             controller.assembly=fish.GetComponent<FlounderAssemblyView>();
             var board=All<Transform>(scene).Single(t=>t.name=="Stage01_BoardRoot");
             float boardTop=board.GetComponentsInChildren<Renderer>(true).Max(r=>r.bounds.max.y);
+            controller.boardTop=boardTop;
             Bounds b=BoundsOf(controller.assembly.bodyStates[0]);
             fish.transform.localScale=Vector3.one*(.67f/Mathf.Max(b.size.x,b.size.z));
             b=BoundsOf(controller.assembly.bodyStates[0]);
             fish.transform.position+=new Vector3(-b.center.x,boardTop+.01f-b.min.y,-.12f-b.center.z);
             var assembly=controller.assembly;
-            assembly.headStorageAnchor.position=new Vector3(.47f,boardTop+.01f,.20f);
+            Bounds hb=assembly.head.GetComponentInChildren<MeshFilter>(true).sharedMesh.bounds;
+            float fishScale=fish.transform.lossyScale.x;
+            assembly.headStorageAnchor.position=new Vector3(.47f-hb.center.x*fishScale,boardTop+.008f-hb.min.y*fishScale,.20f-hb.center.z*fishScale);
             for(int i=0;i<4;i++)
             {
-                assembly.filletStorageAnchors[i].position=new Vector3(-.36f+i*.23f,boardTop+.015f,.23f);
+                Bounds fb=assembly.fillets[i].GetComponentInChildren<MeshFilter>(true).sharedMesh.bounds;
+                assembly.filletStorageAnchors[i].position=new Vector3(-.36f+i*.23f-fb.center.x*fishScale,boardTop+.008f-fb.min.y*fishScale,.23f-fb.center.z*fishScale);
                 assembly.filletStorageAnchors[i].rotation=Quaternion.identity;
             }
-            assembly.filletWorkAnchor.position=new Vector3(0f,boardTop+.025f,-.12f);
+            assembly.filletWorkAnchor.position=new Vector3(0f,boardTop+.008f,-.12f);
             assembly.filletWorkAnchor.rotation=Quaternion.identity;
             controller.fillets=new Stage03FilletSurface[4];
             for(int i=0;i<4;i++)
@@ -131,10 +136,12 @@ namespace SashimiBoy.EditorTools
             controller.sliceRoot.SetParent(host.transform,false);
             controller.plateSlots=new Transform[24];
             float sx=Mathf.Max(.15f,pb.size.x*.70f),sz=Mathf.Max(.12f,pb.size.z*.65f);
+            Bounds sliceBounds=BoundsOf(assembly.sashimiSlicePrefab);
+            controller.sliceUniformScale=Mathf.Min(sx/6f/sliceBounds.size.x,sz/4f/sliceBounds.size.z)*.90f;
             for(int i=0;i<24;i++)
             {
                 var slot=new GameObject("PlateSlot_"+i).transform;slot.SetParent(host.transform,false);
-                slot.position=new Vector3(pb.center.x+((i%6)/5f-.5f)*sx,pb.max.y+.006f+(i/12)*.012f,pb.center.z+((i/6)/3f-.5f)*sz);
+                slot.position=new Vector3(pb.center.x+((i%6)/5f-.5f)*sx,pb.max.y+.006f,pb.center.z+((i/6)/3f-.5f)*sz);
                 slot.rotation=Quaternion.Euler(0,(i%6-2.5f)*5f,0);controller.plateSlots[i]=slot;
             }
             BuildHUD(controller,font);
@@ -221,6 +228,26 @@ namespace SashimiBoy.EditorTools
             var b=renderers[0].bounds;foreach(var r in renderers.Skip(1))b.Encapsulate(r.bounds);return b;
         }
         private static T Find<T>(Scene scene)where T:Component=>All<T>(scene).FirstOrDefault();
+        private static void NormalizeOwnedOutputs()
+        {
+            var paths=new System.Collections.Generic.List<string>
+            {
+                ScenePath,ScenePath+".meta",ChartPath,ChartPath+".meta",
+                "Assets/_SashimiBoy/Data/Generated/Stage_03_Sole.asset",
+                "Assets/_SashimiBoy/Scenes/Street.unity","Assets/_SashimiBoy/Scenes/KevinHome.unity",
+                Stage03DayWorldAuthoring.GeneratedRoot+".meta"
+            };
+            if(Directory.Exists(Stage03DayWorldAuthoring.GeneratedRoot))
+                paths.AddRange(Directory.GetFiles(Stage03DayWorldAuthoring.GeneratedRoot,"*",SearchOption.AllDirectories));
+            foreach(string path in paths)
+            {
+                if(!File.Exists(path)||!new[]{".meta",".asset",".mat",".prefab",".unity",".json"}.Contains(Path.GetExtension(path),StringComparer.OrdinalIgnoreCase))continue;
+                if(Path.GetExtension(path)==".asset"){using(var input=File.OpenRead(path))if(input.ReadByte()!='%')continue;}
+                string before=File.ReadAllText(path);
+                string after=string.Join("\n",File.ReadAllLines(path).Select(line=>line.TrimEnd(' ','\t')))+"\n";
+                if(before!=after)File.WriteAllText(path,after,new System.Text.UTF8Encoding(false));
+            }
+        }
         private static System.Collections.Generic.IEnumerable<T> All<T>(Scene scene)where T:Component=>scene.GetRootGameObjects().SelectMany(g=>g.GetComponentsInChildren<T>(true));
     }
 }
