@@ -128,7 +128,7 @@ namespace SashimiBoy
             {ApplyFraming(authoredPitch,yaw,authoredLens,phase);return;}
             // Reuse a valid pose throughout a phase rather than re-searching or
             // nodding the camera on every small knife pulse.
-            if(fittedPhase==phase&&Mathf.Abs(fittedAspect-gameCamera.aspect)<.001f&&RequiredLens(fittedPitch,fittedYaw,true)<=fittedLens)
+            if(fittedPhase==phase&&Mathf.Abs(fittedAspect-gameCamera.aspect)<.001f&&RequiredLens(fittedPitch,fittedYaw,WorkAreaBelowHud)<=fittedLens)
             {ApplyFraming(fittedPitch,fittedYaw,fittedLens,phase);return;}
             BuildYawCandidates(yaw);
             if(TryFindFraming(yaw,authoredPitch,authoredLens,true,out var selected))
