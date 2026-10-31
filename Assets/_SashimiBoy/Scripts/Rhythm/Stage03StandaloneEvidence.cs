@@ -121,6 +121,7 @@ namespace SashimiBoy
             report.defaultSaveHashBefore = SaveHash(defaultSavePath);
 
             SaveManager.Instance.StartDayWorldNewGameWithFace("CuteFace");
+            if(Has("-stage3UiReferences"))yield return CaptureBaselineUi();
             var save = SaveManager.Instance.Current;
             save.currentStageId = SashimiBoyConstants.StageIds.Sole;
             save.UnlockStage(SashimiBoyConstants.StageIds.Rockfish);
@@ -212,6 +213,20 @@ namespace SashimiBoy
             Debug.Log("[Stage3Evidence] Synthetic public-API QA completed. Human input/visual/music/save approval remains pending. " + outputDirectory);
         }
 
+        private IEnumerator CaptureBaselineUi()
+        {
+            foreach(string name in new[]{"Stage01_Salmon","Stage02_Rockfish"})
+            {
+                yield return SceneManager.LoadSceneAsync(name);
+                yield return WaitScene(name);
+                yield return new WaitForSecondsRealtime(.5f);
+                var baseline=FindAnyObjectByType<Stage01SalmonHUD>();
+                Require(baseline!=null&&baseline.ownerJudgementVisuals!=null,"The baseline HUD reference is incomplete.");
+                baseline.ShowReadableJudgement("NASTY  0ms",new Color(.45f,1f,.73f));
+                yield return Capture("reference-"+name+"-hud");
+                var clock=FindAnyObjectByType<AudioClock>();if(clock!=null)clock.Stop();
+            }
+        }
         private IEnumerator CapturePartialCutSide()
         {
             Require(controller != null && !controller.Paused && controller.Run.Phase >= 5 && controller.Run.Phase < 9,
