@@ -279,7 +279,12 @@ namespace SashimiBoy
             controller.ReturnToShop();
             yield return WaitScene(SashimiBoyConstants.Scenes.FishShopDialogue);
             yield return Talk("cheolsu", "cheolsu-second-encounter");
-            Require(SaveManager.Instance.Current.dayWorld.beat == DayWorldBeat.Purchase, "Cheolsu did not unlock purchase.");
+            Require(SaveManager.Instance.Current.dayWorld.beat == DayWorldBeat.EveningConversation &&
+                !DayWorldRules.CanVisitEquipmentShop(SaveManager.Instance.Current), "Cheolsu did not require Jaehoon before the shop.");
+            yield return Travel(SashimiBoyConstants.Scenes.Street, "FishShopDialogue");
+            yield return Talk("jaehoon", "jaehoon-before-equipment-shop");
+            Require(SaveManager.Instance.Current.dayWorld.beat == DayWorldBeat.Purchase &&
+                DayWorldRules.CanVisitEquipmentShop(SaveManager.Instance.Current), "Jaehoon did not unlock shop/purchase.");
             yield return Travel(SashimiBoyConstants.Scenes.EquipmentShop, "Entry");
             var director = FindAnyObjectByType<DayWorldSceneDirector>();
             yield return WaitFor(() => !DayWorldFlow.InputSuppressed, 30f, "Shop input ownership");
@@ -311,11 +316,15 @@ namespace SashimiBoy
             Require(station.IsPracticing, "Actual Plugin practice did not start.");
             yield return Capture("plugin-practice");
             yield return WaitFor(() => !station.IsPracticing &&
-                SaveManager.Instance.Current.dayWorld.beat == DayWorldBeat.EveningConversation, 30f, "Plugin practice completion");
-            yield return Travel(SashimiBoyConstants.Scenes.Street, "KevinHome");
-            yield return Talk("jaehoon", "jaehoon-first-encounter");
-            Require(SaveManager.Instance.Current.dayWorld.beat == DayWorldBeat.Sleep, "Jaehoon did not unlock sleep.");
-            yield return Travel(DayWorldRules.Home, "Entry");
+                SaveManager.Instance.Current.dayWorld.beat == DayWorldBeat.Sleep, 30f, "Plugin practice completion");
+            string beforeFreePractice = JsonUtility.ToJson(SaveManager.Instance.Current);
+            yield return WaitFor(() => !DayWorldFlow.InputSuppressed, 30f, "Free practice ownership");
+            station.Interact(actor);
+            Require(station.IsPracticing, "Placed Plugin was unavailable after daily practice.");
+            yield return Capture("plugin-repeat-free-practice");
+            yield return WaitFor(() => !station.IsPracticing, 30f, "Free practice completion");
+            Require(JsonUtility.ToJson(SaveManager.Instance.Current) == beforeFreePractice,
+                "Free practice changed story/reward/save state.");
             yield return WaitFor(() => !DayWorldFlow.InputSuppressed, 30f, "Bed input ownership");
             var bed = FindObjectsByType<DayWorldInteractable>(FindObjectsInactive.Include, FindObjectsSortMode.None)
                 .Single(value => value.kind == DayWorldInteractionKind.Bed);

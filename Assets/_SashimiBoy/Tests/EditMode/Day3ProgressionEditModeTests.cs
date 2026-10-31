@@ -54,18 +54,25 @@ namespace SashimiBoy.Tests
             Assert.That(Rule("FinishDialogue", save, "cheolsu"), Is.EqualTo(true));
             Assert.That(((IList)Get(progress, "completedDialogues")).Contains("1:cheolsu"), Is.True);
             Assert.That(((IList)Get(progress, "completedDialogues")).Contains("3:cheolsu"), Is.True);
+            Assert.That(Get(progress, "beat").ToString(), Is.EqualTo("EveningConversation"));
+            Assert.That(Rule("CanVisitEquipmentShop", save), Is.EqualTo(false));
+            Assert.That(Rule("CanPurchase", save, "STAGE_03_SOLE"), Is.EqualTo(false));
+            Assert.That(Rule("BedAvailable", save), Is.EqualTo(false));
+            Assert.That(Rule("NpcAvailable", save, 3, "jaehoon"), Is.EqualTo(true));
+            Assert.That(Rule("FinishDialogue", save, "jaehoon"), Is.EqualTo(true));
+            Assert.That(Get(progress, "beat").ToString(), Is.EqualTo("Purchase"));
+            Assert.That(Rule("CanVisitEquipmentShop", save), Is.EqualTo(true));
+            Assert.That(Rule("CanPurchase", save, "STAGE_03_SOLE"), Is.EqualTo(true));
             ((IList)Get(save, "ownedEquipmentIds")).Add("Plugin");
             Rule("RecordPurchase", save, "STAGE_03_SOLE");
             Assert.That(Rule("Place", save, Equipment("DawSoftware")), Is.EqualTo(false));
             Assert.That(Rule("Place", save, plugin), Is.EqualTo(true));
             Assert.That(Rule("Sleep", save), Is.EqualTo(false));
             Assert.That(Rule("Practice", save, plugin), Is.EqualTo(true));
-            Assert.That(Get(progress, "beat").ToString(), Is.EqualTo("EveningConversation"));
-            Assert.That(Rule("BedAvailable", save), Is.EqualTo(false));
-            Assert.That(Rule("Sleep", save), Is.EqualTo(false));
+            Assert.That(Get(progress, "beat").ToString(), Is.EqualTo("Sleep"));
             Assert.That(Rule("FinishDialogue", save, "cheolsu"), Is.EqualTo(false));
-            Assert.That(Rule("NpcAvailable", save, 3, "jaehoon"), Is.EqualTo(true));
-            Assert.That(Rule("FinishDialogue", save, "jaehoon"), Is.EqualTo(true));
+            Assert.That(Rule("NpcAvailable", save, 3, "jaehoon"), Is.EqualTo(false));
+            Assert.That(Rule("FinishDialogue", save, "jaehoon"), Is.EqualTo(false));
             Assert.That(Rule("BedAvailable", save), Is.EqualTo(true));
             Assert.That(Rule("Sleep", save), Is.EqualTo(true));
             Assert.That(Get(progress, "pendingStageClear"), Is.EqualTo(3));
@@ -132,6 +139,71 @@ namespace SashimiBoy.Tests
             Set(progress, "pendingStageClear", 2);
             Set(progress, "nightsSlept", 1);
             Assert.That(Rule("ContinueAfterStageClear", save), Is.EqualTo(false));
+        }
+
+        [TestCase("Purchase", false, false, false, "Purchase")]
+        [TestCase("Placement", true, false, false, "Placement")]
+        [TestCase("Practice", true, true, false, "Practice")]
+        [TestCase("Sleep", true, true, true, "Sleep")]
+        [TestCase("EveningConversation", true, true, true, "Sleep")]
+        public void OldDay3Checkpoint_MeetsJaehoonBeforeShopping_AndRetainsOwnedProgress(
+            string oldBeat, bool owned, bool placed, bool practiced, string remaining)
+        {
+            var save = FreshDay3(); var progress = Get(save, "dayWorld");
+            Set(progress, "beat", Beat(oldBeat));
+            Set(progress, "checkpointScene", "KevinHome");
+            ((IList)Get(progress, "completedDialogues")).Add("3:cheolsu");
+            if (owned) ((IList)Get(save, "ownedEquipmentIds")).Add("Plugin");
+            if (placed) ((IList)Get(progress, "placedEquipment")).Add("Plugin");
+            if (practiced) ((IList)Get(progress, "practicedDays")).Add(3);
+            RuntimeReflection.Invoke(progress, "Normalize");
+            Assert.That(Get(progress, "beat").ToString(), Is.EqualTo("EveningConversation"));
+            string once = JsonUtility.ToJson(save);
+            RuntimeReflection.Invoke(progress, "Normalize");
+            Assert.That(JsonUtility.ToJson(save), Is.EqualTo(once), "Migration is idempotent.");
+            Assert.That(Rule("CanPurchase", save, "STAGE_03_SOLE"), Is.EqualTo(false));
+            Assert.That(Rule("CanVisitEquipmentShop", save), Is.EqualTo(false));
+            Assert.That(Rule("FinishDialogue", save, "jaehoon"), Is.EqualTo(true));
+            Assert.That(Get(progress, "beat").ToString(), Is.EqualTo(remaining));
+            Assert.That(((IList)Get(save, "ownedEquipmentIds")).Count, Is.EqualTo(owned ? 1 : 0));
+            Assert.That(((IList)Get(progress, "placedEquipment")).Count, Is.EqualTo(placed ? 1 : 0));
+            Assert.That(((IList)Get(progress, "practicedDays")).Count, Is.EqualTo(practiced ? 1 : 0));
+            Assert.That(((IList)Get(save, "fishPlates")).Count, Is.Zero, "Migration/dialogue cannot recreate rewards.");
+        }
+
+        [Test]
+        public void AlreadyCompletedDay3_IsNotRewoundByTheNewConversationOrder()
+        {
+            var save = FreshDay3(); var progress = Get(save, "dayWorld");
+            Set(progress, "beat", Beat("Complete")); Set(progress, "nightsSlept", 3);
+            Set(progress, "pendingStageClear", 3);
+            string before = JsonUtility.ToJson(save);
+            RuntimeReflection.Invoke(progress, "Normalize");
+            Assert.That(JsonUtility.ToJson(save), Is.EqualTo(before));
+        }
+
+        [TestCase("MorningConversation")]
+        [TestCase("Work")]
+        [TestCase("AfterWorkConversation")]
+        [TestCase("EveningConversation")]
+        [TestCase("Purchase")]
+        [TestCase("Placement")]
+        [TestCase("Practice")]
+        [TestCase("Sleep")]
+        public void OwnedPlacedEarlierInstrument_AllowsFreePracticeWithoutDailyProgress(string beat)
+        {
+            var save = FreshDay3(); var progress = Get(save, "dayWorld");
+            var drum = Equipment("SamplePackDrumKit");
+            Set(progress, "beat", Beat(beat));
+            ((IList)Get(save, "ownedEquipmentIds")).Add("SamplePackDrumKit");
+            ((IList)Get(progress, "placedEquipment")).Add("SamplePackDrumKit");
+            string before = JsonUtility.ToJson(save);
+            Assert.That(Rule("EquipmentAvailable", save, drum), Is.EqualTo(true));
+            Assert.That(Rule("CanPracticeEquipment", save, drum), Is.EqualTo(true));
+            Assert.That(Rule("IsRequiredPractice", save, drum), Is.EqualTo(false));
+            Assert.That(Rule("Practice", save, drum), Is.EqualTo(false));
+            Assert.That(JsonUtility.ToJson(save), Is.EqualTo(before));
+            Assert.That(Rule("CanPracticeEquipment", save, Equipment("Plugin")), Is.EqualTo(false));
         }
     }
 }

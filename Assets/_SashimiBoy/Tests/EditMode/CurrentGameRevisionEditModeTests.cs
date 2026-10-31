@@ -25,16 +25,19 @@ namespace SashimiBoy.Tests
             int contactSamples = 0;
             foreach (Vector3 local in body.sharedMesh.vertices)
             {
-                // Read the actual central pelvis/thigh underside, independently of authoring offsets.
-                if (Mathf.Abs(local.x) > .18f || Mathf.Abs(local.z) > .08f || local.y < .4f || local.y > .65f) continue;
+                // Include the outer pelvis that the old narrow sample missed.
+                if (Mathf.Abs(local.x) > .27f || local.z < -.2f || local.z > .08f || local.y < .25f || local.y > .65f) continue;
                 Vector3 world = body.transform.TransformPoint(local);
                 contactY = Mathf.Min(contactY, world.y);
+                Assert.That(world.y, Is.GreaterThanOrEqualTo(seat.max.y - .003f), "Pelvis penetrates the seat.");
                 Assert.That(world.x, Is.InRange(seat.min.x, seat.max.x));
                 Assert.That(world.z, Is.InRange(seat.min.z, seat.max.z));
                 contactSamples++;
             }
             Assert.That(contactSamples, Is.GreaterThan(100));
             Assert.That(contactY, Is.EqualTo(seat.max.y).Within(.003f), "The mesh must sit on the real chair, not hover above it.");
+            var floor = scene.GetRootGameObjects().SelectMany(g => g.GetComponentsInChildren<Transform>(true)).Single(t => t.name == "FishShop_Floor").GetComponent<Renderer>().bounds;
+            Assert.That(body.GetComponent<Renderer>().bounds.min.y, Is.EqualTo(floor.max.y).Within(.003f), "Feet must contact the actual floor.");
         }
 
         [Test]

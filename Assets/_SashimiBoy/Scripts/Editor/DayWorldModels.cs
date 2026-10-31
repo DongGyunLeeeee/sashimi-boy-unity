@@ -31,6 +31,14 @@ namespace SashimiBoy.EditorTools
             DayWorldStreetAuthoring.BuildDoorModels();
             AssetDatabase.SaveAssets();
         }
+        public static void BuildCheolsuSeatingBatch()
+        {
+            UnityEditor.SceneManagement.EditorSceneManager.NewScene(UnityEditor.SceneManagement.NewSceneSetup.EmptyScene, UnityEditor.SceneManagement.NewSceneMode.Single);
+            Directory.CreateDirectory(Output);
+            Directory.CreateDirectory("Logs/DayWorld/AssetInspection");
+            BuildNpc("Cheolsu", "cheolsiua-jae", "철수", 1, 1.74f, true);
+            AssetDatabase.SaveAssets();
+        }
         private static void BuildNpc(string id,string file,string name,int day,float height,bool seated)
         {
             string path=Source+"/Characters/"+id+"/"+file+".fbx";
@@ -81,7 +89,9 @@ namespace SashimiBoy.EditorTools
                                     if(seated)
                                     {
                                         float hip=height*.53f,knee=height*.285f;
-                                        if(p.y<hip && !(Mathf.Abs(p.x)>.20f && p.y>height*.36f))
+                                        // Include the outer pelvis/thigh in the seated fold.
+                                        // The old .20 m arm mask left those vertices below the seat.
+                                        if(p.y<hip && !(Mathf.Abs(p.x)>height*.185f && p.y>height*.36f))
                                         {
                                             if(p.y>=knee){p.z+=hip-p.y;p.y=hip-seatDrop;}
                                             else{p.z+=hip-knee;p.y+=hip-knee-seatDrop;}

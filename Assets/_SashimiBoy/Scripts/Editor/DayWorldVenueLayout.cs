@@ -1,3 +1,4 @@
+using System;
 using System.Linq;
 using UnityEditor;
 using UnityEngine;
@@ -125,15 +126,45 @@ namespace SashimiBoy.EditorTools
         public static void SeatCheolsuAtDiningTable(Scene scene, Transform root)
         {
             var customer = root.parent.GetComponentsInChildren<DayWorldNpc>(true).Single(n => n.npcId == "cheolsu");
-            Bounds seat = root.Find("DiningSeat_FrontRight-1").GetComponent<Renderer>().bounds;
+            var cushion = root.Find("DiningSeat_FrontRight-1");
+            Bounds seat = cushion.GetComponent<Renderer>().bounds;
             Vector3 table = root.Find("DiningTop_FrontRight").position;
-            // BuildNpc's seated mesh puts the hip/thigh contact at height * .53 - .40.
-            // Anchor that contact to the actual chair top, facing the table, not the old seat.
-            const float seatedContactHeight = 1.74f * .53f - .40f;
-            Vector3 position = new Vector3(seat.center.x, seat.max.y - seatedContactHeight, seat.center.z);
+            var body = customer.GetComponentsInChildren<MeshFilter>(true).Single(f => f.name == "OwnerBody");
+            float floor = Named(scene, "FishShop_Floor").GetComponent<Renderer>().bounds.max.y;
+            float contact = float.PositiveInfinity, feet = float.PositiveInfinity;
+            foreach (Vector3 vertex in body.sharedMesh.vertices)
+            {
+                Vector3 local = customer.transform.InverseTransformPoint(body.transform.TransformPoint(vertex));
+                feet = Mathf.Min(feet, local.y);
+                if (Mathf.Abs(local.x) <= .27f && local.z >= -.2f && local.z <= .08f && local.y >= .25f && local.y <= .65f)
+                    contact = Mathf.Min(contact, local.y);
+            }
+            if (float.IsInfinity(contact) || float.IsInfinity(feet)) throw new InvalidOperationException("Cheolsu seat/foot geometry missing.");
+            // Derive chair height from the actual seated mesh and floor. Both the
+            // outer pelvis and shoes must make contact at the same time.
+            float rootY = floor - feet, top = rootY + contact;
+            cushion.position = new Vector3(seat.center.x, top - seat.size.y * .5f, seat.center.z);
+            var back = root.Find("DiningBack_FrontRight-1");
+            back.position = new Vector3(back.position.x, top + .265f, back.position.z);
+            float legHeight = top - seat.size.y - floor + .02f;
+            foreach (Transform leg in root.Cast<Transform>().Where(t => t.name.StartsWith("ChairLeg_FrontRight-1_")))
+            {
+                leg.position = new Vector3(leg.position.x, floor + legHeight * .5f, leg.position.z);
+                leg.localScale = new Vector3(leg.localScale.x, legHeight, leg.localScale.z);
+            }
+            Vector3 position = new Vector3(seat.center.x, rootY, seat.center.z);
             Vector3 forward = table - position; forward.y = 0f;
             customer.transform.SetPositionAndRotation(position, Quaternion.LookRotation(forward));
             PrefabUtility.RecordPrefabInstancePropertyModifications(customer.transform);
+        }
+
+        public static void ApplyCheolsuSeatBatch()
+        {
+            var scene = UnityEditor.SceneManagement.EditorSceneManager.OpenScene("Assets/_SashimiBoy/Scenes/FishShopDialogue.unity", UnityEditor.SceneManagement.OpenSceneMode.Single);
+            var root = scene.GetRootGameObjects().Single(g => g.name == "DayWorld_Integration").transform;
+            SeatCheolsuAtDiningTable(scene, root.Find("VenueAssets"));
+            UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(scene);
+            if (!UnityEditor.SceneManagement.EditorSceneManager.SaveScene(scene)) throw new InvalidOperationException("Cheolsu seat scene save failed.");
         }
 
         public static void ApplyStreetDisplay(Scene scene, Transform worldRoot)

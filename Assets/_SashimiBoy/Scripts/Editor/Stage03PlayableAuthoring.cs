@@ -16,7 +16,7 @@ namespace SashimiBoy.EditorTools
         public const string ChartPath="Assets/_SashimiBoy/Data/Generated/Stage03PlayableChart.asset";
         public const string MusicPath="Assets/_SashimiBoy/Audio/Music/Stage_03_Flounder/flounder1.wav";
         public const string ChartSource="Docs/Development/STAGE03_RHYTHM_ANALYSIS.json";
-        [Serializable] private sealed class ChartInput {public float bpm;public double firstGridBeatSeconds;public string sourceSha256;public Stage03PhaseChart[] phases;}
+        [Serializable] private sealed class ChartInput {public float bpm;public double firstGridBeatSeconds;public int analysisVersion;public double[] beatTimesMs;public string sourceSha256;public Stage03PhaseChart[] phases;}
         [MenuItem("Sashimi Boy/Stage 03/Apply Complete Playable Stage")]
         public static void ApplyBatch()
         {
@@ -86,6 +86,7 @@ namespace SashimiBoy.EditorTools
             var chart=AssetDatabase.LoadAssetAtPath<Stage03Chart>(ChartPath);
             if(chart==null){chart=ScriptableObject.CreateInstance<Stage03Chart>();AssetDatabase.CreateAsset(chart,ChartPath);}
             chart.bpm=input.bpm;chart.firstGridBeatSeconds=input.firstGridBeatSeconds;chart.sourceSha256=sha;chart.phases=input.phases;
+            chart.analysisVersion=input.analysisVersion;chart.beatTimesMs=input.beatTimesMs??Array.Empty<double>();
             chart.music=AssetDatabase.LoadAssetAtPath<AudioClip>(MusicPath);chart.Validate();EditorUtility.SetDirty(chart);
         }
         private static Stage03GameController BuildScene(Scene scene)

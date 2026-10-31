@@ -332,7 +332,7 @@ namespace SashimiBoy.Tests
             Vector3 face=Camera.main.WorldToViewportPoint(((Transform)Field(body,"eyeAnchor")).position);
             Assert.That(face.y,Is.InRange(.1f,.9f),"The practice Game camera must include Kevin's face.");
             yield return new WaitForSecondsRealtime(4f);Assert.That(Beat,Is.EqualTo("Sleep"));
-            Assert.That(station.transform.Find("StationName").gameObject.activeSelf,Is.False);
+            Assert.That(station.transform.Find("StationName").gameObject.activeSelf,Is.True,"Placed equipment remains available for free practice.");
             Assert.That(((GameObject)Field(station,"equipmentVisual")).activeSelf,Is.True,"Finished practice keeps the purchased instrument.");
             int clearedDay=Day;
             yield return UseBed();
@@ -480,7 +480,7 @@ namespace SashimiBoy.Tests
             yield return Door("Street");yield return Door("KevinHome");
             var drum=All("HomeEquipmentStation").Single(c=>Field(c,"equipmentId").ToString()=="SamplePackDrumKit");
             Assert.That(((GameObject)Field(drum,"equipmentVisual")).activeSelf,Is.True,"Day1 equipment remains visible when returning from Stage2.");
-            Assert.That(drum.transform.Find("StationName").gameObject.activeSelf,Is.False);
+            Assert.That(drum.transform.Find("StationName").gameObject.activeSelf,Is.True,"Earlier equipment remains available during later story phases.");
             Assert.That(Beat,Is.EqualTo("Work"));Assert.That(Day,Is.EqualTo(2));
             Capture("home-after-stage2-return-interaction-test");
         }

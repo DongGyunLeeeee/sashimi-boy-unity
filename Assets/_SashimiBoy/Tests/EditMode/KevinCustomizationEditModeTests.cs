@@ -14,6 +14,8 @@ namespace SashimiBoy.Tests
             var catalog = AssetDatabase.LoadMainAssetAtPath("Assets/_SashimiBoy/Art/Generated/Data/KevinFaceCatalog.asset");
             var choices = (IList)RuntimeReflection.GetField(catalog, "choices");
             Assert.That(choices.Count, Is.EqualTo(4));
+            Assert.That(choices.Cast<object>().Select(c => (string)RuntimeReflection.GetField(c, "id")),
+                Is.EquivalentTo(new[] { "CuteFace", "PlainFace", "AmbiguousFace", "WesternFace" }));
             var meshes = choices.Cast<object>().Select(c => (Mesh)RuntimeReflection.GetField(c, "mesh")).ToArray();
             Assert.That(meshes.Distinct().Count(), Is.EqualTo(4));
             foreach (var mesh in meshes)
@@ -30,6 +32,16 @@ namespace SashimiBoy.Tests
             var rig = prefab.GetComponent(RuntimeReflection.RuntimeType("SashimiBoy.KevinBodyRig"));
             Assert.That(RuntimeReflection.GetField(RuntimeReflection.GetField(rig, "right"), "palm"), Is.Not.Null);
             Assert.That(RuntimeReflection.GetField(RuntimeReflection.GetField(rig, "left"), "palm"), Is.Not.Null);
+            var animator = prefab.GetComponentInChildren<Animator>(true);
+            Assert.That(animator.isHuman && animator.avatar != null && animator.avatar.isValid, Is.True);
+            var face = (SkinnedMeshRenderer)RuntimeReflection.GetField(appearance, "faceRenderer");
+            Assert.That(face.bones, Is.EquivalentTo(new[] {
+                animator.GetBoneTransform(HumanBodyBones.Head),
+                animator.GetBoneTransform(HumanBodyBones.Neck),
+                animator.GetBoneTransform(HumanBodyBones.Chest) }));
+            foreach (var mesh in meshes)
+                Assert.That(mesh.bindposes, Is.EqualTo(face.sharedMesh.bindposes),
+                    "Every saved face choice must use the replacement body's same head/neck/chest bind frame: " + mesh.name);
         }
 
         [Test]

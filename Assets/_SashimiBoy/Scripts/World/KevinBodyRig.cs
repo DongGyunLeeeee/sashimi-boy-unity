@@ -19,6 +19,7 @@ namespace SashimiBoy
         public Transform head, eyeAnchor;
         public Transform cookingSpine;
         public Quaternion spineRest;
+        public Vector3 spineBendAxis = Vector3.right;
         public Transform[] fingerBones = Array.Empty<Transform>();
         public Quaternion[] fingerRest = Array.Empty<Quaternion>();
         public Vector3[] fingerAxes = Array.Empty<Vector3>();
@@ -30,6 +31,17 @@ namespace SashimiBoy
 
         private void LateUpdate() => ApplyPose();
 
+        // Targets and palm rotations are supplied by the real tool/instrument.
+        // Fit only the grounded root's horizontal position, then solve the same
+        // attached, fixed-length arm chains. An impossible target retains error.
+        public void ApplyWorkingPoseAtRoot(Vector3 preferredWorldPosition)
+        {
+            ApplyPose();
+            if (!working) return;
+            transform.position = KevinGroundedReach.FitRootPosition(this, preferredWorldPosition);
+            ApplyPose();
+        }
+
         public void SetHeadHidden(bool hidden)
         {
             foreach (var renderer in headRenderers)
@@ -38,7 +50,7 @@ namespace SashimiBoy
 
         public void ApplyPose()
         {
-            if (cookingSpine != null) cookingSpine.localRotation = spineRest * Quaternion.AngleAxis(working ? 27f : 0f, Vector3.right);
+            if (cookingSpine != null) cookingSpine.localRotation = spineRest * Quaternion.AngleAxis(working ? 27f : 0f, spineBendAxis);
             for (int i = 0; i < fingerBones.Length; i++)
                 fingerBones[i].localRotation = fingerRest[i] * Quaternion.AngleAxis(working ? fingerAngles[i] : fingerAngles[i] * .18f, fingerAxes[i]);
             if (working)

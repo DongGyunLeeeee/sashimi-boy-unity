@@ -8,7 +8,7 @@ using Object = UnityEngine.Object;
 
 namespace SashimiBoy.EditorTools
 {
-    // Focused Day3 additions. The Day1/2 world, original doors and Cheolsu's seated transform remain authoritative.
+    // Focused Day3 additions; preserve the existing world and original doors.
     public static class Stage03DayWorldAuthoring
     {
         public const string GeneratedRoot = "Assets/_SashimiBoy/Art/Generated/Stage03DayWorld";
@@ -49,8 +49,14 @@ namespace SashimiBoy.EditorTools
                 if (runner == null) throw new InvalidOperationException("Existing DayWorld dialogue runner is required.");
                 Npc(owned, "Junseok_Day3", "Junseok", "junseok", "준석",
                     new Vector3(-4.3f, .05f, -.8f), 180f, runner);
+                // Meet Jaehoon after exiting the restaurant, before walking to the shop.
+                Vector3 exit = director.spawns.Single(s => s.name == "FishShopDialogue").position;
+                Vector3 shop = director.spawns.Single(s => s.name == "EquipmentShop").position;
+                Vector3 route = shop - exit; route.y = 0f;
+                Vector3 encounter = Vector3.Lerp(exit, shop, .35f) + Vector3.Cross(route.normalized, Vector3.up) * .8f;
+                encounter.y = .05f;
                 Npc(owned, "Jaehoon_Day3", "Jaehoon", "jaehoon", "재훈",
-                    new Vector3(-4.1f, .05f, -2.5f), 90f, runner);
+                    encounter, Quaternion.LookRotation(-route).eulerAngles.y, runner);
                 director.npcs = world.GetComponentsInChildren<DayWorldNpc>(true);
                 EditorUtility.SetDirty(director);
             }

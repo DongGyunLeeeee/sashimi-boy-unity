@@ -103,5 +103,70 @@ namespace SashimiBoy.Tests
             Assert.That(Value<int>(run, "Phase"), Is.EqualTo(2));
             Assert.That(Call(run, "TryHit"), Is.EqualTo(false));
         }
+
+        [Test]
+        public void CookingStroke_UsesThreePullingPaths_AndMeetsTheCutPlaneAtContact()
+        {
+            string type="SashimiBoy.Stage03CookingView";
+            Vector3[] approaches=new Vector3[3];int[] phases={0,1,5};
+            for(int i=0;i<phases.Length;i++)
+            {
+                approaches[i]=(Vector3)RuntimeReflection.InvokeStatic(type,"StrokeOffset",phases[i],.15f);
+                var contact=(Vector3)RuntimeReflection.InvokeStatic(type,"StrokeOffset",phases[i],.45f);
+                var follow=(Vector3)RuntimeReflection.InvokeStatic(type,"StrokeOffset",phases[i],.7f);
+                Assert.That(approaches[i].x,Is.LessThan(0),"The blade approaches along the cutting direction.");
+                Assert.That(follow.x,Is.GreaterThan(0),"The blade draws through instead of only stabbing downward.");
+                Assert.That(contact.magnitude,Is.LessThan(.00001f),"Geometry commits exactly at the physical cut plane.");
+            }
+            Assert.That(approaches[0],Is.Not.EqualTo(approaches[1]));
+            Assert.That(approaches[1],Is.Not.EqualTo(approaches[2]));
+            Assert.That(approaches[0],Is.Not.EqualTo(approaches[2]));
+        }
+
+        [Test]
+        public void CookingStroke_ContactIsSingle_FreezeAndCancelDoNotDeliverLateActions()
+        {
+            var host=new GameObject("Stroke lifecycle fixture");
+            try
+            {
+                var cooking=host.AddComponent(RuntimeReflection.RuntimeType("SashimiBoy.Stage03CookingView"));
+                int contacts=0,finishes=0;
+                Action contact=()=>contacts++,finished=()=>finishes++;
+                Assert.That(Call(cooking,"BeginStroke",0,Vector3.zero,Vector3.right,contact,finished),Is.EqualTo(true));
+                Assert.That(Call(cooking,"BeginStroke",1,Vector3.zero,Vector3.right,contact,finished),Is.EqualTo(false));
+                Call(cooking,"AdvancePresentation",.18f);Assert.That(contacts,Is.Zero);
+                float progress=Value<float>(cooking,"MotionProgress01");
+                Call(cooking,"SetPaused",true);Call(cooking,"AdvancePresentation",20f);
+                Assert.That(Value<float>(cooking,"MotionProgress01"),Is.EqualTo(progress));
+                Assert.That(contacts,Is.Zero);Assert.That(finishes,Is.Zero);
+                Call(cooking,"SetPaused",false);Call(cooking,"AdvancePresentation",1f);
+                Assert.That(contacts,Is.EqualTo(1));Assert.That(finishes,Is.EqualTo(1));
+                Call(cooking,"AdvancePresentation",1f);
+                Assert.That(contacts,Is.EqualTo(1));Assert.That(finishes,Is.EqualTo(1));
+                Assert.That(Call(cooking,"BeginStroke",5,Vector3.zero,Vector3.right,contact,finished),Is.EqualTo(true));
+                Call(cooking,"ResetPresentation");Call(cooking,"AdvancePresentation",20f);
+                Assert.That(Value<bool>(cooking,"IsStriking"),Is.False);
+                Assert.That(contacts,Is.EqualTo(1));Assert.That(finishes,Is.EqualTo(1));
+            }
+            finally {UnityEngine.Object.DestroyImmediate(host);}
+        }
+
+        [Test]
+        public void AnalyzedBeatPhase_UsesActualPulseTimes_AndRetainsOffsetInLegacyFallback()
+        {
+            var chart=ScriptableObject.CreateInstance(RuntimeReflection.RuntimeType("SashimiBoy.Stage03Chart"));
+            try
+            {
+                RuntimeReflection.SetField(chart,"bpm",120f);
+                RuntimeReflection.SetField(chart,"firstGridBeatSeconds",.2d);
+                Assert.That(Call(chart,"BeatPhase01",200d),Is.EqualTo(0f));
+                Assert.That((float)Call(chart,"BeatPhase01",450d),Is.EqualTo(.5f).Within(.0001f));
+                RuntimeReflection.SetField(chart,"beatTimesMs",new[]{100d,720d,1360d});
+                Assert.That(Call(chart,"BeatPhase01",720d),Is.EqualTo(0f));
+                Assert.That((float)Call(chart,"BeatPhase01",1040d),Is.EqualTo(.5f).Within(.0001f));
+                Assert.That((float)Call(chart,"BeatPhase01",1610d),Is.EqualTo(.5f).Within(.0001f));
+            }
+            finally {UnityEngine.Object.DestroyImmediate(chart);}
+        }
     }
 }

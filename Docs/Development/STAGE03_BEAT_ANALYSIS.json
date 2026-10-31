@@ -1,0 +1,425 @@
+{
+  "source": "Assets/_SashimiBoy/Audio/Music/Stage_03_Flounder/flounder1.wav",
+  "sourceSha256": "3572605dec84991aabf1e4911eee443287da0f7e5c403b0a449aee403cf31062",
+  "sourcePreserved": true,
+  "sampleRate": 48000,
+  "channels": 2,
+  "sampleWidthBytes": 2,
+  "frames": 11084160,
+  "durationSeconds": 230.92,
+  "numpyVersion": "2.3.5",
+  "firTaps": 63,
+  "analysisSampleRate": 12000.0,
+  "fftSize": 1024,
+  "hopSamples": 128,
+  "timestampReference": "STFT window center",
+  "auditoryInspection": "Unavailable: audio tool did not support audio input. No direct-listening claim.",
+  "humanMusicSyncVerification": "Pending Owner playback and timing/readability/feel approval.",
+  "bandHz": {
+    "kick": [
+      35,
+      180
+    ],
+    "body": [
+      180,
+      1800
+    ],
+    "hats": [
+      1800,
+      5500
+    ]
+  },
+  "weights": {
+    "kick": 0.5,
+    "body": 0.2,
+    "hats": 0.3
+  },
+  "roughAutocorrelationBpm": 96.16,
+  "fittedBpm": 96.54,
+  "fittedPhaseSeconds": 0.2,
+  "pulseCount": 372,
+  "maximumPulseSnapMs": 84.441,
+  "fullSourceSections": [
+    {
+      "startSeconds": 0,
+      "endSeconds": 20,
+      "rms": 0.094,
+      "meanAttack": 0.108,
+      "highAttack": 0.333
+    },
+    {
+      "startSeconds": 20,
+      "endSeconds": 40,
+      "rms": 0.12,
+      "meanAttack": 0.189,
+      "highAttack": 0.55
+    },
+    {
+      "startSeconds": 40,
+      "endSeconds": 60,
+      "rms": 0.113,
+      "meanAttack": 0.216,
+      "highAttack": 0.571
+    },
+    {
+      "startSeconds": 60,
+      "endSeconds": 80,
+      "rms": 0.112,
+      "meanAttack": 0.229,
+      "highAttack": 0.604
+    },
+    {
+      "startSeconds": 80,
+      "endSeconds": 100,
+      "rms": 0.125,
+      "meanAttack": 0.226,
+      "highAttack": 0.598
+    },
+    {
+      "startSeconds": 100,
+      "endSeconds": 120,
+      "rms": 0.124,
+      "meanAttack": 0.205,
+      "highAttack": 0.502
+    },
+    {
+      "startSeconds": 120,
+      "endSeconds": 140,
+      "rms": 0.13,
+      "meanAttack": 0.235,
+      "highAttack": 0.615
+    },
+    {
+      "startSeconds": 140,
+      "endSeconds": 160,
+      "rms": 0.124,
+      "meanAttack": 0.211,
+      "highAttack": 0.531
+    },
+    {
+      "startSeconds": 160,
+      "endSeconds": 180,
+      "rms": 0.151,
+      "meanAttack": 0.233,
+      "highAttack": 0.636
+    },
+    {
+      "startSeconds": 180,
+      "endSeconds": 200,
+      "rms": 0.148,
+      "meanAttack": 0.144,
+      "highAttack": 0.4
+    },
+    {
+      "startSeconds": 200,
+      "endSeconds": 220,
+      "rms": 0.168,
+      "meanAttack": 0.144,
+      "highAttack": 0.396
+    },
+    {
+      "startSeconds": 220,
+      "endSeconds": 230.92,
+      "rms": 0.184,
+      "meanAttack": 0.158,
+      "highAttack": 0.428
+    }
+  ],
+  "phaseEvidence": [
+    {
+      "label": "머리 제거",
+      "regionSeconds": [
+        8,
+        25
+      ],
+      "selectedBeatIndices": [
+        17,
+        20,
+        25,
+        29,
+        33,
+        38
+      ],
+      "measuredAttackStrength": [
+        0.795,
+        0.282,
+        1.223,
+        0.901,
+        0.95,
+        1.793
+      ],
+      "intervalsSeconds": [
+        1.952,
+        3.029,
+        2.475,
+        2.464,
+        3.072
+      ]
+    },
+    {
+      "label": "앞면 필렛 1 분리",
+      "regionSeconds": [
+        29,
+        46
+      ],
+      "selectedBeatIndices": [
+        49,
+        54,
+        59,
+        62,
+        69,
+        73
+      ],
+      "measuredAttackStrength": [
+        0.829,
+        1.014,
+        1.811,
+        1.113,
+        1.294,
+        1.016
+      ],
+      "intervalsSeconds": [
+        3.051,
+        3.083,
+        1.867,
+        4.352,
+        2.453
+      ]
+    },
+    {
+      "label": "앞면 필렛 2 분리",
+      "regionSeconds": [
+        50,
+        67
+      ],
+      "selectedBeatIndices": [
+        84,
+        86,
+        91,
+        97,
+        101,
+        107
+      ],
+      "measuredAttackStrength": [
+        1.423,
+        1.869,
+        1.781,
+        0.989,
+        1.947,
+        1.27
+      ],
+      "intervalsSeconds": [
+        1.216,
+        3.083,
+        3.723,
+        2.496,
+        3.701
+      ]
+    },
+    {
+      "label": "뒷면 필렛 1 분리",
+      "regionSeconds": [
+        72,
+        89
+      ],
+      "selectedBeatIndices": [
+        117,
+        123,
+        129,
+        131,
+        137,
+        141
+      ],
+      "measuredAttackStrength": [
+        1.22,
+        1.757,
+        0.915,
+        1.473,
+        1.345,
+        1.683
+      ],
+      "intervalsSeconds": [
+        3.691,
+        3.744,
+        1.216,
+        3.733,
+        2.485
+      ]
+    },
+    {
+      "label": "뒷면 필렛 2 분리",
+      "regionSeconds": [
+        94,
+        111
+      ],
+      "selectedBeatIndices": [
+        155,
+        156,
+        163,
+        166,
+        171,
+        177
+      ],
+      "measuredAttackStrength": [
+        1.437,
+        1.709,
+        1.71,
+        1.331,
+        1.129,
+        1.37
+      ],
+      "intervalsSeconds": [
+        0.651,
+        4.32,
+        1.877,
+        3.115,
+        3.723
+      ]
+    },
+    {
+      "label": "앞면 필렛 1 썰기",
+      "regionSeconds": [
+        118,
+        138
+      ],
+      "selectedBeatIndices": [
+        193,
+        195,
+        200,
+        203,
+        208,
+        214,
+        217,
+        222
+      ],
+      "measuredAttackStrength": [
+        1.713,
+        1.649,
+        1.112,
+        1.62,
+        0.873,
+        1.191,
+        0.839,
+        1.881
+      ],
+      "intervalsSeconds": [
+        1.237,
+        3.157,
+        1.824,
+        3.125,
+        3.691,
+        1.888,
+        3.104
+      ]
+    },
+    {
+      "label": "앞면 필렛 2 썰기",
+      "regionSeconds": [
+        145,
+        165
+      ],
+      "selectedBeatIndices": [
+        235,
+        238,
+        243,
+        249,
+        251,
+        257,
+        261,
+        265
+      ],
+      "measuredAttackStrength": [
+        1.455,
+        2.071,
+        1.524,
+        1.601,
+        1.605,
+        1.819,
+        1.615,
+        1.823
+      ],
+      "intervalsSeconds": [
+        1.856,
+        3.104,
+        3.755,
+        1.227,
+        3.744,
+        2.496,
+        2.517
+      ]
+    },
+    {
+      "label": "뒷면 필렛 1 썰기",
+      "regionSeconds": [
+        172,
+        192
+      ],
+      "selectedBeatIndices": [
+        278,
+        281,
+        287,
+        289,
+        295,
+        299,
+        305,
+        308
+      ],
+      "measuredAttackStrength": [
+        1.094,
+        0.887,
+        0.512,
+        1.464,
+        1.799,
+        1.704,
+        0.943,
+        0.873
+      ],
+      "intervalsSeconds": [
+        1.867,
+        3.648,
+        1.259,
+        3.52,
+        2.485,
+        3.467,
+        1.888
+      ]
+    },
+    {
+      "label": "뒷면 필렛 2 썰기",
+      "regionSeconds": [
+        201,
+        224
+      ],
+      "selectedBeatIndices": [
+        328,
+        331,
+        335,
+        338,
+        346,
+        349,
+        354,
+        359
+      ],
+      "measuredAttackStrength": [
+        0.572,
+        1.487,
+        2.255,
+        1.785,
+        1.806,
+        1.587,
+        1.484,
+        1.73
+      ],
+      "intervalsSeconds": [
+        1.835,
+        2.528,
+        1.92,
+        5.035,
+        1.899,
+        3.157,
+        3.136
+      ]
+    }
+  ],
+  "changesFromPrior": "Identical fixed slots and +/-120ms all-band snapping replaced with measured accents/coverage. Late160-224s sections are used; original230.92s source and6/8 opportunities,4/6 required hits unchanged."
+}

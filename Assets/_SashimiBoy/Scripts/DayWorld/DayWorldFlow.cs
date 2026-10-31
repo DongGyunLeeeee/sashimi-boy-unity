@@ -108,6 +108,8 @@ namespace SashimiBoy
         {
             if (busy || SceneTransitionService.Instance.IsLoading || string.IsNullOrWhiteSpace(scene)) return;
             if (AwaitingWake && scene != DayWorldRules.Home) return;
+            if (scene == SashimiBoyConstants.Scenes.EquipmentShop && !DayWorldRules.CanVisitEquipmentShop(Save))
+            { Notice(DayWorldRules.Objective(Save)); return; }
             if (!Application.CanStreamedLevelBeLoaded(scene)) { Notice("이 장소에는 아직 들어갈 수 없습니다."); return; }
             requestedSpawn = spawn;
             SuppressInput();

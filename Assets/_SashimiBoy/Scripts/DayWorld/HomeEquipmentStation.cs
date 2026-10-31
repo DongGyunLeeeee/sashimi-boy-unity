@@ -15,6 +15,8 @@ namespace SashimiBoy
         private Vector3 cameraPosition;
         private Quaternion cameraRotation;
         private float cameraFov;
+        private Vector3 bodyLocalPosition, preferredBodyPosition;
+        private Quaternion bodyLocalRotation;
         public bool IsPracticing => practicing;
         public bool IsAvailable => !practicing && DayWorldFlow.Active && DayWorldRules.EquipmentAvailable(SaveManager.Instance.Current, equipmentId);
         public string Prompt => ContentDefaults.FindEquipment(equipmentId).displayName +
@@ -22,7 +24,7 @@ namespace SashimiBoy
         public void Refresh()
         {
             if(equipmentVisual != null) equipmentVisual.SetActive(DayWorldFlow.Active &&
-                SaveManager.Instance.Current.dayWorld.placedEquipment.Contains(equipmentId.ToString()));
+                DayWorldRules.CanPracticeEquipment(SaveManager.Instance.Current, equipmentId));
             var label = transform.Find("StationName");
             if (label != null) label.gameObject.SetActive(IsAvailable);
             foreach (var collider in GetComponents<Collider>()) collider.enabled = IsAvailable;
@@ -33,8 +35,7 @@ namespace SashimiBoy
             if(!IsAvailable || DayWorldFlow.InputSuppressed) return;
             var save=SaveManager.Instance.Current;
             if(DayWorldRules.Place(save,equipmentId)) { DayWorldFlow.Instance.Commit(); Refresh(); return; }
-            if(save.dayWorld.beat != DayWorldBeat.Practice || DayWorldRules.Equipment(save) != equipmentId ||
-               !save.dayWorld.placedEquipment.Contains(equipmentId.ToString()))
+            if(!DayWorldRules.CanPracticeEquipment(save, equipmentId))
             { DayWorldFlow.Instance.Notice(DayWorldRules.Objective(save)); return; }
             StartCoroutine(Practice(actor));
         }
@@ -44,14 +45,21 @@ namespace SashimiBoy
             body=actor.GetComponentInChildren<KevinBodyRig>(true);
             view=rig != null ? rig.controlledCamera : Camera.main;
             if(body==null || view==null || playerPosition==null || rightHandTarget==null || leftHandTarget==null || practiceCamera==null) yield break;
+            var practiceSave=SaveManager.Instance.Current;
+            int practiceDay=practiceSave.dayWorld.day;
+            bool requiredAtStart=DayWorldRules.IsRequiredPractice(practiceSave,equipmentId);
             practicing=true;
             DayWorldFlow.Instance.SetBusy(true);
+            Refresh();
             cameraPosition=view.transform.localPosition; cameraRotation=view.transform.localRotation; cameraFov=view.fieldOfView;
+            bodyLocalPosition=body.transform.localPosition; bodyLocalRotation=body.transform.localRotation;
             var controller=actor.GetComponent<CharacterController>();
-            if(controller != null) controller.enabled=false;
+            bool controllerEnabled=controller != null && controller.enabled;
+            if(controllerEnabled) controller.enabled=false;
             actor.transform.position=playerPosition.position;
-            if(controller != null) controller.enabled=true;
+            if(controllerEnabled) controller.enabled=true;
             body.transform.rotation=playerPosition.rotation;
+            preferredBodyPosition=body.transform.position;
             body.SetHeadHidden(false);
             body.working=true;
             view.transform.SetPositionAndRotation(practiceCamera.position,practiceCamera.rotation);
@@ -68,9 +76,13 @@ namespace SashimiBoy
                 body.leftTarget=leftHandTarget.position+Vector3.up*(.03f+Mathf.Max(0f,-stroke)*.07f);
                 body.rightRotation=body.transform.rotation*body.right.handWorldRest;
                 body.leftRotation=body.transform.rotation*body.left.handWorldRest;
+                body.ApplyWorkingPoseAtRoot(preferredBodyPosition);
                 yield return null;
             }
-            bool changed=DayWorldRules.Practice(SaveManager.Instance.Current,equipmentId);
+            // Free practice never completes a new day's objective, even if an
+            // external load changes the save while the animation is running.
+            bool changed=requiredAtStart && ReferenceEquals(practiceSave,SaveManager.Instance.Current) &&
+                practiceSave.dayWorld.day==practiceDay && DayWorldRules.Practice(practiceSave,equipmentId);
             Cleanup();
             if(changed) DayWorldFlow.Instance.Commit();
         }
@@ -78,10 +90,16 @@ namespace SashimiBoy
         {
             if(!practicing) return;
             practicing=false;
-            if(body != null) { body.working=false; body.SetHeadHidden(true); }
+            if(body != null)
+            {
+                body.working=false; body.SetHeadHidden(true);
+                body.transform.localPosition=bodyLocalPosition; body.transform.localRotation=bodyLocalRotation;
+            }
             if(view != null) { view.transform.localPosition=cameraPosition; view.transform.localRotation=cameraRotation; view.fieldOfView=cameraFov; }
             if(DayWorldFlow.Instance != null) DayWorldFlow.Instance.SetBusy(false);
+            Refresh();
         }
-        private void OnDisable() { StopAllCoroutines(); Cleanup(); }
+        public void CancelPractice() { StopAllCoroutines(); Cleanup(); }
+        private void OnDisable() { CancelPractice(); }
     }
 }

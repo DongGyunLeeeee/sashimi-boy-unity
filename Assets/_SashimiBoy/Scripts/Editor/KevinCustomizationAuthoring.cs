@@ -21,7 +21,7 @@ namespace SashimiBoy.EditorTools
             {
                 var rig = body.GetComponent<KevinBodyRig>();
                 var original = (SkinnedMeshRenderer)rig.headRenderers.Single();
-                var bones = body.GetComponentsInChildren<Transform>(true);
+                var animator = body.GetComponentInChildren<Animator>(true);
                 string[] ids = { "CuteFace", "PlainFace", "AmbiguousFace", "WesternFace" };
                 string[] labels = { "귀여운 얼굴", "수수한 얼굴", "묘한 얼굴", "서구적인 얼굴" };
                 catalog.choices = new KevinFaceChoice[ids.Length];
@@ -30,7 +30,7 @@ namespace SashimiBoy.EditorTools
                     var renderer = original;
                     if (ids[i] != "CuteFace")
                         renderer = KevinEmbodimentAuthoring.BuildOwnerHead(rig.head,
-                            bones.Single(t => t.name == "Neck"), bones.Single(t => t.name == "Chest"), ids[i]).GetComponent<SkinnedMeshRenderer>();
+                            KevinRiggedBodyAuthoring.RequireBone(animator, HumanBodyBones.Neck), KevinRiggedBodyAuthoring.RequireBone(animator, HumanBodyBones.Chest), ids[i]).GetComponent<SkinnedMeshRenderer>();
                     if (renderer.sharedMesh.vertexCount < 100) throw new InvalidOperationException("Missing head geometry: " + ids[i]);
                     catalog.choices[i] = new KevinFaceChoice { id = ids[i], displayName = labels[i], mesh = renderer.sharedMesh, material = renderer.sharedMaterial };
                     if (renderer != original) Object.DestroyImmediate(renderer.gameObject);

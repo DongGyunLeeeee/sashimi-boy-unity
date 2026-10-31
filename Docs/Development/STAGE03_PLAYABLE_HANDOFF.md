@@ -15,7 +15,7 @@ These are local integration commits, not agent-performed GitHub PR merges. Until
 
 ## Gameplay contract
 
-Stage3 retains `STAGE_03_SOLE` and `FishType.Sole`, with the displayed name 가자미. It uses the existing connected Kevin body. The bounded RiggedBody experiment is not silently substituted.
+Stage3 retains `STAGE_03_SOLE` and `FishType.Sole`, with the displayed name 가자미. The 2026-11-01 Owner feedback authorizes replacing Kevin with the supplied RiggedBody if its actual hands support the working poses. The body generator preserves the Kevin prefab and saved face IDs, source FBX bytes and GUID, and adapts its Humanoid arms/fingers. Cooking and practice share a grounded reach solver. Executed compatibility results are recorded separately; product approval remains with the Owner.
 
 The separate nine-phase Stage3 controller leaves the serialized six-phase Stage1/2 chart and judgement contracts intact:
 
@@ -28,7 +28,7 @@ The separate nine-phase Stage3 controller leaves the serialized six-phase Stage1
 
 The prototype has six opportunities requiring four accepted hits in each preparation phase, and eight opportunities requiring six accepted cuts in each slicing phase. Early/duplicate/paused/stopped input cannot advance a cut. Too many misses fail the current phase; R retries that phase, removes only its partial slices, restores that fillet, and restores its phase score without farming rewards. Completed earlier preparation is retained. There is no automatic slice top-up.
 
-Esc pauses music and progression. A failed phase offers retry/return directly. Returning before completion preserves the shop work checkpoint and grants no clear reward. The result records the clear once; a save error retains the result and retries the write rather than awarding the reward again.
+Esc pauses music, gestures and progression. Accepted cuts enter a FIFO presentation queue: scoring stays on the judged timestamp, and the mesh/part changes once at knife contact. Head cuts cross the neck, fillet separation draws shallowly along the body, and slicing draws across the cut plane. Pending gestures and detached parts must settle before advancing. Retry/return/disable invalidate outstanding callbacks. A failed phase offers retry/return directly. Returning before completion preserves the shop work checkpoint and grants no clear reward. The result records the clear once; a save error retains the result and retries the write rather than awarding the reward again.
 
 ## Asset and cutting presentation
 
@@ -52,13 +52,13 @@ Generated text normalization is confined to the owning generators. Stage1/2 scen
 
 The latest Owner decision requires Stage3 to use the Stage1/2 presentation. `Stage03HudAuthoring` copies the actual Stage2 canvas and world cutting cues without saving either source stage. It preserves the 1920×1080 canvas scaling, compact CookingFocusHUD, fonts, judgement images, four-note lane, SPACE prompts, world brackets and right-side result card. The former independent Stage3 header and lower note lane are removed.
 
-`Stage03HudView` reads the Stage3 clock and nine-phase state into those shared visuals. The retained Stage01SalmonHUD supplies visual references and judgement presentation only; its legacy timing owner stays unbound and disabled. Stage3 starts automatically and shows the same four-beat countdown before its unchanged first chart note. Stage3's approved E turnover, phase retry, pause and save-error recovery remain Stage3 behavior, styled with the baseline card. The plate camera leaves the baseline result card clear of the served dish.
+`Stage03HudView` reads the Stage3 clock and nine-phase state into those shared visuals. The retained Stage01SalmonHUD supplies visual references and judgement presentation only; its legacy timing owner stays unbound and disabled. Stage3 starts automatically and shows the same four-beat countdown before its first chart note. Stage3's E turnover, phase retry, pause and save-error recovery use the baseline card. The plate camera leaves the result card clear of the served dish.
 
 ## Music prototype
 
 The source remains the complete 230.92-second, 48 kHz stereo vocal WAV, SHA-256 `3572605dec84991aabf1e4911eee443287da0f7e5c403b0a449aee403cf31062`. No trimming, re-encoding or source/meta replacement is performed.
 
-`STAGE03_RHYTHM_ANALYSIS.json` records reproducible spectral-flux/autocorrelation and pulse-grid analysis, an estimated 96.53 BPM, grid phase 0.160 seconds and 62 explicit note times. Notes are snapped to source onsets within 120 ms. The current playable chart runs from 10.176 to 133.184 seconds with the source intro and a short completion presentation. Loading the complete vocal file does not mean that this prototype charts all 230.92 seconds.
+`Tools/Development/AnalyzeStage03Music.py` analyzes the complete PCM with anti-aliased downsampling, centered-window FFT, weighted kick/body/hat spectral flux, tempo/phase fitting, bounded pulse tracking, and measured accents/section coverage. `STAGE03_BEAT_ANALYSIS.json` records the evidence and source hash. `STAGE03_RHYTHM_ANALYSIS.json` contains an estimated 96.54 BPM, fitted grid phase 0.200 seconds, 372 measured pulses and 62 note opportunities from 10.795 to 222.965 seconds. It uses diverse measured accents through the later song, retaining an ending margin for gestures/result. The HUD beat pulse reads the same measured timeline. This session cannot accept audio input; numerical analysis is not described as listening.
 
 The chart is an Owner-approved playable draft. Human listening and rhythm-readability approval remain pending. Stage1/2 source audio, timing, charts and judgement windows are not altered.
 
@@ -66,7 +66,7 @@ The chart is an Owner-approved playable draft. Human listening and rhythm-readab
 
 Day2 sleep offers Continue to Day3. Supported old Day2-complete saves regain Day3 access without repeating past clears, purchases or plate rewards. Mid-cut Stage3 persistence is intentionally unsupported: continuing returns to the saved shop work checkpoint without granting a clear.
 
-Day3: required Junseok first encounter → fish work → result → seated Cheolsu second encounter in the shop → Plugin purchase → placement/practice in home slot 03 → required Jaehoon first encounter on the street → sleep → 3스테이지 클리어.
+Day3: required Junseok first encounter → fish work → result → seated Cheolsu second encounter → exit restaurant and talk to Jaehoon → Plugin purchase → home placement/practice → sleep → 3스테이지 클리어. Older unfinished Day3 checkpoints lacking Jaehoon's dialogue retain their inventory/rewards and return to that conversation before resuming only the remaining equipment steps. All owned, placed equipment supports repeat practice throughout the day without changing story, rewards or save state. Cancel/disable restores camera/body/input ownership; only completing that day's required equipment practice advances its objective.
 
 The supplied dialogue is preserved as speech, inner thought and action. The static NPC's handshake action is presented as an action caption/camera beat; a newly rigged hand animation is not claimed. Future encounters/concert dialogue are not revealed early.
 

@@ -45,6 +45,18 @@ namespace SashimiBoy
                 day = 3;
                 pendingStageClear = 3;
             }
+            // Before the revised Day3 route, Plugin purchase/practice came before
+            // Jaehoon. Retain every item/reward and resume the missing conversation.
+            // Completed days and the former Day2 clear screen are never rewound.
+            if (active && day == 3 && nightsSlept < 3 && pendingStageClear == 0 &&
+                !completedDialogues.Contains("3:jaehoon") &&
+                (beat == DayWorldBeat.Purchase || beat == DayWorldBeat.Placement ||
+                 beat == DayWorldBeat.Practice || beat == DayWorldBeat.Sleep))
+            {
+                beat = DayWorldBeat.EveningConversation;
+                checkpointScene = "Street";
+                checkpointSpawn = "FishShopDialogue";
+            }
         }
     }
 
@@ -72,9 +84,27 @@ namespace SashimiBoy
             save.dayWorld.beat == DayWorldBeat.Sleep && save.dayWorld.pendingStageClear == 0;
         public static bool ShopAvailable(SaveData save) => Active(save) && CanPurchase(save, StageId(save));
         public static bool EquipmentAvailable(SaveData save, EquipmentId equipment) => Active(save) &&
-            Equipment(save) == equipment && save.HasEquipment(equipment) &&
-            (save.dayWorld.beat == DayWorldBeat.Placement && !save.dayWorld.placedEquipment.Contains(equipment.ToString()) ||
-             save.dayWorld.beat == DayWorldBeat.Practice && save.dayWorld.placedEquipment.Contains(equipment.ToString()));
+            (CanPlaceEquipment(save, equipment) || CanPracticeEquipment(save, equipment));
+        public static bool CanPlaceEquipment(SaveData save, EquipmentId equipment) => Active(save) &&
+            save.dayWorld.beat == DayWorldBeat.Placement && Equipment(save) == equipment &&
+            DayThreeDialogueComplete(save) && save.HasEquipment(equipment) &&
+            !save.dayWorld.placedEquipment.Contains(equipment.ToString());
+        public static bool CanPracticeEquipment(SaveData save, EquipmentId equipment) => Active(save) &&
+            save.HasEquipment(equipment) && save.dayWorld.placedEquipment.Contains(equipment.ToString());
+        public static bool IsRequiredPractice(SaveData save, EquipmentId equipment) =>
+            CanPracticeEquipment(save, equipment) && save.dayWorld.beat == DayWorldBeat.Practice &&
+            Equipment(save) == equipment && DayThreeDialogueComplete(save) &&
+            !save.dayWorld.practicedDays.Contains(save.dayWorld.day);
+        private static bool DayThreeDialogueComplete(SaveData save) => !Active(save) || save.dayWorld.day != 3 ||
+            save.dayWorld.completedDialogues.Contains("3:jaehoon");
+        public static bool CanVisitEquipmentShop(SaveData save)
+        {
+            if (!Active(save) || save.dayWorld.day != 3 || save.dayWorld.nightsSlept >= 3 || DayThreeDialogueComplete(save)) return true;
+            var beat = save.dayWorld.beat;
+            return beat != DayWorldBeat.AfterWorkConversation && beat != DayWorldBeat.EveningConversation &&
+                beat != DayWorldBeat.Purchase && beat != DayWorldBeat.Placement &&
+                beat != DayWorldBeat.Practice && beat != DayWorldBeat.Sleep;
+        }
 
         public static bool Wake(SaveData save)
         {
@@ -88,9 +118,20 @@ namespace SashimiBoy
             string id = save.dayWorld.day + ":" + npcId;
             if (save.dayWorld.completedDialogues.Contains(id)) return false;
             save.dayWorld.completedDialogues.Add(id);
-            save.dayWorld.beat = save.dayWorld.beat == DayWorldBeat.MorningConversation ? DayWorldBeat.Work :
-                save.dayWorld.beat == DayWorldBeat.EveningConversation ? DayWorldBeat.Sleep : DayWorldBeat.Purchase;
+            if (save.dayWorld.beat == DayWorldBeat.MorningConversation) save.dayWorld.beat = DayWorldBeat.Work;
+            else if (save.dayWorld.day == 3 && save.dayWorld.beat == DayWorldBeat.AfterWorkConversation)
+                save.dayWorld.beat = DayWorldBeat.EveningConversation;
+            else if (save.dayWorld.day == 3 && save.dayWorld.beat == DayWorldBeat.EveningConversation)
+                save.dayWorld.beat = RemainingEquipmentStep(save);
+            else save.dayWorld.beat = DayWorldBeat.Purchase;
             return true;
+        }
+        private static DayWorldBeat RemainingEquipmentStep(SaveData save)
+        {
+            var equipment = Equipment(save);
+            if (!save.HasEquipment(equipment)) return DayWorldBeat.Purchase;
+            if (!save.dayWorld.placedEquipment.Contains(equipment.ToString())) return DayWorldBeat.Placement;
+            return save.dayWorld.practicedDays.Contains(save.dayWorld.day) ? DayWorldBeat.Sleep : DayWorldBeat.Practice;
         }
         public static bool CanStart(SaveData save, string stageId) => !Active(save) ||
             (save.dayWorld.beat == DayWorldBeat.Work && StageId(save) == stageId && save.IsStageUnlocked(stageId));
@@ -104,14 +145,14 @@ namespace SashimiBoy
             save.dayWorld.checkpointSpawn = "StageReturn";
         }
         public static bool CanPurchase(SaveData save, string stageId) => !Active(save) ||
-            (save.dayWorld.beat == DayWorldBeat.Purchase && StageId(save) == stageId);
+            (save.dayWorld.beat == DayWorldBeat.Purchase && StageId(save) == stageId && DayThreeDialogueComplete(save));
         public static void RecordPurchase(SaveData save, string stageId)
         {
             if (Active(save) && CanPurchase(save, stageId)) save.dayWorld.beat = DayWorldBeat.Placement;
         }
         public static bool Place(SaveData save, EquipmentId equipment)
         {
-            if (!Active(save) || save.dayWorld.beat != DayWorldBeat.Placement || Equipment(save) != equipment || !save.HasEquipment(equipment)) return false;
+            if (!CanPlaceEquipment(save, equipment)) return false;
             string id = equipment.ToString();
             if (!save.dayWorld.placedEquipment.Contains(id)) save.dayWorld.placedEquipment.Add(id);
             save.dayWorld.beat = DayWorldBeat.Practice;
@@ -119,16 +160,16 @@ namespace SashimiBoy
         }
         public static bool Practice(SaveData save, EquipmentId equipment)
         {
-            if (!Active(save) || save.dayWorld.beat != DayWorldBeat.Practice || Equipment(save) != equipment ||
-                !save.dayWorld.placedEquipment.Contains(equipment.ToString()) || save.dayWorld.practicedDays.Contains(save.dayWorld.day)) return false;
+            if (!IsRequiredPractice(save, equipment)) return false;
             save.dayWorld.practicedDays.Add(save.dayWorld.day);
-            save.dayWorld.beat = save.dayWorld.day == 3 ? DayWorldBeat.EveningConversation : DayWorldBeat.Sleep;
+            save.dayWorld.beat = DayWorldBeat.Sleep;
             return true;
         }
         public static bool Sleep(SaveData save)
         {
             if (!Active(save) || save.dayWorld.beat != DayWorldBeat.Sleep || !save.dayWorld.practicedDays.Contains(save.dayWorld.day) ||
-                !save.dayWorld.placedEquipment.Contains(Equipment(save).ToString()) || save.dayWorld.nightsSlept >= save.dayWorld.day) return false;
+                !save.dayWorld.placedEquipment.Contains(Equipment(save).ToString()) || !DayThreeDialogueComplete(save) ||
+                save.dayWorld.nightsSlept >= save.dayWorld.day) return false;
             save.dayWorld.nightsSlept = save.dayWorld.day;
             save.dayWorld.pendingStageClear = save.dayWorld.day;
             save.dayWorld.checkpointScene = Home;
@@ -158,7 +199,7 @@ namespace SashimiBoy
                 case DayWorldBeat.Purchase: return "악기 상점에서 " + ContentDefaults.FindEquipment(Equipment(save)).displayName + " 구매하기";
                 case DayWorldBeat.Placement: return "집으로 돌아가 구매한 장비 배치하기";
                 case DayWorldBeat.Practice: return "배치한 장비 앞에서 짧게 연습하기";
-                case DayWorldBeat.EveningConversation: return "퇴근길에서 재훈과 대화하기";
+                case DayWorldBeat.EveningConversation: return "횟집 밖에서 재훈과 대화한 뒤 악기 상점 가기";
                 case DayWorldBeat.Sleep: return "침대에서 잠들기";
                 default: return "현재 준비된 스테이지를 모두 마쳤습니다";
             }

@@ -88,12 +88,21 @@ namespace SashimiBoy.Tests
             double[] notes = Notes;
             for (int i = 0; i < needed; i++)
                 Assert.That(Call(controller, "SubmitAt", notes[i]), Is.EqualTo(true), "phase " + Value<int>(Run, "Phase") + ", note " + i);
+            FinishVisuals();
+        }
+
+        void FinishVisuals()
+        {
+            // Advance the real presentation API, not a replacement cutting path.
+            Call(controller,"AdvancePresentation",5f);
+            Assert.That(Value<int>(controller,"PendingVisualCuts"),Is.Zero);
+            Call(Assembly,"AdvancePresentation",1f);
         }
 
         IEnumerator AdvanceCurrentPhase()
         {
             int previous = Value<int>(Run, "Phase");
-            Call(Assembly, "AdvancePresentation", 1f);
+            FinishVisuals();
             Call(controller, "TickAt", Notes.Last() + 1000d);
             if (previous == 2)
             {
@@ -183,6 +192,10 @@ namespace SashimiBoy.Tests
             int cursor = Value<int>(controller, "NoteCursor");
             Call(controller, "TogglePause");
             Assert.That(Value<bool>(controller, "Paused"), Is.True);
+            var cooking=Get(controller,"cooking");
+            float frozen=Value<float>(cooking,"MotionProgress01");
+            Call(controller,"AdvancePresentation",5f);
+            Assert.That(Value<float>(cooking,"MotionProgress01"),Is.EqualTo(frozen));
             Assert.That(Call(controller, "SubmitAt", Notes[1]), Is.EqualTo(false));
             Call(controller, "TickAt", Notes.Last() + 1000d);
             Assert.That(Value<int>(controller, "NoteCursor"), Is.EqualTo(cursor));
@@ -234,10 +247,22 @@ namespace SashimiBoy.Tests
             Vector3 acceptedPlane = Value<Vector3>(surface, "NextCutPosition");
             double note = Notes[0];
             Assert.That(Call(controller, "SubmitAt", note), Is.EqualTo(true));
+            Assert.That(Value<int>(Run,"Hits"),Is.EqualTo(1),"Judgement and score are immediate.");
+            Assert.That(Value<int>(surface,"CutCount"),Is.Zero,"The fillet is intact until knife contact.");
+            Assert.That(Value<int>(controller,"SpawnedSlices"),Is.Zero);
+            Assert.That(filter.sharedMesh,Is.SameAs(meshes[0]));
+            Call(controller,"AdvancePresentation",.18f);
+            Assert.That(Value<int>(surface,"CutCount"),Is.Zero);
+            Call(controller,"TogglePause");
+            var pausedContact=(Action)Get(cooking,"contactAction");
+            pausedContact();Call(controller,"AdvancePresentation",3f);
+            Assert.That(Value<int>(surface,"CutCount"),Is.Zero,"Even a retained callback cannot commit while paused.");
+            Call(controller,"TogglePause");
+            Call(controller,"AdvancePresentation",.04f);
             Assert.That(Value<int>(surface, "CutCount"), Is.EqualTo(1));
             Assert.That(filter.sharedMesh, Is.SameAs(meshes[1]), "The accepted cut removes real mesh geometry.");
             Assert.That(Value<bool>(cooking, "IsStriking"), Is.True);
-            Vector3 strike = (Vector3)Get(cooking, "workPoint");
+            Vector3 strike = Value<Vector3>(cooking,"CurrentContactPoint");
             Vector3 nextPlane = Value<Vector3>(surface, "NextCutPosition");
             Assert.That(Vector3.Distance(strike, acceptedPlane), Is.LessThan(.0001f), "The current stroke uses the plane accepted before the mesh advances.");
             Assert.That(Vector3.Distance(strike, nextPlane), Is.GreaterThan(.0001f), "Advancing the remaining mesh must not move an in-flight stroke to the next plane.");
@@ -284,6 +309,7 @@ namespace SashimiBoy.Tests
             int completedScore = Value<int>(controller, "Score");
             double[] notes = Notes;
             for (int i = 0; i < 3; i++) Assert.That(Call(controller, "SubmitAt", notes[i]), Is.EqualTo(true));
+            FinishVisuals();
             Assert.That(Value<int>(controller, "SpawnedSlices"), Is.EqualTo(9));
             Call(controller, "TickAt", notes.Last() + 1000d);
             Assert.That(Value<bool>(Run, "Failed"), Is.True);
@@ -315,12 +341,16 @@ namespace SashimiBoy.Tests
             Assert.That(Value<int>(controller, "SpawnedSlices"), Is.EqualTo(18));
             double[] finalNotes = Notes;
             for (int i = 0; i < 5; i++) Assert.That(Call(controller, "SubmitAt", finalNotes[i]), Is.EqualTo(true));
+            FinishVisuals();
             Assert.That(Value<int>(controller, "SpawnedSlices"), Is.EqualTo(23));
             Assert.That(Value<bool>(Run, "Completed"), Is.False);
             Assert.That(Value<bool>(controller, "ResultShown"), Is.False);
             Assert.That(((IList)Get(Current, "clearedStageIds")).Count, Is.Zero);
             Assert.That(Call(controller, "SubmitAt", finalNotes[5]), Is.EqualTo(true));
             Assert.That(Call(controller, "SubmitAt", finalNotes[5]), Is.EqualTo(false));
+            Call(controller,"TickAt",finalNotes.Last()+1000d);
+            Assert.That(Value<bool>(Run,"Completed"),Is.False,"The last accepted note cannot finish before contact.");
+            Assert.That(Value<int>(controller,"SpawnedSlices"),Is.EqualTo(23));
             yield return AdvanceCurrentPhase();
             Assert.That(Value<int>(controller, "SpawnedSlices"), Is.EqualTo(24));
             Assert.That(Value<int>(Run, "TotalSlices"), Is.EqualTo(24));
@@ -364,13 +394,63 @@ namespace SashimiBoy.Tests
             StartRun();
             yield return ReachPhase(5);
             Assert.That(Call(controller, "SubmitAt", Notes[0]), Is.EqualTo(true));
-            Assert.That(Value<int>(controller, "SpawnedSlices"), Is.EqualTo(1));
+            Assert.That(Value<int>(controller, "SpawnedSlices"), Is.Zero,"Abort before contact cancels the accepted presentation.");
+            var cooking=Get(controller,"cooking");
+            var lateContact=(Action)Get(cooking,"contactAction");
             Call(controller, "ReturnToShop");
+            lateContact();
             yield return WaitScene("FishShopDialogue");
             Assert.That(Get(Progress, "beat").ToString(), Is.EqualTo("Work"));
             Assert.That(((IList)Get(Current, "clearedStageIds")).Count, Is.Zero);
             Assert.That(((IList)Get(Current, "fishPlates")).Count, Is.Zero);
             Assert.That(Get(Progress, "checkpointScene"), Is.EqualTo("FishShopDialogue"));
+        }
+
+        [UnityTest]
+        public IEnumerator QueuedNotes_KeepJudgementImmediate_ButCommitSixDistinctSlicesInOrderAtContact()
+        {
+            StartRun();yield return ReachPhase(5);
+            var surface=Surfaces[0];double[] notes=Notes;
+            for(int i=0;i<6;i++)Assert.That(Call(controller,"SubmitAt",notes[i]),Is.EqualTo(true));
+            Assert.That(Value<int>(Run,"Hits"),Is.EqualTo(6));
+            Assert.That(Value<int>(controller,"PendingVisualCuts"),Is.EqualTo(6));
+            Assert.That(Value<int>(controller,"SpawnedSlices"),Is.Zero);
+            Assert.That(Value<int>(surface,"CutCount"),Is.Zero);
+            Call(controller,"TickAt",notes.Last()+1000d);
+            Assert.That(Value<int>(Run,"Phase"),Is.EqualTo(5));
+            Call(controller,"AdvancePresentation",.22f);
+            Assert.That(Value<int>(surface,"CutCount"),Is.EqualTo(1));
+            Assert.That(Value<int>(controller,"SpawnedSlices"),Is.EqualTo(1));
+            FinishVisuals();
+            Assert.That(Value<int>(surface,"CutCount"),Is.EqualTo(6));
+            Assert.That(Value<int>(controller,"SpawnedSlices"),Is.EqualTo(6));
+            Call(controller,"AdvancePresentation",5f);
+            Assert.That(Value<int>(controller,"SpawnedSlices"),Is.EqualTo(6),"No late duplicate contact.");
+        }
+
+        [UnityTest]
+        public IEnumerator ResetAndRetryBeforeContact_CancelOldCallbacksAndDoNotSkipHeadRemoval()
+        {
+            StartRun();double[] notes=Notes;
+            for(int i=0;i<4;i++)Assert.That(Call(controller,"SubmitAt",notes[i]),Is.EqualTo(true));
+            Call(controller,"AdvancePresentation",1.33f); // The fourth contact is the actual head-removal command.
+            var cooking=Get(controller,"cooking");var stale=(Action)Get(cooking,"contactAction");
+            Assert.That(Value<bool>(Run,"PhaseSatisfied"),Is.True);
+            Assert.That(Call(Assembly,"get_BodyState").ToString(),Is.EqualTo("WholeFish"));
+            Call(controller,"Fail","fixture interrupted pre-contact head stroke");
+            Assert.That(Call(controller,"RetryPhase"),Is.EqualTo(true));
+            Assert.That(Value<int>(Run,"Hits"),Is.Zero,"Uncommitted preparation must be cut again.");
+            stale();Call(controller,"AdvancePresentation",5f);
+            Assert.That(Call(Assembly,"get_BodyState").ToString(),Is.EqualTo("WholeFish"));
+            Assert.That(Value<int>(controller,"PendingVisualCuts"),Is.Zero);
+            Assert.That(Call(controller,"SubmitAt",Notes[0]),Is.EqualTo(true));
+            stale=(Action)Get(cooking,"contactAction");
+            Call(controller,"ResetRun");stale();Call(cooking,"AdvancePresentation",5f);
+            Assert.That(Value<int>(Run,"Hits"),Is.Zero);
+            Assert.That(Value<int>(controller,"SpawnedSlices"),Is.Zero);
+            Assert.That(Call(Assembly,"get_BodyState").ToString(),Is.EqualTo("WholeFish"));
+            Assert.That(Value<bool>(cooking,"IsStriking"),Is.False);
+            yield return null;
         }
     }
 }

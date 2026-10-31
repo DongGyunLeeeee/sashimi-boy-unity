@@ -39,9 +39,13 @@ namespace SashimiBoy
                 body.leftTarget.z = Mathf.Min(body.leftTarget.z,-.16f);
                 body.leftRotation = Quaternion.Euler(0f, 90f, 0f) * body.left.handWorldRest;
             }
+            // Both the retained body and the provided replacement use their
+            // actual wrist reach. No tool target, bone length or root height is
+            // changed to make the longer fillet or later tool phases reachable.
+            if (active) body.ApplyWorkingPoseAtRoot(body.transform.position);
+            else body.ApplyPose();
             if (gameCamera != null)
             {
-                body.ApplyPose();
                 gameCamera.transform.position = active && body.eyeAnchor != null ? body.eyeAnchor.position : body.transform.position + new Vector3(0f,eyeHeight,.27f);
                 float yaw = 0f;
                 bool openFish = openFishFocus != null && (butchery.VisiblePhase == Semantics.FishPhase.Fins || butchery.VisiblePhase == Semantics.FishPhase.Spine);

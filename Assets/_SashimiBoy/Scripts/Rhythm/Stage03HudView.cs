@@ -83,7 +83,7 @@ namespace SashimiBoy
             Set(shared.phaseQualityText,$"현재 {run.Hits:0.00}점");
             float threshold=run.RequiredHits/(float)phase.noteTimesMs.Length;
             Set(shared.phaseRequirementText,$"통과 {run.RequiredHits:0.00} · {threshold*100:0}%");
-            Set(shared.phaseRemainingText,run.PhaseSatisfied?"손질 완료":"남은 노트 "+Mathf.Max(0,phase.noteTimesMs.Length-controller.NoteCursor));
+            Set(shared.phaseRemainingText,run.PhaseSatisfied?(controller.PendingVisualCuts>0?"칼 동작 마무리":"손질 완료"):"남은 노트 "+Mathf.Max(0,phase.noteTimesMs.Length-controller.NoteCursor));
             if(shared.phaseQualityFill!=null)
             {
                 shared.phaseQualityFill.fillAmount=run.Hits/(float)phase.noteTimesMs.Length;
@@ -128,7 +128,8 @@ namespace SashimiBoy
                 float alpha=(i==0?1:Mathf.Max(.2f,.62f-i*.14f))*(resting ? .58f : 1);
                 dot.color=i==0?new Color(1,.82f,.24f,alpha):new Color(.36f,.92f,1,alpha);count++;
             }
-            float beatPulse=Mathf.Pow(1-Mathf.Clamp01((float)Math.Abs(now/beat-Math.Round(now/beat))*2),3);
+            float beatPhase=controller.chart.BeatPhase01(now);
+            float beatPulse=Mathf.Pow(1-Mathf.Clamp01(Mathf.Min(beatPhase,1-beatPhase)*2),3);
             if(hitCursor!=null)
             {
                 hitCursor.color=resting?new Color(.35f,.82f,.92f,Mathf.Lerp(.2f,.5f,beatPulse)):
@@ -162,7 +163,7 @@ namespace SashimiBoy
             foreach(var renderer in cueRenderers)Paint(renderer,color);
             for(int i=0;i<ghostLines.Length;i++)
             {
-                bool show=controller.Run.Phase>=5&&controller.fillets[controller.Run.Phase-5].CutCount+i+1<6;
+                bool show=controller.Run.Phase>=5&&controller.Run.Hits+i+1<6;
                 if(ghostLines[i]==null)continue;ghostLines[i].gameObject.SetActive(show);
                 if(show)ghostLines[i].position=CutPoint(i+1);
                 if(show&&i<ghostRenderers.Length)Paint(ghostRenderers[i],new Color(.35f,.92f,1,Mathf.Max(.2f,.62f-i*.14f)));
@@ -170,10 +171,10 @@ namespace SashimiBoy
         }
         private Vector3 CutPoint(int offset)
         {
-            if(controller.Run.Phase<5)return controller.PreparationWorkPoint(controller.Run.Phase)+Vector3.up*.004f;
+            if(controller.Run.Phase<5)return controller.NextWorkContactPoint+Vector3.up*.004f;
             var surface=controller.fillets[controller.Run.Phase-5];
             var bounds=surface.cutCache.remainingMeshes[0].bounds;
-            float z=surface.cutCache.cutPositions[Mathf.Clamp(surface.CutCount+offset,0,5)];
+            float z=surface.cutCache.cutPositions[Mathf.Clamp(controller.Run.Hits+offset,0,5)];
             return surface.meshFilter.transform.TransformPoint(new Vector3(bounds.center.x,bounds.max.y,z))+Vector3.up*.004f;
         }
         private void PoseBracket(Transform left,Transform right,float approach,float multiplier)

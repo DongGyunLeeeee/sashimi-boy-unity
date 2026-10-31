@@ -75,7 +75,7 @@ namespace SashimiBoy.Tests
             var body = (Component)RuntimeReflection.GetField(cooking,"body");
             Assert.That(body,Is.Not.Null);
             Assert.That(body.GetComponentInChildren<Animator>().isHuman,Is.True);
-            Assert.That(body.GetComponentsInChildren<SkinnedMeshRenderer>().Length,Is.GreaterThanOrEqualTo(3));
+            Assert.That(body.GetComponentsInChildren<SkinnedMeshRenderer>().Length,Is.GreaterThanOrEqualTo(2), "Supplied body and selected Owner face must both be skinned.");
             float gripError = (float)RuntimeReflection.Invoke(body,"get_MaximumGripError");
             if (gripError >= .045f) Debug.Log("[KevinPose] " + body.transform.position + " right target=" + RuntimeReflection.GetField(body,"rightTarget") + " left target=" + RuntimeReflection.GetField(body,"leftTarget"));
             Assert.That(gripError,Is.LessThan(.045f),"The real skinned palms must reach their tool/fish targets.");

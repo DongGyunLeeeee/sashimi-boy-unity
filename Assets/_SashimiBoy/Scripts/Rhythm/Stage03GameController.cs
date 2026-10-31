@@ -35,10 +35,22 @@ namespace SashimiBoy
         public bool ClearRecorded {get;private set;}
         public int NoteCursor {get;private set;}
         public int SpawnedSlices => slices.Count;
+        public int PendingVisualCuts=>visualCuts.Count+(activeVisualCut!=null?1:0);
+        public Vector3 NextWorkContactPoint=>Run.Completed?Vector3.zero:CutContactPoint(Run.Phase,Mathf.Min(Run.Hits,Run.RequiredHits-1));
         public double NextNoteMs => !Started||Run.Completed||Run.Failed||Run.WaitingForTurn||Run.PhaseSatisfied||
             NoteCursor>=chart.phases[Run.Phase].noteTimesMs.Length ? -1d : chart.phases[Run.Phase].noteTimesMs[NoteCursor];
         private readonly List<GameObject> slices=new List<GameObject>();
         private readonly List<int> sliceOwners=new List<int>();
+        private sealed class VisualCut
+        {
+            public int generation,phase,ordinal;
+            public Vector3 point,direction;
+            public bool committed;
+        }
+        private readonly Queue<VisualCut> visualCuts=new Queue<VisualCut>();
+        private VisualCut activeVisualCut;
+        private int presentationGeneration;
+        private Vector3 fishLongAxisLocal=Vector3.right;
         private int phaseBaseScore;
         private int hitAttempts;
         private int preparedFillet=-1;
@@ -60,6 +72,8 @@ namespace SashimiBoy
         }
         private void Update()
         {
+            cooking.SetPaused(Paused||Run.Failed||!Started||returning||
+                (!clock.IsRunning&&clock.State!=AudioClockState.Finished&&!Run.WaitingForTurn));
             if(!Started){if(Input.GetKeyDown(KeyCode.Return))StartRun();RefreshHUD();return;}
             if(ResultShown)
             {
@@ -74,8 +88,8 @@ namespace SashimiBoy
                 resultDelay-=Time.deltaTime;if(resultDelay<=0)ShowResult();
                 RefreshHUD();return;
             }
-            bool canPresent=clock.State==AudioClockState.Playing||clock.State==AudioClockState.Scheduled||Run.WaitingForTurn;
-            if(canPresent){assembly.AdvancePresentation(Time.deltaTime);GroundBody();}
+            bool canPresent=clock.IsRunning||clock.State==AudioClockState.Finished||Run.WaitingForTurn;
+            if(canPresent)AdvancePresentation(Time.deltaTime);
             if(Run.WaitingForTurn)
             {
                 if(!assembly.IsTurningOver&&!assembly.IsBackFacing&&Input.GetKeyDown(KeyCode.E))assembly.TryTurnOver();
@@ -86,11 +100,11 @@ namespace SashimiBoy
                 RefreshHUD();return;
             }
             if(clock.State==AudioClockState.Faulted){Fail("음원 재생을 확인한 뒤 R로 다시 시도하세요.");RefreshHUD();return;}
-            if(clock.State!=AudioClockState.Playing&&clock.State!=AudioClockState.Scheduled){RefreshHUD();return;}
+            if(!clock.IsRunning&&clock.State!=AudioClockState.Finished){RefreshHUD();return;}
             TickAt(clock.SongTimeMs);
             if(Run.Phase>=5&&Run.Phase<9&&!Run.PhaseSatisfied&&!Run.Failed&&!cooking.IsStriking)
                 cooking.SetWorkPoint(fillets[Run.Phase-5].NextCutPosition);
-            if(Input.GetKeyDown(KeyCode.Space))SubmitAt(clock.SongTimeMs);
+            if(clock.IsRunning&&Input.GetKeyDown(KeyCode.Space))SubmitAt(clock.SongTimeMs);
             RefreshHUD();
         }
         public bool StartRun()
@@ -98,18 +112,23 @@ namespace SashimiBoy
             if(Started||returning)return false;
             Started=true;startPanel.SetActive(false);
             if(!clock.Play()){Fail("음원을 재생하지 못했습니다.");return false;}
+            cooking.SetPaused(false);
             return true;
         }
         public void StartFromButton()=>StartRun();
         public void RetryFromButton()=>RetryPhase();
         public void ResetRun()
         {
+            CancelPendingCuts();
             cooking.ResetPresentation();
             clock.Stop();Run.Reset();Score=Combo=MaxCombo=NoteCursor=phaseBaseScore=MissCount=hitAttempts=0;
             Started=Paused=ResultShown=ClearRecorded=returning=clearApplied=false;resultDelay=-1;preparedFillet=-1;
             for(int i=0;i<fillets.Length;i++){fillets[i].ResetCuts();fillets[i].SetCuttingEnabled(false);}
             assembly.ResetAssembly();
             GroundBody();
+            Bounds whole=PreparationBodyBounds(0);
+            Vector3 longAxis=whole.size.x>=whole.size.z?Vector3.right:Vector3.forward;
+            fishLongAxisLocal=assembly.bodyPivot.InverseTransformDirection(longAxis);
             foreach(var slice in slices)if(slice!=null)Destroy(slice);
             slices.Clear();sliceOwners.Clear();
             startPanel.SetActive(true);pausePanel.SetActive(false);failurePanel.SetActive(false);resultPanel.SetActive(false);
@@ -119,7 +138,8 @@ namespace SashimiBoy
         }
         public void TickAt(double nowMs)
         {
-            if(!Started||Paused||Run.Failed||Run.Completed||Run.WaitingForTurn||resultDelay>=0||!clock.IsRunning)return;
+            if(!Started||Paused||Run.Failed||Run.Completed||Run.WaitingForTurn||resultDelay>=0||
+               (!clock.IsRunning&&clock.State!=AudioClockState.Finished)||double.IsNaN(nowMs)||double.IsInfinity(nowMs))return;
             var phase=chart.phases[Run.Phase];
             while(NoteCursor<phase.noteTimesMs.Length&&nowMs-phase.noteTimesMs[NoteCursor]-Offset>WindowMs)
             {
@@ -128,6 +148,9 @@ namespace SashimiBoy
             }
             if(nowMs<phase.noteTimesMs[phase.noteTimesMs.Length-1]+Offset+WindowMs+400d)return;
             if(!Run.PhaseSatisfied){Fail("이 구간을 다시 연습해 보세요. 앞서 마친 손질은 유지됩니다.");return;}
+            // An accepted note is immediate, but the mesh and detached part are
+            // committed only at knife contact. Never enter another phase early.
+            if(PendingVisualCuts>0||PartsAreMoving())return;
             if(!Run.TryAdvance())
             {
                 if(Run.WaitingForTurn)clock.Pause();
@@ -147,30 +170,113 @@ namespace SashimiBoy
         public bool SubmitAt(double inputMs)
         {
             if(!Started||Paused||ResultShown||Run.Failed||Run.Completed||Run.WaitingForTurn||
-               Run.PhaseSatisfied||!clock.IsRunning||NextNoteMs<0)return false;
+               Run.PhaseSatisfied||!clock.IsRunning||NextNoteMs<0||double.IsNaN(inputMs)||double.IsInfinity(inputMs))return false;
             double adjusted=inputMs-NextNoteMs-Offset;
             if(adjusted < -WindowMs || adjusted>WindowMs)return false;
             var judged=RhythmJudge.Judge(chart.bpm,inputMs,NextNoteMs,Offset,RhythmDifficulty.Casual);
             if(!judged.IsHit)return false;
             int phase=Run.Phase;
-            Vector3 strikePoint=phase>=5?fillets[phase-5].NextCutPosition:PreparationWorkPoint(phase);
-            if(phase>=5&&!fillets[phase-5].TryCut(Run.Hits))return false;
+            int ordinal=Run.Hits;
+            var cut=new VisualCut{generation=presentationGeneration,phase=phase,ordinal=ordinal,
+                point=CutContactPoint(phase,ordinal),direction=CutDirection(phase)};
             if(!Run.TryHit())throw new InvalidOperationException("Stage3 state rejected a validated cut.");
             NoteCursor++;Combo++;MaxCombo=Mathf.Max(MaxCombo,Combo);hitAttempts++;Score+=(int)(1000*judged.ScoreCoefficient);
             if(hudView!=null)hudView.ShowJudgement(judged.grade,adjusted);
             else ShowJudge(judged.grade.ToString(),new Color(1,.78f,.25f));
-            cooking.SetWorkPoint(strikePoint);cooking.Pulse();
+            visualCuts.Enqueue(cut);StartNextStroke();
+            return true;
+        }
+        public void AdvancePresentation(float deltaSeconds)
+        {
+            if(!Started||Paused||Run.Failed||ResultShown||returning||deltaSeconds<=0||
+                float.IsNaN(deltaSeconds)||float.IsInfinity(deltaSeconds))return;
+            if(!clock.IsRunning&&clock.State!=AudioClockState.Finished&&!Run.WaitingForTurn)
+            {cooking.SetPaused(true);return;}
+            cooking.SetPaused(false);
+            float remaining=deltaSeconds;
+            // At most six commands can exist in a phase; this also bounds a
+            // synthetic large-delta call without dropping real accepted notes.
+            for(int i=0;i<8&&remaining>0;i++)
+            {
+                StartNextStroke();
+                if(activeVisualCut==null)break;
+                float step=Mathf.Min(remaining,cooking.RemainingStrokeSeconds);
+                if(step<=0)break;
+                cooking.AdvancePresentation(step);remaining-=step;
+                if(Run.Failed||returning)break;
+            }
+            if(!Run.Failed&&!returning){assembly.AdvancePresentation(deltaSeconds);GroundBody();}
+        }
+        private void StartNextStroke()
+        {
+            if(activeVisualCut!=null||visualCuts.Count==0||Paused||Run.Failed||returning)return;
+            var cut=visualCuts.Dequeue();activeVisualCut=cut;
+            if(!cooking.BeginStroke(cut.phase,cut.point,cut.direction,()=>CommitVisualCut(cut),()=>FinishVisualCut(cut)))
+                Fail("칼 동작을 다시 시도해 주세요.");
+        }
+        private void CommitVisualCut(VisualCut cut)
+        {
+            if(cut.generation!=presentationGeneration||cut!=activeVisualCut||cut.committed||Paused||Run.Failed||returning||cut.phase!=Run.Phase)return;
+            if(cut.phase>=5)
+            {
+                int owner=cut.phase-5;
+                if(!fillets[owner].TryCut(cut.ordinal)){Fail("필렛 절단을 다시 시도해 주세요.");return;}
+                cut.committed=true;SpawnSlice(owner);UpdateFilletSupport(owner);
+                if(!Run.PhaseSatisfied)cooking.SetWorkPoint(fillets[owner].NextCutPosition);
+            }
+            else
+            {
+                cut.committed=true;
+                if(cut.ordinal==3)
+                {
+                    bool changed=cut.phase==0?assembly.TryRemoveHead():assembly.TrySeparateFillet(cut.phase-1);
+                    if(!changed)Fail("생선 손질 동작을 다시 시도해 주세요.");
+                }
+            }
+        }
+        private void FinishVisualCut(VisualCut cut)
+        {
+            if(cut.generation!=presentationGeneration||cut!=activeVisualCut)return;
+            activeVisualCut=null;
+            if(cut.phase>=5&&cut.phase==Run.Phase&&!Run.PhaseSatisfied)
+                cooking.SetWorkPoint(fillets[cut.phase-5].NextCutPosition);
+        }
+        private void CancelPendingCuts()
+        {
+            presentationGeneration++;visualCuts.Clear();activeVisualCut=null;
+            if(cooking!=null)cooking.CancelStroke();
+        }
+        private bool PartsAreMoving()
+        {
+            if(assembly.head.IsMoving)return true;
+            foreach(var part in assembly.fillets)if(part.IsMoving)return true;
+            return false;
+        }
+        private bool PreparationCommitted(int phase)=>phase==0?assembly.HeadRemoved:assembly.DetachedFilletCount>=phase;
+        private Vector3 CutDirection(int phase)
+        {
+            if(phase>=5)return fillets[phase-5].meshFilter.transform.right;
+            Vector3 longitudinal=Vector3.ProjectOnPlane(assembly.bodyPivot.TransformDirection(fishLongAxisLocal),Vector3.up).normalized;
+            return phase==0?Vector3.Cross(Vector3.up,longitudinal):longitudinal;
+        }
+        private Vector3 CutContactPoint(int phase,int ordinal)
+        {
             if(phase>=5)
             {
-                SpawnSlice(phase-5);
-                UpdateFilletSupport(phase-5);
+                var surface=fillets[phase-5];var bounds=surface.cutCache.remainingMeshes[0].bounds;
+                float z=surface.cutCache.cutPositions[Mathf.Clamp(ordinal,0,5)];
+                return surface.meshFilter.transform.TransformPoint(new Vector3(bounds.center.x,bounds.max.y,z));
             }
-            else if(Run.PhaseSatisfied)
-            {
-                bool changed=phase==0?assembly.TryRemoveHead():assembly.TrySeparateFillet(phase-1);
-                if(!changed)throw new InvalidOperationException("Stage3 body transition rejected phase "+phase);
-            }
-            return true;
+            var body=PreparationBodyBounds(phase);var point=PreparationWorkPoint(phase);
+            float distance=(ordinal/3f-.5f)*(phase==0?Mathf.Min(body.size.x,body.size.z)*.35f:Mathf.Max(body.size.x,body.size.z)*.4f);
+            point+=CutDirection(phase)*distance;
+            point.x=Mathf.Clamp(point.x,body.min.x,body.max.x);point.z=Mathf.Clamp(point.z,body.min.z,body.max.z);
+            return point;
+        }
+        private Bounds PreparationBodyBounds(int phase)
+        {
+            var renderers=assembly.bodyStates[Mathf.Min(phase,5)].GetComponentsInChildren<Renderer>(true);
+            Bounds bounds=renderers[0].bounds;foreach(var renderer in renderers)bounds.Encapsulate(renderer.bounds);return bounds;
         }
         private void PreparePhase()
         {
@@ -246,6 +352,7 @@ namespace SashimiBoy
         }
         private void Fail(string message)
         {
+            CancelPendingCuts();cooking.SetPaused(true);
             Run.Fail();clock.Pause();SetSurfacesEnabled(false);failurePanel.SetActive(true);
             if(hudView!=null)hudView.ShowFailure(message);
             if(judgementText!=null)judgementText.text=message;
@@ -254,7 +361,8 @@ namespace SashimiBoy
         {
             if(!Run.Failed||Paused||ResultShown)return false;
             int phase=Run.Phase;
-            bool preservePreparation=phase<5&&Run.PhaseSatisfied;
+            bool preservePreparation=phase<5&&Run.PhaseSatisfied&&PreparationCommitted(phase);
+            CancelPendingCuts();
             if(phase>=5)
             {
                 int owner=phase-5;fillets[owner].ResetCuts();
@@ -267,19 +375,23 @@ namespace SashimiBoy
             if(hudView!=null)hudView.ResetForRetry();
             double restart=Math.Max(0,chart.phases[phase].noteTimesMs[0]-2500d);
             if(!clock.PlayFromMilliseconds(restart)){Fail("음원 재생을 확인해 주세요.");return false;}
+            cooking.SetPaused(false);
             PreparePhase();return true;
         }
         public void TogglePause()
         {
             if(!Started||ResultShown||returning||Run.Completed||Run.Failed)return;
             Paused=!Paused;pausePanel.SetActive(Paused);
+            cooking.SetPaused(Paused);
             if(Paused){clock.Pause();SetSurfacesEnabled(false);}
             else if(!Run.Failed&&!Run.WaitingForTurn){clock.Resume();if(Run.Phase>=5)fillets[Run.Phase-5].SetCuttingEnabled(true);}
         }
         private void ShowResult()
         {
-            if(ResultShown||!Run.Completed||Run.TotalSlices!=24||slices.Count!=24)return;
-            ResultShown=true;resultDelay=-1;clock.Stop();resultPanel.SetActive(true);
+            if(ResultShown||!Run.Completed||Run.TotalSlices!=24||slices.Count!=24||PendingVisualCuts>0)return;
+            // Let the approved source's short outro finish beneath the result
+            // instead of truncating its remaining vocals. Returning stops it.
+            ResultShown=true;resultDelay=-1;resultPanel.SetActive(true);
             TrySaveClear();
         }
         private bool TrySaveClear()
@@ -315,7 +427,7 @@ namespace SashimiBoy
             if(returning)return;
             if(ResultShown&&!TrySaveClear())return;
             if(SceneTransitionService.Instance==null||SceneTransitionService.Instance.IsLoading)return;
-            returning=true;clock.Stop();Time.timeScale=1;
+            returning=true;CancelPendingCuts();cooking.SetPaused(true);clock.Stop();Time.timeScale=1;
             if(DayWorldFlow.Active)DayWorldFlow.Instance.LoadWorld(SashimiBoyConstants.Scenes.FishShopDialogue,"StageReturn");
             else Stage01ShopReturn.Request();
         }
@@ -351,6 +463,6 @@ namespace SashimiBoy
             }
             if(judgeTimer>0){judgeTimer-=Time.unscaledDeltaTime;if(judgeTimer<=0&&judgementText!=null)judgementText.text="";}
         }
-        private void OnDisable(){if(clock!=null)clock.Stop();}
+        private void OnDisable(){CancelPendingCuts();if(clock!=null)clock.Stop();}
     }
 }
