@@ -312,7 +312,11 @@ namespace SashimiBoy.EditorTools
                 if(Path.GetExtension(path)==".asset"){using(var input=File.OpenRead(path))if(input.ReadByte()!='%')continue;}
                 string before=File.ReadAllText(path);
                 string after=string.Join("\n",File.ReadAllLines(path).Select(line=>line.TrimEnd(' ','\t')))+"\n";
-                if(before!=after)File.WriteAllText(path,after,new System.Text.UTF8Encoding(false));
+                if(before!=after)
+                {
+                    AssetDatabase.ReleaseCachedFileHandles();
+                    File.WriteAllText(path,after,new System.Text.UTF8Encoding(false));
+                }
             }
         }
         private static System.Collections.Generic.IEnumerable<T> All<T>(Scene scene)where T:Component=>scene.GetRootGameObjects().SelectMany(g=>g.GetComponentsInChildren<T>(true));

@@ -1,7 +1,23 @@
 {
     "issue": 87,
-    "algorithm": "Stage03FilletClip-1",
-    "contract": "Six equal longitudinal cuts; immutable original coordinate frame; cut normal -Z; original skin UV and normals retained; source bytes/importers untouched.",
+    "algorithm": "Stage03FilletClip-2",
+    "contract": "Six equal longitudinal cuts; immutable original coordinate frame; cut normal -Z; original skin UV/normals retained; continuous 0..1 planar cap UV; opaque cap albedo sampled from the supplied SashimiSlice flesh; source bytes/importers untouched.",
+    "capFleshReference": {
+        "materialPath": "Assets/_SashimiBoy/Art/Generated/Stage03Flounder/Materials/MAT_SashimiSlice.mat",
+        "texturePath": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/SashimiSlice/raw_chicken_breast_3d_model_basecolor.JPEG",
+        "textureSha256": "cb0e8d98cb31855429385fcc5c4907e630be2bcaec70de214fd2f8e2b733aa69",
+        "materialDependencyHash": "bbf1766b5b1bd5f4cd62f7ab939e6128",
+        "colorSpace": "Gamma",
+        "sampling": "256x256 sRGB readback of the supplied SashimiSlice albedo; component medians of bright warm-flesh pixels; reject dark/neutral atlas regions; no source importer setting changes or invented fallback.",
+        "inspectedPixels": 65536,
+        "acceptedFleshPixels": 39280,
+        "capColor": {
+            "r": 0.9058823585510254,
+            "g": 0.7450980544090271,
+            "b": 0.6470588445663452,
+            "a": 1.0
+        }
+    },
     "fillets": [
         {
             "role": "FrontFillet",

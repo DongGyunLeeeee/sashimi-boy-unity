@@ -271,7 +271,11 @@ namespace SashimiBoy.EditorTools
             }
             string original = File.ReadAllText(absolute);
             string normalized = string.Join("\n", File.ReadAllLines(absolute).Select(line => line.TrimEnd(' ', '\t'))) + "\n";
-            if (original != normalized) File.WriteAllText(absolute, normalized, new System.Text.UTF8Encoding(false));
+            if (original != normalized)
+            {
+                AssetDatabase.ReleaseCachedFileHandles();
+                File.WriteAllText(absolute, normalized, new System.Text.UTF8Encoding(false));
+            }
         }
         private static string ProjectFile(string path) => Path.GetFullPath(Path.Combine(Path.GetDirectoryName(Application.dataPath), path));
         private static void Require(bool condition, string message)
