@@ -48,6 +48,12 @@ Authoritative generation:
 
 Generated text normalization is confined to the owning generators. Stage1/2 scene bytes are asserted unchanged during Stage3 generation. The new scene also uses the existing full serialized-reference/material/listener/EventSystem scan.
 
+## Shared workstation interface
+
+The latest Owner decision requires Stage3 to use the Stage1/2 presentation. `Stage03HudAuthoring` copies the actual Stage2 canvas and world cutting cues without saving either source stage. It preserves the 1920×1080 canvas scaling, compact CookingFocusHUD, fonts, judgement images, four-note lane, SPACE prompts, world brackets and right-side result card. The former independent Stage3 header and lower note lane are removed.
+
+`Stage03HudView` reads the Stage3 clock and nine-phase state into those shared visuals. The retained Stage01SalmonHUD supplies visual references and judgement presentation only; its legacy timing owner stays unbound and disabled. Stage3 starts automatically and shows the same four-beat countdown before its unchanged first chart note. Stage3's approved E turnover, phase retry, pause and save-error recovery remain Stage3 behavior, styled with the baseline card. The plate camera leaves the baseline result card clear of the served dish.
+
 ## Music prototype
 
 The source remains the complete 230.92-second, 48 kHz stereo vocal WAV, SHA-256 `3572605dec84991aabf1e4911eee443287da0f7e5c403b0a449aee403cf31062`. No trimming, re-encoding or source/meta replacement is performed.

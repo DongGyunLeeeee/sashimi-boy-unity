@@ -57,6 +57,8 @@ namespace SashimiBoy.Tests
             yield return new WaitForSecondsRealtime(.4f);
             controller = Find("Stage03GameController");
             Assert.That(controller, Is.Not.Null);
+            Assert.That(Value<bool>(controller,"Started"),Is.True,"Stage3 uses the same automatic entry as Stage1/2.");
+            Call(controller,"ResetRun"); // Exercise the explicit run API after verifying normal automatic entry.
             Assert.That(Value<bool>(controller, "Started"), Is.False);
         }
 
@@ -328,12 +330,16 @@ namespace SashimiBoy.Tests
             Assert.That(Value<bool>(controller, "ClearRecorded"), Is.True);
             var camera=(Camera)Get(cooking,"gameCamera");
             var slots=(Transform[])Get(controller,"plateSlots");
+            var resultRect=((GameObject)Get(controller,"resultPanel")).GetComponent<RectTransform>();
+            var cardCorners=new Vector3[4];resultRect.GetWorldCorners(cardCorners);
+            Rect resultCard=Rect.MinMaxRect(cardCorners[0].x-16,cardCorners[0].y-16,cardCorners[2].x+16,cardCorners[2].y+16);
             foreach(var slot in slots)
             {
                 Vector3 viewport=camera.WorldToViewportPoint(slot.position);
                 Assert.That(viewport.z,Is.GreaterThan(0));
                 Assert.That(viewport.x,Is.InRange(.03f,.97f),"Every serving slot stays inside the completion shot.");
-                Assert.That(viewport.y,Is.InRange(.32f,.78f),"The completed dish stays between the header and result actions.");
+                Assert.That(viewport.y,Is.InRange(.03f,.97f));
+                Assert.That(resultCard.Contains(camera.WorldToScreenPoint(slot.position)),Is.False,"The baseline right-hand result card must leave the serving slots visible.");
             }
             Assert.That(bodyRenderers.All(r=>!r.enabled),Is.True,"Hands must not obscure the served dish.");
             Assert.That(knife.gameObject.activeSelf,Is.False);

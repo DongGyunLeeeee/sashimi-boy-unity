@@ -59,7 +59,7 @@ namespace SashimiBoy
                 if(gameCamera==null)return;
                 float blend=1-Mathf.Exp(-5*Time.unscaledDeltaTime);
                 Vector3 destination=plateFocus+new Vector3(0,1.5f,-.4f);
-                Vector3 aim=plateFocus+Vector3.back*.08f;
+                Vector3 aim=plateFocus+new Vector3(.30f,0,-.08f);
                 gameCamera.transform.position=Vector3.Lerp(gameCamera.transform.position,destination,blend);
                 gameCamera.transform.rotation=Quaternion.Slerp(gameCamera.transform.rotation,
                     Quaternion.LookRotation(aim-destination,Vector3.up),blend);

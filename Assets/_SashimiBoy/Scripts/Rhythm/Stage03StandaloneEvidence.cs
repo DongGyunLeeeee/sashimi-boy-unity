@@ -158,11 +158,11 @@ namespace SashimiBoy
             Require(controller != null, "Loaded Stage3 has no controller.");
             report.sourceAudioSha256 = controller.chart.sourceSha256;
             report.clipLengthSeconds = controller.chart.music.length;
-            Require(controller.StartRun(), "Stage3 StartRun was rejected.");
+            Require(controller.Started||controller.StartRun(), "Stage3 automatic playback and StartRun were rejected.");
             yield return Capture("whole");
 
             float coreDeadline = Time.realtimeSinceStartup + 240f;
-            bool head = false, front = false, turned = false, back = false, slice = false, cap = false, plate = false;
+            bool head = false, front = false, turned = false, back = false, slice = false, cap = false, plate = false, countdown=false;
             while (!controller.ResultShown)
             {
                 Require(Time.realtimeSinceStartup < coreDeadline, "Stage3 real-time playback exceeded 240 seconds.");
@@ -172,6 +172,9 @@ namespace SashimiBoy
                     Require(controller.assembly.TryTurnOver(), "The same turnover call used by E was rejected.");
                 double next = controller.NextNoteMs;
                 double now = controller.clock.SongTimeMs;
+                double first=controller.chart.phases[0].noteTimesMs[0];
+                if(!countdown&&controller.Run.Phase==0&&now>=first-60000d/controller.chart.bpm*4&&now<first)
+                {countdown=true;yield return Capture("countdown");}
                 if (next >= 0d && Math.Abs(now - next) <= 20d)
                 {
                     int phase = controller.Run.Phase, ordinal = controller.Run.Hits;

@@ -39,6 +39,7 @@ namespace SashimiBoy.Tests
             yield return null;
             controller = Find("Stage03GameController");
             Assert.That(controller, Is.Not.Null);
+            Call(controller,"ResetRun"); // Normal entry autoplays; this fixture drives controlled input timestamps.
         }
 
         [TearDown]

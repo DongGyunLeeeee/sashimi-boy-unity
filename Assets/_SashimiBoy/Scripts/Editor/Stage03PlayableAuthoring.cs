@@ -6,8 +6,6 @@ using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.SceneManagement;
-using UnityEngine.UI;
-using UnityEngine.Events;
 using UnityEngine.EventSystems;
 using Object=UnityEngine.Object;
 namespace SashimiBoy.EditorTools
@@ -39,9 +37,7 @@ namespace SashimiBoy.EditorTools
             if(controller==null)controller=BuildScene(scene);
             CleanupLegacyDemo(scene);
             PlaceAssembly(controller,scene);
-            ConfigureResultPanel(controller);
-            if(controller.startPanel.transform.Find("Abort")==null)
-                Button(controller.startPanel.transform,"Abort","식당으로 돌아가기",controller.titleText.font,new Vector2(.5f,.08f),controller.ReturnToShop);
+            Stage03HudAuthoring.Apply(scene,controller);
             controller.chart=AssetDatabase.LoadAssetAtPath<Stage03Chart>(ChartPath);
             controller.clock.audioSource.clip=controller.chart.music;
             controller.clock.playOnStart=false;
@@ -81,23 +77,6 @@ namespace SashimiBoy.EditorTools
                 EditorUtility.SetDirty(transform.gameObject);
             }
         }
-        private static void ConfigureResultPanel(Stage03GameController controller)
-        {
-            // Keep the completed dish visible in the center of the game camera.
-            var panel=controller.resultPanel.GetComponent<RectTransform>();
-            panel.anchorMin=new Vector2(.12f,.035f);panel.anchorMax=new Vector2(.88f,.31f);
-            panel.offsetMin=panel.offsetMax=Vector2.zero;
-            var text=controller.resultText;
-            text.fontSize=24;text.resizeTextForBestFit=false;
-            text.horizontalOverflow=HorizontalWrapMode.Wrap;text.verticalOverflow=VerticalWrapMode.Truncate;
-            var textRect=text.rectTransform;
-            textRect.anchorMin=new Vector2(.05f,.30f);textRect.anchorMax=new Vector2(.95f,.95f);
-            textRect.offsetMin=textRect.offsetMax=Vector2.zero;
-            var button=(RectTransform)controller.resultPanel.transform.Find("Return");
-            if(button==null)throw new InvalidOperationException("Stage3 result return button is missing.");
-            button.anchorMin=button.anchorMax=new Vector2(.5f,.15f);button.anchoredPosition=Vector2.zero;
-            EditorUtility.SetDirty(panel);EditorUtility.SetDirty(text);EditorUtility.SetDirty(button);
-        }
         private static void BuildChart()
         {
             var input=JsonUtility.FromJson<ChartInput>(File.ReadAllText(ChartSource));
@@ -116,7 +95,6 @@ namespace SashimiBoy.EditorTools
             Transform knife=old.knifeRoot,grip=old.knifeGripAnchor,contact=old.knifeContactAnchor;
             var body=view.body;var camera=view.gameCamera;
             Vector3 stance=view.standingPosition;float pitch=view.cookingPitch,height=view.eyeHeight;
-            var oldHud=Find<Stage01SalmonHUD>(scene);Font font=oldHud.stageTitleText.font;
             var clock=Find<AudioClock>(scene);
             foreach(var go in new[]{old.assembly.gameObject,old.filletHalf,old.reservedFilletHalf})
                 if(go!=null)Object.DestroyImmediate(go);
@@ -181,66 +159,9 @@ namespace SashimiBoy.EditorTools
                 slot.position=new Vector3(pb.center.x+((i%6)/5f-.5f)*sx,pb.max.y+.006f,pb.center.z+((i/6)/3f-.5f)*sz);
                 slot.rotation=Quaternion.Euler(0,(i%6-2.5f)*5f,0);controller.plateSlots[i]=slot;
             }
-            BuildHUD(controller,font);
             PrefabUtility.RecordPrefabInstancePropertyModifications(fish.transform);
             foreach(var t in fish.GetComponentsInChildren<Transform>(true))PrefabUtility.RecordPrefabInstancePropertyModifications(t);
             return controller;
-        }
-        private static void BuildHUD(Stage03GameController c,Font font)
-        {
-            var canvas=new GameObject("Stage03HUD",typeof(RectTransform),typeof(Canvas),typeof(CanvasScaler),typeof(GraphicRaycaster));
-            var cv=canvas.GetComponent<Canvas>();cv.renderMode=RenderMode.ScreenSpaceOverlay;cv.sortingOrder=100;
-            var scaler=canvas.GetComponent<CanvasScaler>();scaler.uiScaleMode=CanvasScaler.ScaleMode.ScaleWithScreenSize;scaler.referenceResolution=new Vector2(1600,900);scaler.matchWidthOrHeight=.5f;
-            var top=Panel(canvas.transform,"Header",new Vector2(.5f,.90f),new Vector2(1100,140),new Color(.02f,.04f,.05f,.88f));
-            c.titleText=Text(top,"Title","가자미 손질",font,30,new Vector2(.5f,.70f),new Vector2(1040,42));
-            c.statusText=Text(top,"Status","",font,24,new Vector2(.5f,.30f),new Vector2(1040,40));
-            var track=Panel(canvas.transform,"NoteLane",new Vector2(.5f,.18f),new Vector2(1050,52),new Color(.03f,.05f,.06f,.9f));
-            c.noteLane=track;
-            Panel(track,"HitLine",new Vector2(.5f,.5f),new Vector2(4,64),Color.white);
-            c.noteMarker=Panel(track,"NextBeat",new Vector2(.5f,.5f),new Vector2(24,24),new Color(1,.78f,.15f));
-            c.noteText=Text(canvas.transform,"Instruction","",font,25,new Vector2(.5f,.11f),new Vector2(1250,48));
-            c.judgementText=Text(canvas.transform,"Judgement","",font,24,new Vector2(.5f,.25f),new Vector2(1200,65));
-            var progress=Panel(top,"SongTrack",new Vector2(.5f,.04f),new Vector2(1060,7),new Color(.16f,.21f,.23f));
-            var fill=Panel(progress,"SongProgress",new Vector2(0,.5f),new Vector2(1060,7),new Color(.3f,.78f,.75f));
-            fill.pivot=new Vector2(0,.5f);c.songFill=fill.GetComponent<Image>();c.songFill.type=Image.Type.Filled;c.songFill.fillMethod=Image.FillMethod.Horizontal;c.songFill.fillAmount=0;
-            c.startPanel=Overlay(canvas.transform,"StartPanel","가자미 손질\n\n머리 → 앞면 필렛 2개 → E 뒤집기 → 뒷면 필렛 2개\n필렛 4개를 썰어 회 24점의 한 접시를 완성하세요\n\n노란 박자가 중앙선에 닿을 때 Space\nEsc 일시 정지 · 실패 시 R로 현재 구간 재시도",font,out _);
-            Button(c.startPanel.transform,"Start","손질 시작 · Enter",font,new Vector2(.5f,.21f),c.StartFromButton);
-            Button(c.startPanel.transform,"Abort","식당으로 돌아가기",font,new Vector2(.5f,.08f),c.ReturnToShop);
-            c.pausePanel=Overlay(canvas.transform,"PausePanel","일시 정지\n\n음악과 손질 진행이 멈췄습니다",font,out _);
-            Button(c.pausePanel.transform,"Resume","계속하기 · Esc",font,new Vector2(.5f,.32f),c.TogglePause);
-            Button(c.pausePanel.transform,"Abort","손질 중단 · 식당으로",font,new Vector2(.5f,.19f),c.ReturnToShop);
-            c.failurePanel=Overlay(canvas.transform,"FailurePanel","이 구간의 손질을 다시 해보세요\n\n이미 끝낸 부위는 유지합니다\n현재 필렛의 조각과 점수는 재시도 시 초기화됩니다",font,out _);
-            Button(c.failurePanel.transform,"Retry","현재 구간 재시도 · R",font,new Vector2(.5f,.30f),c.RetryFromButton);
-            Button(c.failurePanel.transform,"Abort","손질 중단 · 식당으로",font,new Vector2(.5f,.16f),c.ReturnToShop);
-            c.resultPanel=Overlay(canvas.transform,"ResultPanel","",font,out Text result);c.resultText=result;
-            Button(c.resultPanel.transform,"Return","식당으로 돌아가기 · F",font,new Vector2(.5f,.18f),c.ReturnToShop);
-            c.pausePanel.SetActive(false);c.failurePanel.SetActive(false);c.resultPanel.SetActive(false);
-        }
-        private static GameObject Overlay(Transform parent,string name,string value,Font font,out Text text)
-        {
-            var panel=Panel(parent,name,new Vector2(.5f,.5f),new Vector2(1180,570),new Color(.025f,.04f,.05f,.96f));
-            text=Text(panel,"Text",value,font,27,new Vector2(.5f,.64f),new Vector2(1110,340));
-            return panel.gameObject;
-        }
-        private static void Button(Transform parent,string name,string value,Font font,Vector2 anchor,UnityAction action)
-        {
-            var rect=Panel(parent,name,anchor,new Vector2(520,62),new Color(.12f,.35f,.39f));
-            var button=rect.gameObject.AddComponent<UnityEngine.UI.Button>();button.targetGraphic=rect.GetComponent<Image>();
-            UnityEditor.Events.UnityEventTools.AddPersistentListener(button.onClick,action);
-            Text(rect,"Label",value,font,25,new Vector2(.5f,.5f),new Vector2(500,58));
-        }
-        private static RectTransform Panel(Transform parent,string name,Vector2 anchor,Vector2 size,Color color)
-        {
-            var go=new GameObject(name,typeof(RectTransform),typeof(Image));var rect=go.GetComponent<RectTransform>();
-            rect.SetParent(parent,false);rect.anchorMin=rect.anchorMax=anchor;rect.sizeDelta=size;rect.anchoredPosition=Vector2.zero;
-            go.GetComponent<Image>().color=color;return rect;
-        }
-        private static Text Text(Transform parent,string name,string value,Font font,int size,Vector2 anchor,Vector2 dimensions)
-        {
-            var go=new GameObject(name,typeof(RectTransform),typeof(Text));var rect=go.GetComponent<RectTransform>();
-            rect.SetParent(parent,false);rect.anchorMin=rect.anchorMax=anchor;rect.sizeDelta=dimensions;rect.anchoredPosition=Vector2.zero;
-            var text=go.GetComponent<Text>();text.font=font;text.fontSize=size;text.alignment=TextAnchor.MiddleCenter;text.color=Color.white;text.text=value;
-            text.raycastTarget=false;return text;
         }
         public static void BuildPlayerBatch()
         {

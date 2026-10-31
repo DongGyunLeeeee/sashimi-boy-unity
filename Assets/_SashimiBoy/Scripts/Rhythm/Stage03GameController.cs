@@ -12,6 +12,8 @@ namespace SashimiBoy
         public FlounderAssemblyView assembly;
         public Stage03FilletSurface[] fillets;
         public Stage03CookingView cooking;
+        public Stage03HudView hudView;
+        public bool autoStart=true;
         public Transform sliceRoot;
         public Transform[] plateSlots;
         public float boardTop;
@@ -24,6 +26,7 @@ namespace SashimiBoy
         public Stage03RunState Run {get;}=new Stage03RunState();
         public int Score {get;private set;}
         public int Combo {get;private set;}
+        public int MaxCombo {get;private set;}
         public int MissCount {get;private set;}
         public float Accuracy01=>Mathf.Clamp01(Score/(1000f*Mathf.Max(1,hitAttempts+MissCount)));
         public bool Started {get;private set;}
@@ -53,6 +56,7 @@ namespace SashimiBoy
             ResetRun();
             Cursor.lockState=CursorLockMode.None;Cursor.visible=true;
             if(GameFlowManager.Instance!=null)GameFlowManager.Instance.SetLocation(GameLocation.FishStage);
+            if(autoStart)StartRun();
         }
         private void Update()
         {
@@ -101,7 +105,7 @@ namespace SashimiBoy
         public void ResetRun()
         {
             cooking.ResetPresentation();
-            clock.Stop();Run.Reset();Score=Combo=NoteCursor=phaseBaseScore=MissCount=hitAttempts=0;
+            clock.Stop();Run.Reset();Score=Combo=MaxCombo=NoteCursor=phaseBaseScore=MissCount=hitAttempts=0;
             Started=Paused=ResultShown=ClearRecorded=returning=clearApplied=false;resultDelay=-1;preparedFillet=-1;
             for(int i=0;i<fillets.Length;i++){fillets[i].ResetCuts();fillets[i].SetCuttingEnabled(false);}
             assembly.ResetAssembly();
@@ -110,6 +114,7 @@ namespace SashimiBoy
             slices.Clear();sliceOwners.Clear();
             startPanel.SetActive(true);pausePanel.SetActive(false);failurePanel.SetActive(false);resultPanel.SetActive(false);
             if(judgementText!=null)judgementText.text="";
+            if(hudView!=null)hudView.ResetForRetry();
             PreparePhase();
         }
         public void TickAt(double nowMs)
@@ -151,8 +156,9 @@ namespace SashimiBoy
             Vector3 strikePoint=phase>=5?fillets[phase-5].NextCutPosition:PreparationWorkPoint(phase);
             if(phase>=5&&!fillets[phase-5].TryCut(Run.Hits))return false;
             if(!Run.TryHit())throw new InvalidOperationException("Stage3 state rejected a validated cut.");
-            NoteCursor++;Combo++;hitAttempts++;Score+=(int)(1000*judged.ScoreCoefficient);
-            ShowJudge(judged.grade.ToString(),new Color(1,.78f,.25f));
+            NoteCursor++;Combo++;MaxCombo=Mathf.Max(MaxCombo,Combo);hitAttempts++;Score+=(int)(1000*judged.ScoreCoefficient);
+            if(hudView!=null)hudView.ShowJudgement(judged.grade,adjusted);
+            else ShowJudge(judged.grade.ToString(),new Color(1,.78f,.25f));
             cooking.SetWorkPoint(strikePoint);cooking.Pulse();
             if(phase>=5)
             {
@@ -241,6 +247,7 @@ namespace SashimiBoy
         private void Fail(string message)
         {
             Run.Fail();clock.Pause();SetSurfacesEnabled(false);failurePanel.SetActive(true);
+            if(hudView!=null)hudView.ShowFailure(message);
             if(judgementText!=null)judgementText.text=message;
         }
         public bool RetryPhase()
@@ -257,6 +264,7 @@ namespace SashimiBoy
             if(!(preservePreparation?Run.RecoverSatisfiedPreparation():Run.RetryPhase()))return false;
             if(!preservePreparation){Score=phaseBaseScore;Combo=NoteCursor=0;}
             failurePanel.SetActive(false);
+            if(hudView!=null)hudView.ResetForRetry();
             double restart=Math.Max(0,chart.phases[phase].noteTimesMs[0]-2500d);
             if(!clock.PlayFromMilliseconds(restart)){Fail("음원 재생을 확인해 주세요.");return false;}
             PreparePhase();return true;
@@ -299,7 +307,7 @@ namespace SashimiBoy
             try {manager.Save();ClearRecorded=true;}
             catch(IOException){resultText.text="회 한 접시 완성\n클리어 기록을 저장하지 못했습니다.\nF 또는 버튼으로 저장을 다시 시도하세요.";return false;}
             catch(UnauthorizedAccessException){resultText.text="회 한 접시 완성\n저장할 수 없습니다. F 또는 버튼으로 다시 시도하세요.";return false;}
-            resultText.text="가자미 손질 완료 · 회 24점 · 점수 "+Score+"\n식당으로 돌아가 철수와 이야기하세요";
+            resultText.text="STAGE 03 CLEAR · 회 한 판 완성\n\nSCORE  "+Score+"\nMAX COMBO  "+MaxCombo+"\nYIELD  100.0%\n회 24점 · 철수와 이야기하세요";
             return true;
         }
         public void ReturnToShop()
@@ -312,9 +320,13 @@ namespace SashimiBoy
             else Stage01ShopReturn.Request();
         }
         private void ShowJudge(string message,Color color)
-        {if(judgementText!=null){judgementText.text=message;judgementText.color=color;judgeTimer=1f;}}
+        {
+            if(hudView!=null){hudView.ShowStatus(message,color);return;}
+            if(judgementText!=null){judgementText.text=message;judgementText.color=color;judgeTimer=1f;}
+        }
         private void RefreshHUD()
         {
+            if(hudView!=null){hudView.Refresh();return;}
             if(chart==null||titleText==null)return;
             titleText.text="가자미 · "+(Run.Completed?"회 한 접시 완성":chart.phases[Run.Phase].label);
             statusText.text="회 "+slices.Count+" / 24    점수 "+Score+"    콤보 "+Combo+

@@ -54,7 +54,7 @@ namespace SashimiBoy.Tests
         }
 
         [Test]
-        public void CompletedPlate_HasNoVisibleLegacyDemonstration_AndKeepsKnifeSlotsAndClearCenter()
+        public void CompletedPlate_HasNoVisibleLegacyDemonstration_AndKeepsKnifeSlotsAndBaselineResultCard()
         {
             var scene=EditorSceneManager.OpenScene("Assets/_SashimiBoy/Scenes/Stage03_Flounder.unity",OpenSceneMode.Single);
             var transforms=scene.GetRootGameObjects().SelectMany(g=>g.GetComponentsInChildren<Transform>(true)).ToArray();
@@ -84,15 +84,15 @@ namespace SashimiBoy.Tests
             }
             var result=(GameObject)RuntimeReflection.GetField(controller,"resultPanel");
             var panel=result.GetComponent<RectTransform>();
-            Assert.That(Vector2.Distance(panel.anchorMin,new Vector2(.12f,.035f)),Is.LessThan(.0001f));
-            Assert.That(Vector2.Distance(panel.anchorMax,new Vector2(.88f,.31f)),Is.LessThan(.0001f),"The dish at screen center must remain exposed above the bottom result panel.");
+            Assert.That(Vector2.Distance(panel.anchorMin,new Vector2(.77f,.75f)),Is.LessThan(.0001f));
+            Assert.That(Vector2.Distance(panel.anchorMax,new Vector2(.77f,.75f)),Is.LessThan(.0001f),"Stage3 uses the shipped Stage1/2 right-side result card.");
+            Assert.That(Vector2.Distance(panel.sizeDelta,new Vector2(650f,400f)),Is.LessThan(.0001f));
             var text=(Text)RuntimeReflection.GetField(controller,"resultText");
-            Assert.That(text.fontSize,Is.EqualTo(24));
-            Assert.That(Vector2.Distance(text.rectTransform.anchorMin,new Vector2(.05f,.30f)),Is.LessThan(.0001f));
-            Assert.That(Vector2.Distance(text.rectTransform.anchorMax,new Vector2(.95f,.95f)),Is.LessThan(.0001f));
-            var button=(RectTransform)result.transform.Find("Return");
+            Assert.That(text.fontSize,Is.EqualTo(30));
+            Assert.That(Vector2.Distance(text.rectTransform.sizeDelta,new Vector2(590f,270f)),Is.LessThan(.0001f));
+            var button=(RectTransform)result.transform.Find("Stage1Return");
             Assert.That(button,Is.Not.Null);
-            Assert.That(button.anchorMax.y,Is.LessThan(text.rectTransform.anchorMin.y),"The return action remains below the compact result text.");
+            Assert.That(button.anchoredPosition.y,Is.LessThan(text.rectTransform.anchoredPosition.y-text.rectTransform.sizeDelta.y*.5f),"The source return action remains below the result text.");
         }
     }
 }
