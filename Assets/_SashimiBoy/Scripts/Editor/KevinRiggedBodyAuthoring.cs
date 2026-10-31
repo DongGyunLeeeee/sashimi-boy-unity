@@ -313,7 +313,7 @@ namespace SashimiBoy.EditorTools
             return mesh;
         }
 
-        private static Mesh SaveMesh(Mesh mesh, string path)
+        internal static Mesh SaveMesh(Mesh mesh, string path)
         {
             mesh.name = Path.GetFileNameWithoutExtension(path);
             var saved = AssetDatabase.LoadAssetAtPath<Mesh>(path);

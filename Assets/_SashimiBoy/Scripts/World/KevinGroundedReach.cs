@@ -27,13 +27,19 @@ namespace SashimiBoy
 
         public static Vector3 FitRootPosition(KevinBodyRig body, Vector3 preferredPosition)
         {
+            return TryFitRootPosition(body, preferredPosition, out var fitted) ? fitted : preferredPosition;
+        }
+
+        public static bool TryFitRootPosition(KevinBodyRig body, Vector3 preferredPosition, out Vector3 fitted)
+        {
+            fitted = preferredPosition;
             if (body == null ||
                 !TryRegion(body, body.right, body.rightTarget, body.rightRotation, preferredPosition.y, out var right) ||
                 !TryRegion(body, body.left, body.leftTarget, body.leftRotation, preferredPosition.y, out var left))
-                return preferredPosition;
+                return false;
 
             Vector2 preferred = new Vector2(preferredPosition.x, preferredPosition.z);
-            if (right.Contains(preferred) && left.Contains(preferred)) return preferredPosition;
+            if (right.Contains(preferred) && left.Contains(preferred)) return true;
 
             Vector2 best = preferred;
             float bestDistance = float.PositiveInfinity;
@@ -55,8 +61,9 @@ namespace SashimiBoy
             // Impossible target pairs cannot be repaired by stretching Kevin.
             // Retain the preferred stance in that case; the real palm error is
             // still observable and the actual-scene reach regression must fail.
-            return float.IsPositiveInfinity(bestDistance) ? preferredPosition :
-                new Vector3(best.x, preferredPosition.y, best.y);
+            if (float.IsPositiveInfinity(bestDistance)) return false;
+            fitted = new Vector3(best.x, preferredPosition.y, best.y);
+            return true;
         }
 
         private static bool TryRegion(KevinBodyRig body, KevinBodyRig.Arm arm,

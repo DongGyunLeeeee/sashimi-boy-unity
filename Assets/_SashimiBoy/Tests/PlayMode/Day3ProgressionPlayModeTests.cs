@@ -70,6 +70,7 @@ namespace SashimiBoy.Tests
             public Vector3 bodyPosition, cameraPosition;
             public Quaternion bodyRotation, cameraRotation;
             public float cameraFov;
+            public float bodyLean;
         }
 
         IEnumerator HomePracticeFixture(bool required)
@@ -104,7 +105,8 @@ namespace SashimiBoy.Tests
             Assert.That(body, Is.Not.Null); Assert.That(camera, Is.Not.Null);
             return new PracticePose { body = body, camera = camera, bodyPosition = body.transform.localPosition,
                 bodyRotation = body.transform.localRotation, cameraPosition = camera.transform.localPosition,
-                cameraRotation = camera.transform.localRotation, cameraFov = camera.fieldOfView };
+                cameraRotation = camera.transform.localRotation, cameraFov = camera.fieldOfView,
+                bodyLean = (float)Get(body, "workingLeanDegrees") };
         }
 
         void AssertPracticeRestored(Component station, PracticePose pose)
@@ -112,6 +114,7 @@ namespace SashimiBoy.Tests
             Assert.That(Call(station, "get_IsPracticing"), Is.EqualTo(false));
             Assert.That(Call(flow, "get_Busy"), Is.EqualTo(false));
             Assert.That(Get(pose.body, "working"), Is.EqualTo(false));
+            Assert.That(Get(pose.body, "workingLeanDegrees"), Is.EqualTo(pose.bodyLean), "Instrument lean must not leak into cooking or the next interaction.");
             Assert.That(Vector3.Distance(pose.body.transform.localPosition, pose.bodyPosition), Is.LessThan(.0001f));
             Assert.That(Quaternion.Angle(pose.body.transform.localRotation, pose.bodyRotation), Is.LessThan(.01f));
             Assert.That(Vector3.Distance(pose.camera.transform.localPosition, pose.cameraPosition), Is.LessThan(.0001f));
@@ -138,7 +141,14 @@ namespace SashimiBoy.Tests
         static IEnumerator FinishPractice(Component station)
         {
             float deadline = Time.realtimeSinceStartup + 3f;
-            while ((bool)Call(station, "get_IsPracticing") && Time.realtimeSinceStartup < deadline) yield return null;
+            var body=Find("KevinBodyRig");
+            float fixedLean=(float)Get(body,"workingLeanDegrees");
+            while ((bool)Call(station, "get_IsPracticing") && Time.realtimeSinceStartup < deadline)
+            {
+                Assert.That((float)Call(body,"get_MaximumGripError"),Is.LessThan(.08f),"The supplied body's actual palms must reach the authored instrument throughout practice.");
+                Assert.That((float)Get(body,"workingLeanDegrees"),Is.EqualTo(fixedLean),"The waist bend is fixed for the practice session, not pumped on each stroke.");
+                yield return null;
+            }
             Assert.That(Call(station, "get_IsPracticing"), Is.EqualTo(false), "The real practice coroutine must finish.");
         }
 

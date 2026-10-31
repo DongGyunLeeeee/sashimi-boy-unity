@@ -17,6 +17,16 @@ namespace SashimiBoy.EditorTools
         public const string MusicPath="Assets/_SashimiBoy/Audio/Music/Stage_03_Flounder/flounder1.wav";
         public const string ChartSource="Docs/Development/STAGE03_RHYTHM_ANALYSIS.json";
         [Serializable] private sealed class ChartInput {public float bpm;public double firstGridBeatSeconds;public int analysisVersion;public double[] beatTimesMs;public string sourceSha256;public Stage03PhaseChart[] phases;}
+        // Feedback updates timing data only; keep the verified scene/HUD object IDs.
+        public static void ApplyFeedbackChartBatch()
+        {
+            Stage03BuildInputGuard.ValidateMaterializedAssets();
+            BuildChart();
+            var data=AssetDatabase.LoadAssetAtPath<StageDefinition>("Assets/_SashimiBoy/Data/Generated/Stage_03_Sole.asset");
+            if(data==null)throw new InvalidOperationException("Existing Stage3 stable-ID definition missing.");
+            data.bpm=AssetDatabase.LoadAssetAtPath<Stage03Chart>(ChartPath).bpm;
+            EditorUtility.SetDirty(data);AssetDatabase.SaveAssets();
+        }
         [MenuItem("Sashimi Boy/Stage 03/Apply Complete Playable Stage")]
         public static void ApplyBatch()
         {

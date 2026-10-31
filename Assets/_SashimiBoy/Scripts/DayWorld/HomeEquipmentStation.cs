@@ -15,6 +15,7 @@ namespace SashimiBoy
         private Vector3 cameraPosition;
         private Quaternion cameraRotation;
         private float cameraFov;
+        private float bodyLeanDegrees;
         private Vector3 bodyLocalPosition, preferredBodyPosition;
         private Quaternion bodyLocalRotation;
         public bool IsPracticing => practicing;
@@ -53,6 +54,7 @@ namespace SashimiBoy
             Refresh();
             cameraPosition=view.transform.localPosition; cameraRotation=view.transform.localRotation; cameraFov=view.fieldOfView;
             bodyLocalPosition=body.transform.localPosition; bodyLocalRotation=body.transform.localRotation;
+            bodyLeanDegrees=body.workingLeanDegrees;
             var controller=actor.GetComponent<CharacterController>();
             bool controllerEnabled=controller != null && controller.enabled;
             if(controllerEnabled) controller.enabled=false;
@@ -62,6 +64,8 @@ namespace SashimiBoy
             preferredBodyPosition=body.transform.position;
             body.SetHeadHidden(false);
             body.working=true;
+            body.PrepareInstrumentPoseAtRoot(preferredBodyPosition,
+                rightHandTarget.position+Vector3.up*.03f, leftHandTarget.position+Vector3.up*.03f);
             view.transform.SetPositionAndRotation(practiceCamera.position,practiceCamera.rotation);
             view.fieldOfView=52f;
             float elapsed=0f;
@@ -74,8 +78,6 @@ namespace SashimiBoy
                 float stroke=Mathf.Sin(elapsed*10f);
                 body.rightTarget=rightHandTarget.position+Vector3.up*(.03f+Mathf.Max(0f,stroke)*.08f);
                 body.leftTarget=leftHandTarget.position+Vector3.up*(.03f+Mathf.Max(0f,-stroke)*.07f);
-                body.rightRotation=body.transform.rotation*body.right.handWorldRest;
-                body.leftRotation=body.transform.rotation*body.left.handWorldRest;
                 body.ApplyWorkingPoseAtRoot(preferredBodyPosition);
                 yield return null;
             }
@@ -93,6 +95,7 @@ namespace SashimiBoy
             if(body != null)
             {
                 body.working=false; body.SetHeadHidden(true);
+                body.workingLeanDegrees=bodyLeanDegrees;
                 body.transform.localPosition=bodyLocalPosition; body.transform.localRotation=bodyLocalRotation;
             }
             if(view != null) { view.transform.localPosition=cameraPosition; view.transform.localRotation=cameraRotation; view.fieldOfView=cameraFov; }

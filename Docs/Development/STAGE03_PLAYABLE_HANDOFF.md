@@ -85,7 +85,7 @@ A newly managed worktree can contain Git LFS pointer files even when Git status 
 
 Executed native commands, exact commits, XML counts, skipped/inconclusive results, integrity checks, failures and independent review are recorded in the delivery PR and external run artifacts. This handoff is not itself a test PASS.
 
-An explicitly enabled development Player evidence probe uses a fresh isolated validation profile, real music-clock time and public gameplay APIs. It can capture Junseok → work → 24 slices → Cheolsu → Plugin → Jaehoon → sleep, including a cut-face side view. It distinguishes synthetic API input and fixture travel from physical keyboard/mouse/navigation evidence. It hashes the default save before/after and does not overwrite it. Normal players do not run this probe.
+An explicitly enabled development Player evidence probe uses a fresh isolated validation profile, real music-clock time and public gameplay APIs. It can capture Junseok → work → 24 slices → Cheolsu → Jaehoon → Plugin → required and repeat practice → sleep, including a cut-face side view. It distinguishes synthetic API input and fixture travel from physical keyboard/mouse/navigation evidence. It hashes the default save before/after and does not overwrite it. Normal players do not run this probe.
 
 The opt-in probe temporarily enables background execution and restores the previous setting when it finishes or is destroyed. It waits for the accepted-input frame to refresh before capturing the HUD, and records each palm's error separately. This does not change normal Player focus behavior or turn synthetic input into human verification. Earlier failed and superseded runs remain retained evidence.
 

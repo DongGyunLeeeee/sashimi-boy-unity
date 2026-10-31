@@ -159,12 +159,10 @@ namespace SashimiBoy.EditorTools
                 generated.boneWeights = weights.ToArray();
                 generated.bindposes = bones.Select(b => b.worldToLocalMatrix * result.transform.localToWorldMatrix).ToArray();
                 generated.RecalculateBounds();
+                generated.RecalculateTangents();
                 string suffix = variantId == FaceVariantId ? "" : "_" + variantId;
                 string path = Output + "/MS_OwnerHead" + suffix + ".asset";
-                var saved = AssetDatabase.LoadAssetAtPath<Mesh>(path);
-                if (saved == null) { AssetDatabase.CreateAsset(generated,path); saved = generated; }
-                else { EditorUtility.CopySerialized(generated,saved); Object.DestroyImmediate(generated); }
-                EditorUtility.SetDirty(saved); AssetDatabase.SaveAssetIfDirty(saved);
+                var saved = KevinRiggedBodyAuthoring.SaveMesh(generated, path);
                 // Rebinding the approved faces to another body must not restyle their materials.
                 var mat = AssetDatabase.LoadAssetAtPath<Material>(Output + "/MAT_OwnerHead" + suffix + ".mat");
                 if (mat == null)
