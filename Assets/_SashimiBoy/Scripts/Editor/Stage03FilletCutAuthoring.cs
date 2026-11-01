@@ -362,8 +362,7 @@ namespace SashimiBoy.EditorTools
                 var outerContours = new List<List<int>>();
                 foreach (var contour in contours)
                 {
-                    Vector3 point = boundary[contour[0]].Position;
-                    if (!outerContours.Any(outer => ContainsPoint(outer, new Vector2(point.x, point.y))))
+                    if (!outerContours.Any(outer => ContainsContour(outer,contour)))
                     { AddCap(contour); outerContours.Add(contour); }
                 }
                 Require(cap.Count > 0, "No closed fillet cap could be triangulated.");
@@ -546,15 +545,38 @@ namespace SashimiBoy.EditorTools
                 { var a = boundary[contour[i]].Position; var b = boundary[contour[(i + 1) % contour.Count]].Position; area += (double)a.x * b.y - (double)b.x * a.y; }
                 return area * .5;
             }
-            private bool ContainsPoint(List<int> contour, Vector2 p)
+            private bool ContainsContour(List<int> outer,List<int> candidate)
+            {
+                // Planar faces can share a crossing vertex while belonging to
+                // different lobes. A ray test of only that first vertex can
+                // classify the whole second lobe as a nested hollow and drop it.
+                // Intersections were split before face tracing, so classifying
+                // each vertex and each segment midpoint distinguishes separate
+                // faces from actual nested/tangent rings without inventing a
+                // bridge or changing either measured outline.
+                for(int i=0;i<candidate.Count;i++)
+                {
+                    Vector3 a=boundary[candidate[i]].Position,b=boundary[candidate[(i+1)%candidate.Count]].Position;
+                    if(ClassifyPoint(outer,a.x,a.y)<0||
+                       ClassifyPoint(outer,((double)a.x+b.x)*.5d,((double)a.y+b.y)*.5d)<0)return false;
+                }
+                return true;
+            }
+            // -1 outside, 0 on the boundary, +1 strictly inside.
+            private int ClassifyPoint(List<int> contour,double x,double y)
             {
                 bool inside = false;
+                double epsilon=Math.Max(1e-24d,(double)weld*weld*.000001d);
                 for (int i = 0, j = contour.Count - 1; i < contour.Count; j = i++)
                 {
                     var a = boundary[contour[i]].Position; var b = boundary[contour[j]].Position;
-                    if ((a.y > p.y) != (b.y > p.y) && p.x < (b.x - a.x) * (p.y - a.y) / (b.y - a.y) + a.x) inside = !inside;
+                    double dx=(double)b.x-a.x,dy=(double)b.y-a.y;
+                    double px=x-a.x,py=y-a.y;
+                    double cross=dx*py-dy*px,projection=px*dx+py*dy,length=dx*dx+dy*dy;
+                    if(Math.Abs(cross)<=epsilon&&projection>=-epsilon&&projection<=length+epsilon)return 0;
+                    if ((a.y > y) != (b.y > y) && x < dx * (y-a.y) / dy + a.x) inside = !inside;
                 }
-                return inside;
+                return inside?1:-1;
             }
             private void AddCap(List<int> sourceContour)
             {

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Security.Cryptography;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
@@ -17,7 +18,9 @@ namespace SashimiBoy.EditorTools
     {
         public const string Root = Stage03FlounderAuthoring.Root;
         public const string ReportPath = Root + "/Stage03TwoFilletGeometry.json";
-        private const string Algorithm = "Stage03TwoFillet-1";
+        private const string Algorithm = "Stage03TwoFillet-2";
+        private const int FleshResolution = 1024;
+        private const int AtlasGutter = 4;
         public static string WholeFilletPrefabPath(int side) => WrapperPath(side == 0 ? "FrontWholeFillet" : "BackWholeFillet");
         public static string MeshPath(string role) => Root + "/Meshes/MS_" + role + ".asset";
         private static string WrapperPath(string role) => Root + "/Prefabs/PF_" + role + ".prefab";
@@ -26,7 +29,11 @@ namespace SashimiBoy.EditorTools
         {
             public string role, sourceRole, sourcePath, sourceDependencyHash, sourceMeshPath, generatedMeshPath, wrapperPath;
             public string operation, fleshUvSourceRole;
+            public string sourceAlbedoPath, sourceAlbedoSha256, bakedAlbedoPath, bakeMethod;
+            public string sourcePackedMapPath;
+            public float sampledSmoothness;
             public int sourceVertices, generatedVertices, generatedTriangles, selectedSurfaceTriangles;
+            public int preservedOriginalFleshTriangles;
             public Vector3 sourceSize, generatedSize, rotationEuler;
             public bool sourceUnchanged;
         }
@@ -34,7 +41,7 @@ namespace SashimiBoy.EditorTools
         {
             public string algorithm = Algorithm;
             public string[] sourceRoles = { "HeadRemovedFish", "FilletRemoved2", "FrontFillet", "BackFillet" };
-            public string sourceUVObservation = "Actual source UV/triangle-area audit: Front +Y is pigmented skin, -Y is flesh; Back both faces are flesh. Front is rigidly rotated 180 degrees around longitudinal +Z. Skin-facing vertices then receive UVs from the supplied flesh-facing surface; no source texture is recolored.";
+            public string sourceUVObservation = "Actual source UV/triangle-area audit: Front +Y is pigmented skin, -Y is flesh; Back both faces are flesh. Original flesh triangles retain their original UV interpolation. Continuous planar flesh albedo is rasterized from actual flesh-facing triangles with barycentric source-UV sampling, never nearest-vertex UV transfer across atlas islands. No source texture is recolored.";
             public string coordinateContract = "Head +Z; front +Y; back -Y before the longitudinal 180-degree roll. Two discarded skins, exactly two edible source-backed single meshes. Positive scales only.";
             public string sourceScope = "Original ten FBX/texture/importer/meta and original generated mesh/material/wrapper assets remain unchanged. Adaptation is in separately named generated meshes and prefabs.";
             public PhysicalSideGeometry[] models;
@@ -54,12 +61,16 @@ namespace SashimiBoy.EditorTools
                 AssetDatabase.GetAssetDependencyHash(Stage03FlounderAuthoring.SourceRoot + "/" + role + "/" + role + ".fbx").ToString());
             var reports = new List<PhysicalSideGeometry>();
             Mesh front = SourceMesh("FrontFillet"), back = SourceMesh("BackFillet");
-            var frontFlesh = new FleshUvField(front, -1f);
-            var backFlesh = new FleshUvField(back, 1f);
-            Mesh frontWhole = BuildWholeFillet(front, true, frontFlesh);
-            Mesh backWhole = BuildWholeFillet(back, false, backFlesh);
-            frontWhole = SaveDerived("FrontWholeFillet", "FrontFillet", frontWhole, new[] { SourceMaterial("FrontFillet") },
-                "Rigid longitudinal 180-degree rotation; existing source geometry and aspect ratio retained. All UVs sampled from the supplied flesh side, including the former skin underside.", "FrontFillet", 0, reports);
+            var frontFlesh = BakeFleshSurface(front, "FrontFillet", true);
+            var backFlesh = BakeFleshSurface(back, "BackFillet", false);
+            var frontAtlas = SaveFrontAtlas(frontFlesh);
+            var frontWholeMaterial = SaveFleshMaterial("FrontWholeFillet", SourceMaterial("FrontFillet"), frontAtlas, frontFlesh.smoothness);
+            Mesh frontWhole = BuildWholeFillet(front, true, out int preservedFleshTriangles);
+            Mesh backWhole = BuildWholeFillet(back, false, out _);
+            frontWhole = SaveDerived("FrontWholeFillet", "FrontFillet", frontWhole, new[] { frontWholeMaterial },
+                "Rigid longitudinal 180-degree rotation; source shape/aspect retained. Original flesh triangle UVs retain their interpolation on the source-albedo atlas page; former skin underside uses a separately baked continuous flesh page. Page-boundary vertices are split, so no triangle interpolates across the two atlas pages.", "FrontFillet", 0, reports);
+            reports[reports.Count - 1].preservedOriginalFleshTriangles = preservedFleshTriangles;
+            RecordBake(reports[reports.Count - 1], frontFlesh, AssetDatabase.GetAssetPath(frontAtlas));
             backWhole = SaveDerived("BackWholeFillet", "BackFillet", backWhole, new[] { SourceMaterial("BackFillet") },
                 "Existing single flesh fillet, source aspect ratio and surface retained; no duplicate/composite or negative scale.", "BackFillet", 0, reports);
 
@@ -69,13 +80,14 @@ namespace SashimiBoy.EditorTools
                 string prefix = side == 0 ? "Front" : "Back";
                 string sourceRole = side == 0 ? "HeadRemovedFish" : "FilletRemoved2";
                 Mesh source = side == 0 ? frontBody : backBody;
-                Mesh donor = side == 0 ? frontWhole : backWhole;
-                var flesh = new FleshUvField(donor, 1f);
-                Mesh body = BuildSkinnedBody(source, side == 0 ? 1f : -1f, flesh, out int selected);
+                var flesh = side == 0 ? frontFlesh : backFlesh;
+                var fleshMaterial = SaveFleshMaterial(prefix + "SkinnedBody", SourceMaterial(side == 0 ? "FrontFillet" : "BackFillet"), flesh.texture, flesh.smoothness);
+                Mesh body = BuildSkinnedBody(source, side == 0 ? 1f : -1f, out int selected);
                 SaveDerived(prefix + "SkinnedBody", sourceRole, body,
-                    new[] { SourceMaterial(sourceRole), SourceMaterial(side == 0 ? "FrontFillet" : "BackFillet") },
-                    "Original complete body geometry retained. Only the working hemisphere receives the supplied fillet flesh material/UVs; the opposite physical side is preserved. This is a whole skinned side, not the original half-removed state.",
+                    new[] { SourceMaterial(sourceRole), fleshMaterial },
+                    "Original complete body geometry retained. The working hemisphere uses continuous XZ UVs and an albedo rasterized from the supplied flesh-facing triangles; the opposite physical side retains its original material/UVs. No UV coordinates are transferred between unrelated atlas islands.",
                     side == 0 ? "FrontFillet" : "BackFillet", selected, reports);
+                RecordBake(reports[reports.Count - 1], flesh, AssetDatabase.GetAssetPath(flesh.texture));
                 Mesh skin = BuildSkin(source, side == 0 ? 1f : -1f, out int skinTriangles);
                 SaveDerived(prefix + "Skin", sourceRole, skin, new[] { SourceMaterial(sourceRole) },
                     "Actual working-hemisphere surface extracted from the supplied body, with a 2mm inward shell and boundary walls. Separate discarded part, never an edible fillet.",
@@ -103,27 +115,44 @@ namespace SashimiBoy.EditorTools
             return material;
         }
 
-        private static Mesh BuildWholeFillet(Mesh source, bool front, FleshUvField flesh)
+        private static Mesh BuildWholeFillet(Mesh source, bool front, out int preservedFleshTriangles)
         {
-            var vertices = source.vertices;
-            var normals = source.normals;
-            var uv = source.uv;
-            for (int i = 0; i < vertices.Length; i++)
+            preservedFleshTriangles = 0;
+            if (!front) return MakeMesh(source.vertices, source.normals, source.uv, new[] { source.triangles });
+            var sourceV = source.vertices; var sourceN = source.normals; var sourceUv = source.uv;
+            var vertices = new List<Vector3>(); var normals = new List<Vector3>(); var uv = new List<Vector2>();
+            var triangles = new List<int>(); var copies = new Dictionary<long, int>();
+            var sourceTriangles = source.triangles;
+            Bounds rotatedBounds = source.bounds; rotatedBounds.center = new Vector3(-source.bounds.center.x, -source.bounds.center.y, source.bounds.center.z);
+            for (int i = 0; i < sourceV.Length; i++)
             {
-                Vector3 original = vertices[i];
-                if (front)
+                vertices.Add(new Vector3(-sourceV[i].x, -sourceV[i].y, sourceV[i].z));
+                normals.Add(new Vector3(-sourceN[i].x, -sourceN[i].y, sourceN[i].z));
+                uv.Add(AtlasUv(sourceUv[i], false)); copies.Add((long)i * 2, i);
+            }
+            for (int i = 0; i < sourceTriangles.Length; i += 3)
+            {
+                int a = sourceTriangles[i], b = sourceTriangles[i + 1], c = sourceTriangles[i + 2];
+                bool originalFlesh = (sourceN[a].y + sourceN[b].y + sourceN[c].y) < -.05f;
+                if (originalFlesh) preservedFleshTriangles++;
+                for (int k = 0; k < 3; k++)
                 {
-                    // Proper rigid rotation, determinant +1; head remains +Z.
-                    vertices[i] = new Vector3(-original.x, -original.y, original.z);
-                    normals[i] = new Vector3(-normals[i].x, -normals[i].y, normals[i].z);
-                    // Sample in the original donor coordinate system before rotation.
-                    uv[i] = flesh.Sample(original, source.bounds);
+                    int index = sourceTriangles[i + k]; long key = (long)index * 2 + (originalFlesh ? 0 : 1);
+                    if (!copies.TryGetValue(key, out int copy))
+                    {
+                        copy = vertices.Count; copies.Add(key, copy);
+                        Vector3 p = sourceV[index]; var rotated = new Vector3(-p.x, -p.y, p.z);
+                        vertices.Add(rotated); normals.Add(new Vector3(-sourceN[index].x, -sourceN[index].y, sourceN[index].z));
+                        Vector2 t = originalFlesh ? sourceUv[index] : PlanarUv(rotated, rotatedBounds);
+                        uv.Add(AtlasUv(t, !originalFlesh));
+                    }
+                    triangles.Add(copy);
                 }
             }
-            return MakeMesh(vertices, normals, uv, new[] { source.triangles });
+            return MakeMesh(vertices.ToArray(), normals.ToArray(), uv.ToArray(), new[] { triangles.ToArray() });
         }
 
-        private static Mesh BuildSkinnedBody(Mesh source, float side, FleshUvField donor, out int selected)
+        private static Mesh BuildSkinnedBody(Mesh source, float side, out int selected)
         {
             var originalV = source.vertices; var originalN = source.normals; var originalUv = source.uv;
             var vertices = new List<Vector3>(originalV); var normals = new List<Vector3>(originalN);
@@ -143,7 +172,7 @@ namespace SashimiBoy.EditorTools
                     {
                         copy = vertices.Count; remapped.Add(index, copy);
                         vertices.Add(originalV[index]); normals.Add(originalN[index]);
-                        uv.Add(donor.Sample(originalV[index], source.bounds));
+                        uv.Add(PlanarUv(originalV[index], source.bounds));
                     }
                     exposed.Add(copy);
                 }
@@ -220,61 +249,183 @@ namespace SashimiBoy.EditorTools
             return MakeMesh(vertices.ToArray(), normals.ToArray(), uv.ToArray(), new[] { triangles.ToArray() });
         }
 
-        // A spatial lookup into actual supplied flesh-facing UVs, not a guessed
-        // solid color or a new painted source texture. Nearest candidates are
-        // searched in a bounded 2D grid; no quadratic vertex-to-vertex search.
-        private sealed class FleshUvField
+        private static Vector2 PlanarUv(Vector3 p, Bounds bounds) => new Vector2(
+            Mathf.InverseLerp(bounds.min.x, bounds.max.x, p.x), Mathf.InverseLerp(bounds.min.z, bounds.max.z, p.z));
+        private static Vector2 AtlasUv(Vector2 original, bool projected) => new Vector2(
+            ((projected ? FleshResolution : 0) + AtlasGutter + .5f + original.x * (FleshResolution - AtlasGutter * 2 - 1)) / (FleshResolution * 2f),
+            (AtlasGutter + .5f + original.y * (FleshResolution - AtlasGutter * 2 - 1)) / FleshResolution);
+
+        private sealed class FleshBake
         {
-            private const int Resolution = 64;
-            private readonly List<int>[] cells = new List<int>[Resolution * Resolution];
-            private readonly Vector3[] vertices;
-            private readonly Vector2[] uv;
-            private readonly Bounds bounds;
-            public FleshUvField(Mesh source, float face)
+            public string sourceAlbedoPath, sourceAlbedoSha256;
+            public string sourcePackedMapPath;
+            public float smoothness;
+            public Color32[] sourcePixels, pixels;
+            public Texture2D texture;
+        }
+
+        private static FleshBake BakeFleshSurface(Mesh source, string role, bool rotateFront)
+        {
+            var material = SourceMaterial(role);
+            var bake = new FleshBake { sourceAlbedoPath = AssetDatabase.GetAssetPath(material.mainTexture) };
+            using (var sha = SHA256.Create())
+                bake.sourceAlbedoSha256 = BitConverter.ToString(sha.ComputeHash(File.ReadAllBytes(ProjectFile(bake.sourceAlbedoPath)))).Replace("-", "").ToLowerInvariant();
+            bake.sourcePixels = ReadAlbedo(material.mainTexture);
+            Texture packedMap = material.GetTexture("_MetallicGlossMap");
+            if (packedMap == null) throw new InvalidOperationException("Provided flesh roughness reference is missing: " + role);
+            bake.sourcePackedMapPath = AssetDatabase.GetAssetPath(packedMap);
+            Color32[] packedPixels = ReadAlbedo(packedMap);
+            bake.pixels = new Color32[FleshResolution * FleshResolution];
+            var depth = Enumerable.Repeat(float.NegativeInfinity, bake.pixels.Length).ToArray();
+            var valid = new bool[bake.pixels.Length];
+            var positions = source.vertices; var normals = source.normals; var uv = source.uv; var triangles = source.triangles;
+            var smoothness = new List<byte>();
+            for (int offset = 0; offset < triangles.Length; offset += 3 * 17)
             {
-                vertices = source.vertices; uv = source.uv; bounds = source.bounds;
-                var normals = source.normals;
-                for (int i = 0; i < vertices.Length; i++)
+                int a = triangles[offset], b = triangles[offset + 1], c = triangles[offset + 2];
+                float facing = normals[a].y + normals[b].y + normals[c].y;
+                if (rotateFront ? facing >= -.3f : facing <= .3f) continue;
+                smoothness.Add(SampleAlbedo(packedPixels, (uv[a] + uv[b] + uv[c]) / 3f).a);
+            }
+            if (smoothness.Count == 0) throw new InvalidOperationException("No provided flesh roughness samples: " + role);
+            smoothness.Sort(); bake.smoothness = smoothness[smoothness.Count / 2] / 255f * material.GetFloat("_GlossMapScale");
+            packedPixels = null;
+            Bounds bounds = source.bounds;
+            if (rotateFront) bounds.center = new Vector3(-bounds.center.x, -bounds.center.y, bounds.center.z);
+            Vector3 Orient(Vector3 p) => rotateFront ? new Vector3(-p.x, -p.y, p.z) : p;
+            for (int offset = 0; offset < triangles.Length; offset += 3)
+            {
+                int ia = triangles[offset], ib = triangles[offset + 1], ic = triangles[offset + 2];
+                float facing = normals[ia].y + normals[ib].y + normals[ic].y;
+                if (rotateFront ? facing >= -.3f : facing <= .3f) continue;
+                Vector3 a = Orient(positions[ia]), b = Orient(positions[ib]), c = Orient(positions[ic]);
+                Vector2 pa = PlanarUv(a, bounds) * (FleshResolution - 1), pb = PlanarUv(b, bounds) * (FleshResolution - 1), pc = PlanarUv(c, bounds) * (FleshResolution - 1);
+                float determinant = (pb.y - pc.y) * (pa.x - pc.x) + (pc.x - pb.x) * (pa.y - pc.y);
+                if (Mathf.Abs(determinant) < .000001f) continue;
+                int minX = Mathf.Clamp(Mathf.FloorToInt(Mathf.Min(pa.x, Mathf.Min(pb.x, pc.x))), 0, FleshResolution - 1);
+                int maxX = Mathf.Clamp(Mathf.CeilToInt(Mathf.Max(pa.x, Mathf.Max(pb.x, pc.x))), 0, FleshResolution - 1);
+                int minY = Mathf.Clamp(Mathf.FloorToInt(Mathf.Min(pa.y, Mathf.Min(pb.y, pc.y))), 0, FleshResolution - 1);
+                int maxY = Mathf.Clamp(Mathf.CeilToInt(Mathf.Max(pa.y, Mathf.Max(pb.y, pc.y))), 0, FleshResolution - 1);
+                for (int y = minY; y <= maxY; y++) for (int x = minX; x <= maxX; x++)
                 {
-                    if (normals[i].y * face < .65f) continue;
-                    int cell = Cell(vertices[i], bounds);
-                    (cells[cell] ??= new List<int>()).Add(i);
+                    float px = x + .5f, py = y + .5f;
+                    float wa = ((pb.y - pc.y) * (px - pc.x) + (pc.x - pb.x) * (py - pc.y)) / determinant;
+                    float wb = ((pc.y - pa.y) * (px - pc.x) + (pa.x - pc.x) * (py - pc.y)) / determinant;
+                    float wc = 1f - wa - wb;
+                    if (wa < -.0001f || wb < -.0001f || wc < -.0001f) continue;
+                    int index = y * FleshResolution + x; float height = a.y * wa + b.y * wb + c.y * wc;
+                    if (height <= depth[index]) continue;
+                    Vector2 sourceUv = uv[ia] * wa + uv[ib] * wb + uv[ic] * wc;
+                    bake.pixels[index] = SampleAlbedo(bake.sourcePixels, sourceUv); depth[index] = height; valid[index] = true;
                 }
-                if (cells.All(c => c == null)) throw new InvalidOperationException("No actual source flesh-facing surface.");
             }
-            public Vector2 Sample(Vector3 position, Bounds targetBounds)
+            // Fill only uncovered projection pixels from their nearest actual
+            // surface texel. No color is painted or averaged across UV islands.
+            var queue = new int[valid.Length]; int read = 0, write = 0;
+            for (int i = 0; i < valid.Length; i++) if (valid[i]) queue[write++] = i;
+            if (write < 64) throw new InvalidOperationException("Insufficient actual flesh surface pixels for " + role);
+            while (read < write)
             {
-                float x = Mathf.InverseLerp(targetBounds.min.x, targetBounds.max.x, position.x);
-                float z = Mathf.InverseLerp(targetBounds.min.z, targetBounds.max.z, position.z);
-                Vector3 target = new Vector3(Mathf.Lerp(bounds.min.x, bounds.max.x, x), 0, Mathf.Lerp(bounds.min.z, bounds.max.z, z));
-                int center = Cell(target, bounds), cx = center % Resolution, cz = center / Resolution;
-                int best = -1; float distance = float.PositiveInfinity;
-                for (int radius = 0; radius < Resolution; radius++)
+                int index = queue[read++], x = index % FleshResolution, y = index / FleshResolution;
+                void Fill(int adjacent)
                 {
-                    for (int dz = -radius; dz <= radius; dz++) for (int dx = -radius; dx <= radius; dx++)
-                    {
-                        if (radius > 0 && Mathf.Abs(dx) != radius && Mathf.Abs(dz) != radius) continue;
-                        int ix = cx + dx, iz = cz + dz;
-                        if (ix < 0 || iz < 0 || ix >= Resolution || iz >= Resolution) continue;
-                        var candidates = cells[iz * Resolution + ix]; if (candidates == null) continue;
-                        foreach (int index in candidates)
-                        {
-                            float dd = (vertices[index].x - target.x) * (vertices[index].x - target.x) +
-                                       (vertices[index].z - target.z) * (vertices[index].z - target.z);
-                            if (dd < distance) { distance = dd; best = index; }
-                        }
-                    }
-                    if (best >= 0 && radius >= 1) return uv[best];
+                    if (valid[adjacent]) return;
+                    valid[adjacent] = true; bake.pixels[adjacent] = bake.pixels[index]; queue[write++] = adjacent;
                 }
-                if (best < 0) throw new InvalidOperationException("Unmapped source flesh UV.");
-                return uv[best];
+                if (x > 0) Fill(index - 1); if (x + 1 < FleshResolution) Fill(index + 1);
+                if (y > 0) Fill(index - FleshResolution); if (y + 1 < FleshResolution) Fill(index + FleshResolution);
             }
-            private static int Cell(Vector3 position, Bounds b)
+            bake.texture = SaveAlbedo(role.Replace("Fillet", "") + "ContinuousFlesh", bake.pixels, FleshResolution, FleshResolution);
+            return bake;
+        }
+
+        private static Color32 SampleAlbedo(Color32[] pixels, Vector2 uv)
+        {
+            float x = Mathf.Clamp01(uv.x) * (FleshResolution - 1), y = Mathf.Clamp01(uv.y) * (FleshResolution - 1);
+            int x0 = Mathf.FloorToInt(x), y0 = Mathf.FloorToInt(y), x1 = Mathf.Min(x0 + 1, FleshResolution - 1), y1 = Mathf.Min(y0 + 1, FleshResolution - 1);
+            Color low = Color.LerpUnclamped(pixels[y0 * FleshResolution + x0], pixels[y0 * FleshResolution + x1], x - x0);
+            Color high = Color.LerpUnclamped(pixels[y1 * FleshResolution + x0], pixels[y1 * FleshResolution + x1], x - x0);
+            return Color.LerpUnclamped(low, high, y - y0);
+        }
+
+        private static Color32[] ReadAlbedo(Texture source)
+        {
+            if (source == null || SystemInfo.graphicsDeviceType == GraphicsDeviceType.Null)
+                throw new InvalidOperationException("Continuous source-flesh baking requires a graphics-enabled Editor and provided albedo.");
+            RenderTexture previous = RenderTexture.active; bool srgb = GL.sRGBWrite;
+            RenderTexture target = null; Texture2D readback = null;
+            try
             {
-                int x = Mathf.Clamp((int)(Mathf.InverseLerp(b.min.x, b.max.x, position.x) * Resolution), 0, Resolution - 1);
-                int z = Mathf.Clamp((int)(Mathf.InverseLerp(b.min.z, b.max.z, position.z) * Resolution), 0, Resolution - 1);
-                return z * Resolution + x;
+                target = RenderTexture.GetTemporary(FleshResolution, FleshResolution, 0, RenderTextureFormat.ARGB32, RenderTextureReadWrite.sRGB);
+                GL.sRGBWrite = QualitySettings.activeColorSpace == ColorSpace.Linear; Graphics.Blit(source, target); RenderTexture.active = target;
+                readback = new Texture2D(FleshResolution, FleshResolution, TextureFormat.RGBA32, false, false) { hideFlags = HideFlags.HideAndDontSave };
+                readback.ReadPixels(new Rect(0, 0, FleshResolution, FleshResolution), 0, 0, false); readback.Apply(false, false);
+                return readback.GetPixels32();
             }
+            finally
+            {
+                RenderTexture.active = previous; GL.sRGBWrite = srgb;
+                if (readback != null) Object.DestroyImmediate(readback); if (target != null) RenderTexture.ReleaseTemporary(target);
+            }
+        }
+
+        private static Texture2D SaveFrontAtlas(FleshBake bake)
+        {
+            var pixels = new Color32[FleshResolution * FleshResolution * 2];
+            for (int y = 0; y < FleshResolution; y++) for (int x = 0; x < FleshResolution; x++)
+            {
+                var uv = new Vector2((x - AtlasGutter) / (float)(FleshResolution - AtlasGutter * 2 - 1),
+                    (y - AtlasGutter) / (float)(FleshResolution - AtlasGutter * 2 - 1));
+                pixels[y * FleshResolution * 2 + x] = SampleAlbedo(bake.sourcePixels, uv);
+                pixels[y * FleshResolution * 2 + x + FleshResolution] = SampleAlbedo(bake.pixels, uv);
+            }
+            return SaveAlbedo("FrontWholeFilletAtlas", pixels, FleshResolution * 2, FleshResolution);
+        }
+
+        private static Texture2D SaveAlbedo(string name, Color32[] pixels, int width, int height)
+        {
+            string path = Root + "/Textures/T_" + name + ".png";
+            var texture = new Texture2D(width, height, TextureFormat.RGBA32, false, false);
+            try
+            {
+                texture.SetPixels32(pixels); texture.Apply(false, false); byte[] bytes = texture.EncodeToPNG();
+                if (!File.Exists(ProjectFile(path)) || !File.ReadAllBytes(ProjectFile(path)).SequenceEqual(bytes)) File.WriteAllBytes(ProjectFile(path), bytes);
+            }
+            finally { Object.DestroyImmediate(texture); }
+            AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceSynchronousImport);
+            var importer = (TextureImporter)AssetImporter.GetAtPath(path);
+            bool mipmaps = name != "FrontWholeFilletAtlas";
+            if (!importer.sRGBTexture || importer.wrapMode != TextureWrapMode.Clamp || importer.maxTextureSize != 2048 ||
+                importer.textureCompression != TextureImporterCompression.Uncompressed || importer.mipmapEnabled != mipmaps)
+            {
+                importer.sRGBTexture = true; importer.wrapMode = TextureWrapMode.Clamp; importer.maxTextureSize = 2048;
+                importer.textureCompression = TextureImporterCompression.Uncompressed; importer.mipmapEnabled = mipmaps; importer.SaveAndReimport();
+            }
+            return AssetDatabase.LoadAssetAtPath<Texture2D>(path);
+        }
+
+        private static Material SaveFleshMaterial(string role, Material provided, Texture2D texture, float smoothness)
+        {
+            string path = Root + "/Materials/MAT_" + role + ".mat";
+            var generated = new Material(provided) { name = "MAT_" + role, mainTexture = texture };
+            generated.mainTextureScale = Vector2.one; generated.mainTextureOffset = Vector2.zero;
+            // Source tangent-space maps cannot be reused after planar projection.
+            // Keep the actual source vertex normals and a soft flesh highlight.
+            generated.SetTexture("_BumpMap", null); generated.DisableKeyword("_NORMALMAP");
+            generated.SetTexture("_MetallicGlossMap", null); generated.DisableKeyword("_METALLICGLOSSMAP");
+            generated.SetFloat("_Metallic", 0); generated.SetFloat("_Glossiness", Mathf.Clamp01(smoothness));
+            var stored = AssetDatabase.LoadAssetAtPath<Material>(path);
+            if (stored == null) { AssetDatabase.CreateAsset(generated, path); stored = generated; }
+            else { EditorUtility.CopySerialized(generated, stored); Object.DestroyImmediate(generated); EditorUtility.SetDirty(stored); }
+            return stored;
+        }
+
+        private static void RecordBake(PhysicalSideGeometry report, FleshBake bake, string bakedPath)
+        {
+            report.sourceAlbedoPath = bake.sourceAlbedoPath; report.sourceAlbedoSha256 = bake.sourceAlbedoSha256;
+            report.bakedAlbedoPath = bakedPath;
+            report.sourcePackedMapPath = bake.sourcePackedMapPath; report.sampledSmoothness = bake.smoothness;
+            report.bakeMethod = "1024px actual flesh-facing triangle XZ rasterization; per-pixel barycentric interpolation of each triangle's original source UV, frontmost surface depth test, nearest-valid surface-texel extension outside the donor silhouette. Continuous planar UVs; derived material excludes incompatible tangent-space source maps and uses the median supplied flesh-facing packed smoothness alpha. Front atlas pages have 4px clamp gutters and texel-centered UV affine transforms; atlas mipmaps are disabled to prevent page bleeding.";
         }
 
         private static Mesh MakeMesh(Vector3[] vertices, Vector3[] normals, Vector2[] uv, int[][] submeshes)
@@ -412,5 +563,6 @@ namespace SashimiBoy.EditorTools
             if (!File.Exists(path) || File.ReadAllText(path) != value) File.WriteAllText(path, value, new System.Text.UTF8Encoding(false));
             AssetDatabase.ImportAsset(assetPath, ImportAssetOptions.ForceSynchronousImport);
         }
+        private static string ProjectFile(string path) => Path.Combine(Path.GetDirectoryName(Application.dataPath), path);
     }
 }

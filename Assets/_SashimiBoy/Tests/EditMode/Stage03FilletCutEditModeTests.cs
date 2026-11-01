@@ -94,6 +94,63 @@ namespace SashimiBoy.Tests
             finally{if(clipped!=null)Object.DestroyImmediate(clipped);Object.DestroyImmediate(original);}
         }
 
+        [TestCase(0f)]
+        [TestCase(37f)]
+        [TestCase(90f)]
+        [TestCase(173f)]
+        public void UnequalLobesSharingACrossingVertex_BothRemainSealedUnderRotation(float degrees)
+        {
+            // Upper lobe area three, lower lobe area two. Both start at the
+            // measured crossing O=(2,0): boundary membership in the first lobe
+            // must not cause the second lobe to disappear as a false inner ring.
+            var contour=new[]{new Vector2(0,0),new Vector2(4,0),new Vector2(2,3),new Vector2(2,-2)};
+            Quaternion rotation=Quaternion.AngleAxis(degrees,Vector3.forward),inverse=Quaternion.Inverse(rotation);
+            var rotated=contour.Select(point=>(Vector2)(rotation*new Vector3(point.x,point.y,0))).ToArray();
+            Mesh original=CrossedScanPrism(rotated),clipped=null;
+            try
+            {
+                clipped=(Mesh)RuntimeReflection.InvokeStatic(Generator,"BuildClippedMesh",original,1f);
+                Vector3[] vertices=clipped.vertices;int[] triangles=clipped.GetTriangles(1);
+                double upperArea=0d,lowerArea=0d;
+                for(int i=0;i<triangles.Length;i+=3)
+                {
+                    Vector3 a=vertices[triangles[i]],b=vertices[triangles[i+1]],c=vertices[triangles[i+2]];
+                    float cross=Vector3.Cross(b-a,c-a).z;Assert.That(cross,Is.LessThan(0f));
+                    Vector3 center=inverse*((a+b+c)/3f);double area=-cross*.5d;
+                    bool upper=center.y>=-.0001f&&center.x>=2f-.0001f&&center.y<=1.5f*(4f-center.x)+.0001f;
+                    bool lower=center.y<=.0001f&&center.x<=2f+.0001f&&center.y>=-center.x-.0001f;
+                    Assert.That(upper||lower,Is.True,"Each cap triangle must stay within one measured lobe.");
+                    if(center.y>0)upperArea+=area;else lowerArea+=area;
+                }
+                Assert.That(upperArea,Is.EqualTo(3d).Within(.0001d));
+                Assert.That(lowerArea,Is.EqualTo(2d).Within(.0001d));
+                Assert.That(upperArea+lowerArea,Is.EqualTo(5d).Within(.0001d),"A shared boundary point cannot discard the smaller lobe.");
+            }
+            finally{if(clipped!=null)Object.DestroyImmediate(clipped);Object.DestroyImmediate(original);}
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void ActualNestedScanRing_IsFilledOnlyOnce_EvenWhenItTouchesTheOuterBoundary(bool touching)
+        {
+            var outerPoints=new[]{new Vector2(-2,-2),new Vector2(2,-2),new Vector2(2,2),new Vector2(-2,2)};
+            var innerPoints=touching?new[]{new Vector2(-2,-2),new Vector2(0,-1),new Vector2(-1,0)}:
+                new[]{new Vector2(-1,-1),new Vector2(1,-1),new Vector2(1,1),new Vector2(-1,1)};
+            Mesh outer=CrossedScanPrism(outerPoints),inner=CrossedScanPrism(innerPoints),source=new Mesh(),clipped=null;
+            try
+            {
+                source.CombineMeshes(new[]{new CombineInstance{mesh=outer},new CombineInstance{mesh=inner}},true,false);
+                source.RecalculateBounds();
+                clipped=(Mesh)RuntimeReflection.InvokeStatic(Generator,"BuildClippedMesh",source,1f);
+                Vector3[] vertices=clipped.vertices;int[] triangles=clipped.GetTriangles(1);double area=0d;
+                for(int i=0;i<triangles.Length;i+=3)
+                    area-=Vector3.Cross(vertices[triangles[i+1]]-vertices[triangles[i]],vertices[triangles[i+2]]-vertices[triangles[i]]).z*.5d;
+                Assert.That(area,Is.EqualTo(16d).Within(.0001d),"An actual nested ring is flesh, not an additional overlapping cap.");
+            }
+            finally
+            {if(clipped!=null)Object.DestroyImmediate(clipped);Object.DestroyImmediate(source);Object.DestroyImmediate(inner);Object.DestroyImmediate(outer);}
+        }
+
         [Test]
         public void BothWholeSideCachesHaveElevenClosedResidualStatesAndAnEmptyTwelfthState()
         {

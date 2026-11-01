@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Security.Cryptography;
 using NUnit.Framework;
 using UnityEditor;
 using UnityEngine;
@@ -32,7 +33,10 @@ namespace SashimiBoy.Tests
         {
             public string role, sourceRole, sourcePath, sourceDependencyHash, sourceMeshPath, generatedMeshPath, wrapperPath;
             public string operation, fleshUvSourceRole;
+            public string sourceAlbedoPath, sourceAlbedoSha256, bakedAlbedoPath, bakeMethod, sourcePackedMapPath;
             public int sourceVertices, generatedVertices, generatedTriangles, selectedSurfaceTriangles;
+            public int preservedOriginalFleshTriangles;
+            public float sampledSmoothness;
             public Vector3 sourceSize, generatedSize, rotationEuler;
             public bool sourceUnchanged;
         }
@@ -116,20 +120,21 @@ namespace SashimiBoy.Tests
                 {
                     Assert.That(renderer.sharedMaterials.Length, Is.GreaterThan(0));
                     Assert.That(renderer.sharedMaterials.All(m => m != null && m.shader != null && m.mainTexture != null), Is.True, role);
-                    Assert.That(renderer.sharedMaterials.All(m => AssetDatabase.GetAssetPath(m.mainTexture).StartsWith(Source + "/", StringComparison.Ordinal)), Is.True,
-                        "Whole-side materials must retain provided fish texture provenance.");
+                    Assert.That(renderer.sharedMaterials.All(m => AssetDatabase.GetAssetPath(m.mainTexture).StartsWith(Source + "/", StringComparison.Ordinal) ||
+                        AssetDatabase.GetAssetPath(m.mainTexture).StartsWith(Root + "/Textures/", StringComparison.Ordinal)), Is.True,
+                        "Whole-side albedo must retain its supplied source or a documented source-flesh bake.");
                 }
             }
         }
 
         [Test]
-        public void GeometryReceipt_MatchesActualMeshesAndDependencies_AndEveryDerivedUvComesFromAProvidedSurface()
+        public void GeometryReceipt_MatchesMeshesAndSourceBakes_WithoutCrossingAtlasPagesOrChangingOriginalFleshUvs()
         {
             string path = Root + "/Stage03TwoFilletGeometry.json";
             Assert.That(File.Exists(path), Is.True, path);
             var report = JsonUtility.FromJson<GeometryReport>(File.ReadAllText(path));
             Assert.That(report, Is.Not.Null);
-            Assert.That(report.algorithm, Is.EqualTo("Stage03TwoFillet-1"));
+            Assert.That(report.algorithm, Is.EqualTo("Stage03TwoFillet-2"));
             Assert.That(report.sourceRoles, Is.EquivalentTo(new[] { "HeadRemovedFish", "FilletRemoved2", "FrontFillet", "BackFillet" }));
             Assert.That(report.sourceUVObservation, Does.Contain("Front").And.Contain("Back").And.Contain("UV"));
             Assert.That(report.coordinateContract, Is.Not.Empty); Assert.That(report.sourceScope, Is.Not.Empty);
@@ -151,16 +156,34 @@ namespace SashimiBoy.Tests
                 Assert.That(generatedMesh.triangles.Length / 3, Is.EqualTo(entry.generatedTriangles), entry.role);
                 Assert.That(Vector3.Distance(sourceMesh.bounds.size, entry.sourceSize), Is.LessThan(.00001f), entry.role);
                 Assert.That(Vector3.Distance(generatedMesh.bounds.size, entry.generatedSize), Is.LessThan(.00001f), entry.role);
-                var providedUv = new HashSet<Vector2>(sourceMesh.uv);
-                if (!string.IsNullOrEmpty(entry.fleshUvSourceRole))
+                if (!string.IsNullOrEmpty(entry.bakedAlbedoPath))
                 {
                     Assert.That(entry.fleshUvSourceRole, Is.EqualTo("FrontFillet").Or.EqualTo("BackFillet"));
-                    var donor = AssetDatabase.LoadAssetAtPath<Mesh>(Root + "/Meshes/MS_" + entry.fleshUvSourceRole + ".asset");
-                    providedUv.UnionWith(donor.uv);
+                    Assert.That(entry.sourceAlbedoPath, Does.StartWith(Source + "/"));
+                    using (var sha = SHA256.Create())
+                        Assert.That(BitConverter.ToString(sha.ComputeHash(File.ReadAllBytes(entry.sourceAlbedoPath))).Replace("-", "").ToLowerInvariant(), Is.EqualTo(entry.sourceAlbedoSha256));
+                    Assert.That(entry.bakedAlbedoPath, Does.StartWith(Root + "/Textures/"));
+                    Assert.That(AssetDatabase.LoadAssetAtPath<Texture2D>(entry.bakedAlbedoPath), Is.Not.Null);
+                    Assert.That(entry.bakeMethod, Does.Contain("barycentric"));
+                    Assert.That(AssetDatabase.LoadAssetAtPath<Texture2D>(entry.sourcePackedMapPath), Is.Not.Null);
+                    Assert.That(entry.sampledSmoothness, Is.InRange(0f, 1f));
+                    var wrapper = AssetDatabase.LoadAssetAtPath<GameObject>(entry.wrapperPath);
+                    var bakedMaterial = wrapper.GetComponentInChildren<MeshRenderer>(true).sharedMaterials.Single(m => AssetDatabase.GetAssetPath(m.mainTexture) == entry.bakedAlbedoPath);
+                    Assert.That(bakedMaterial.IsKeywordEnabled("_NORMALMAP"), Is.False, "Original atlas normal maps must not be sampled with projected UVs.");
+                    Assert.That(bakedMaterial.IsKeywordEnabled("_METALLICGLOSSMAP"), Is.False);
+                    Assert.That(bakedMaterial.GetFloat("_Glossiness"), Is.EqualTo(entry.sampledSmoothness).Within(.000001f));
                 }
-                Assert.That(generatedMesh.uv.All(providedUv.Contains), Is.True, "Derived UVs must reference the supplied body/flesh surfaces rather than an invented texture region: " + entry.role);
+                else Assert.That(generatedMesh.uv.All(new HashSet<Vector2>(sourceMesh.uv).Contains), Is.True, entry.role);
                 if (entry.role.EndsWith("SkinnedBody", StringComparison.Ordinal))
+                {
                     Assert.That(Vector3.Distance(sourceMesh.bounds.size, generatedMesh.bounds.size), Is.LessThan(.00001f), "Peeling must expose the complete current body without deleting half of its geometry.");
+                    var positions = generatedMesh.vertices; var uv = generatedMesh.uv; var bounds = sourceMesh.bounds;
+                    foreach (int index in generatedMesh.GetTriangles(1).Distinct())
+                    {
+                        Assert.That(uv[index].x, Is.EqualTo(Mathf.InverseLerp(bounds.min.x, bounds.max.x, positions[index].x)).Within(.000001f));
+                        Assert.That(uv[index].y, Is.EqualTo(Mathf.InverseLerp(bounds.min.z, bounds.max.z, positions[index].z)).Within(.000001f));
+                    }
+                }
                 if (entry.role.EndsWith("Skin", StringComparison.Ordinal))
                 {
                     Assert.That(entry.selectedSurfaceTriangles, Is.GreaterThan(0), entry.role);
@@ -168,8 +191,29 @@ namespace SashimiBoy.Tests
                 }
                 if (entry.role.EndsWith("WholeFillet", StringComparison.Ordinal))
                 {
-                    Assert.That(generatedMesh.vertexCount, Is.EqualTo(sourceMesh.vertexCount), "A whole edible side retains one provided fillet rather than combining quarter copies.");
+                    Assert.That(generatedMesh.vertexCount, Is.InRange(sourceMesh.vertexCount, 400000), "Only boundary UV vertices may be duplicated; a whole side uses one provided fillet's geometry.");
                     Assert.That(Vector3.Distance(sourceMesh.bounds.size, generatedMesh.bounds.size), Is.LessThan(.00001f), entry.role);
+                }
+                if (entry.role == "FrontWholeFillet")
+                {
+                    var atlasImporter = AssetImporter.GetAtPath(entry.bakedAlbedoPath) as TextureImporter;
+                    Assert.That(atlasImporter, Is.Not.Null);
+                    Assert.That(atlasImporter.mipmapEnabled, Is.False, "Atlas mip levels must not mix the original source and continuous flesh pages.");
+                    Assert.That(atlasImporter.wrapMode, Is.EqualTo(TextureWrapMode.Clamp));
+                    Assert.That(entry.preservedOriginalFleshTriangles, Is.GreaterThan(0));
+                    var sourceUv = sourceMesh.uv; var generatedUv = generatedMesh.uv;
+                    for (int i = 0; i < sourceUv.Length; i++)
+                    {
+                        Assert.That(generatedUv[i].x, Is.EqualTo((4.5f + sourceUv[i].x * 1015f) / 2048f).Within(.000001f));
+                        Assert.That(generatedUv[i].y, Is.EqualTo((4.5f + sourceUv[i].y * 1015f) / 1024f).Within(.000001f));
+                    }
+                    int[] indices = generatedMesh.triangles;
+                    for (int i = 0; i < indices.Length; i += 3)
+                    {
+                        float a = generatedUv[indices[i]].x, b = generatedUv[indices[i + 1]].x, c = generatedUv[indices[i + 2]].x;
+                        bool crossesPage = Mathf.Min(a, Mathf.Min(b, c)) < .5f - .000001f && Mathf.Max(a, Mathf.Max(b, c)) > .5f + .000001f;
+                        Assert.That(crossesPage, Is.False, "An introduced triangle must never interpolate between the original and projected atlas pages.");
+                    }
                 }
             }
         }
