@@ -50,7 +50,11 @@ namespace SashimiBoy
             if(sweepAxis.sqrMagnitude<.5f)sweepAxis=Vector3.right;
             Vector3 authored=Vector3.ProjectOnPlane(knifeRotation*Vector3.forward,Vector3.up).normalized;
             if(authored.sqrMagnitude<.5f)authored=Vector3.right;
-            strokeRotation=Quaternion.AngleAxis(Vector3.SignedAngle(authored,sweepAxis,Vector3.up),Vector3.up)*knifeRotation;
+            // A cut line has two equivalent axis directions. Keep the hilt on
+            // its authored side instead of turning it through the fish and
+            // making the attached body/eyes chase a backwards knife grip.
+            Vector3 bladeAxis=Vector3.Dot(authored,sweepAxis)<0f?-sweepAxis:sweepAxis;
+            strokeRotation=Quaternion.AngleAxis(Vector3.SignedAngle(authored,bladeAxis,Vector3.up),Vector3.up)*knifeRotation;
             motionDuration=DurationForPhase(phase);motionElapsed=0;contactDelivered=false;
             contactAction=onContact;finishedAction=onFinished;motionActive=true;
             PoseKnife(0);return true;
