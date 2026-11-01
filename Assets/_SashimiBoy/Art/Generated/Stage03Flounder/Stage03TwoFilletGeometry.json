@@ -1,0 +1,200 @@
+{
+    "algorithm": "Stage03TwoFillet-1",
+    "sourceRoles": [
+        "HeadRemovedFish",
+        "FilletRemoved2",
+        "FrontFillet",
+        "BackFillet"
+    ],
+    "sourceUVObservation": "Actual source UV/triangle-area audit: Front +Y is pigmented skin, -Y is flesh; Back both faces are flesh. Front is rigidly rotated 180 degrees around longitudinal +Z. Skin-facing vertices then receive UVs from the supplied flesh-facing surface; no source texture is recolored.",
+    "coordinateContract": "Head +Z; front +Y; back -Y before the longitudinal 180-degree roll. Two discarded skins, exactly two edible source-backed single meshes. Positive scales only.",
+    "sourceScope": "Original ten FBX/texture/importer/meta and original generated mesh/material/wrapper assets remain unchanged. Adaptation is in separately named generated meshes and prefabs.",
+    "models": [
+        {
+            "role": "FrontWholeFillet",
+            "sourceRole": "FrontFillet",
+            "sourcePath": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/FrontFillet/FrontFillet.fbx",
+            "sourceDependencyHash": "952564d31900fd0453c3f2a048f2fbb7",
+            "sourceMeshPath": "Assets/_SashimiBoy/Art/Generated/Stage03Flounder/Meshes/MS_FrontFillet.asset",
+            "generatedMeshPath": "Assets/_SashimiBoy/Art/Generated/Stage03Flounder/Meshes/MS_FrontWholeFillet.asset",
+            "wrapperPath": "Assets/_SashimiBoy/Art/Generated/Stage03Flounder/Prefabs/PF_FrontWholeFillet.prefab",
+            "operation": "Rigid longitudinal 180-degree rotation; existing source geometry and aspect ratio retained. All UVs sampled from the supplied flesh side, including the former skin underside.",
+            "fleshUvSourceRole": "FrontFillet",
+            "sourceVertices": 184316,
+            "generatedVertices": 184316,
+            "generatedTriangles": 171275,
+            "selectedSurfaceTriangles": 0,
+            "sourceSize": {
+                "x": 0.3891458511352539,
+                "y": 0.1584436297416687,
+                "z": 0.6853455901145935
+            },
+            "generatedSize": {
+                "x": 0.3891458511352539,
+                "y": 0.1584436297416687,
+                "z": 0.6853455901145935
+            },
+            "rotationEuler": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 180.0
+            },
+            "sourceUnchanged": true
+        },
+        {
+            "role": "BackWholeFillet",
+            "sourceRole": "BackFillet",
+            "sourcePath": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/BackFillet/BackFillet.fbx",
+            "sourceDependencyHash": "85414ee45ed1fe2eff8413da312c4d37",
+            "sourceMeshPath": "Assets/_SashimiBoy/Art/Generated/Stage03Flounder/Meshes/MS_BackFillet.asset",
+            "generatedMeshPath": "Assets/_SashimiBoy/Art/Generated/Stage03Flounder/Meshes/MS_BackWholeFillet.asset",
+            "wrapperPath": "Assets/_SashimiBoy/Art/Generated/Stage03Flounder/Prefabs/PF_BackWholeFillet.prefab",
+            "operation": "Existing single flesh fillet, source aspect ratio and surface retained; no duplicate/composite or negative scale.",
+            "fleshUvSourceRole": "BackFillet",
+            "sourceVertices": 165427,
+            "generatedVertices": 165427,
+            "generatedTriangles": 140019,
+            "selectedSurfaceTriangles": 0,
+            "sourceSize": {
+                "x": 0.2890269160270691,
+                "y": 0.10809953510761261,
+                "z": 0.6852790117263794
+            },
+            "generatedSize": {
+                "x": 0.2890269160270691,
+                "y": 0.10809953510761261,
+                "z": 0.6852790117263794
+            },
+            "rotationEuler": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+            },
+            "sourceUnchanged": true
+        },
+        {
+            "role": "FrontSkinnedBody",
+            "sourceRole": "HeadRemovedFish",
+            "sourcePath": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/HeadRemovedFish/HeadRemovedFish.fbx",
+            "sourceDependencyHash": "8ceeb2d2d89e0d2091ad072b91e38f44",
+            "sourceMeshPath": "Assets/_SashimiBoy/Art/Generated/Stage03Flounder/Meshes/MS_HeadRemovedFish.asset",
+            "generatedMeshPath": "Assets/_SashimiBoy/Art/Generated/Stage03Flounder/Meshes/MS_FrontSkinnedBody.asset",
+            "wrapperPath": "Assets/_SashimiBoy/Art/Generated/Stage03Flounder/Prefabs/PF_FrontSkinnedBody.prefab",
+            "operation": "Original complete body geometry retained. Only the working hemisphere receives the supplied fillet flesh material/UVs; the opposite physical side is preserved. This is a whole skinned side, not the original half-removed state.",
+            "fleshUvSourceRole": "FrontFillet",
+            "sourceVertices": 166482,
+            "generatedVertices": 218801,
+            "generatedTriangles": 139358,
+            "selectedSurfaceTriangles": 66772,
+            "sourceSize": {
+                "x": 0.5536447763442993,
+                "y": 0.21903787553310395,
+                "z": 0.7816663384437561
+            },
+            "generatedSize": {
+                "x": 0.5536447763442993,
+                "y": 0.21903787553310395,
+                "z": 0.7816663384437561
+            },
+            "rotationEuler": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+            },
+            "sourceUnchanged": true
+        },
+        {
+            "role": "FrontSkin",
+            "sourceRole": "HeadRemovedFish",
+            "sourcePath": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/HeadRemovedFish/HeadRemovedFish.fbx",
+            "sourceDependencyHash": "8ceeb2d2d89e0d2091ad072b91e38f44",
+            "sourceMeshPath": "Assets/_SashimiBoy/Art/Generated/Stage03Flounder/Meshes/MS_HeadRemovedFish.asset",
+            "generatedMeshPath": "Assets/_SashimiBoy/Art/Generated/Stage03Flounder/Meshes/MS_FrontSkin.asset",
+            "wrapperPath": "Assets/_SashimiBoy/Art/Generated/Stage03Flounder/Prefabs/PF_FrontSkin.prefab",
+            "operation": "Actual working-hemisphere surface extracted from the supplied body, with a 2mm inward shell and boundary walls. Separate discarded part, never an edible fillet.",
+            "fleshUvSourceRole": "",
+            "sourceVertices": 166482,
+            "generatedVertices": 104638,
+            "generatedTriangles": 135350,
+            "selectedSurfaceTriangles": 66772,
+            "sourceSize": {
+                "x": 0.5536447763442993,
+                "y": 0.21903787553310395,
+                "z": 0.7816663384437561
+            },
+            "generatedSize": {
+                "x": 0.5524197816848755,
+                "y": 0.11291363835334778,
+                "z": 0.7816663384437561
+            },
+            "rotationEuler": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+            },
+            "sourceUnchanged": true
+        },
+        {
+            "role": "BackSkinnedBody",
+            "sourceRole": "FilletRemoved2",
+            "sourcePath": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/FilletRemoved2/FilletRemoved2.fbx",
+            "sourceDependencyHash": "8233ed7407b497452cac9d3acee6cecb",
+            "sourceMeshPath": "Assets/_SashimiBoy/Art/Generated/Stage03Flounder/Meshes/MS_FilletRemoved2.asset",
+            "generatedMeshPath": "Assets/_SashimiBoy/Art/Generated/Stage03Flounder/Meshes/MS_BackSkinnedBody.asset",
+            "wrapperPath": "Assets/_SashimiBoy/Art/Generated/Stage03Flounder/Prefabs/PF_BackSkinnedBody.prefab",
+            "operation": "Original complete body geometry retained. Only the working hemisphere receives the supplied fillet flesh material/UVs; the opposite physical side is preserved. This is a whole skinned side, not the original half-removed state.",
+            "fleshUvSourceRole": "BackFillet",
+            "sourceVertices": 186687,
+            "generatedVertices": 209729,
+            "generatedTriangles": 53212,
+            "selectedSurfaceTriangles": 21698,
+            "sourceSize": {
+                "x": 0.5531160831451416,
+                "y": 0.2180669903755188,
+                "z": 0.7806617617607117
+            },
+            "generatedSize": {
+                "x": 0.5531160831451416,
+                "y": 0.2180669903755188,
+                "z": 0.7806617617607117
+            },
+            "rotationEuler": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+            },
+            "sourceUnchanged": true
+        },
+        {
+            "role": "BackSkin",
+            "sourceRole": "FilletRemoved2",
+            "sourcePath": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/FilletRemoved2/FilletRemoved2.fbx",
+            "sourceDependencyHash": "8233ed7407b497452cac9d3acee6cecb",
+            "sourceMeshPath": "Assets/_SashimiBoy/Art/Generated/Stage03Flounder/Meshes/MS_FilletRemoved2.asset",
+            "generatedMeshPath": "Assets/_SashimiBoy/Art/Generated/Stage03Flounder/Meshes/MS_BackSkin.asset",
+            "wrapperPath": "Assets/_SashimiBoy/Art/Generated/Stage03Flounder/Prefabs/PF_BackSkin.prefab",
+            "operation": "Actual working-hemisphere surface extracted from the supplied body, with a 2mm inward shell and boundary walls. Separate discarded part, never an edible fillet.",
+            "fleshUvSourceRole": "",
+            "sourceVertices": 186687,
+            "generatedVertices": 46084,
+            "generatedTriangles": 44408,
+            "selectedSurfaceTriangles": 21698,
+            "sourceSize": {
+                "x": 0.5531160831451416,
+                "y": 0.2180669903755188,
+                "z": 0.7806617617607117
+            },
+            "generatedSize": {
+                "x": 0.4874190092086792,
+                "y": 0.11329160630702973,
+                "z": 0.7802480459213257
+            },
+            "rotationEuler": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+            },
+            "sourceUnchanged": true
+        }
+    ]
+}

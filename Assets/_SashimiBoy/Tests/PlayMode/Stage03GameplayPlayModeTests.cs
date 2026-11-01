@@ -333,6 +333,27 @@ namespace SashimiBoy.Tests
         }
 
         [UnityTest]
+        public IEnumerator BackCarcassHiddenEarly_RemainingNotesAndHudRetainTheRealWorkFrame()
+        {
+            StartRun();yield return ReachPhase(5);double[] notes=Notes;
+            int required=Value<int>(Run,"RequiredHits");
+            for(int i=0;i<required;i++)
+            {Assert.That(Call(controller,"SubmitAt",notes[i]),Is.EqualTo(true));Call(controller,"AdvancePresentation",.30f);}
+            Call(controller,"AdvancePresentation",2f);
+            Assert.That(Value<bool>(Assembly,"HasBody"),Is.False);
+            Assert.That(Value<int>(Run,"Phase"),Is.EqualTo(5));
+            int score=Value<int>(controller,"Score");
+            for(int i=required;i<notes.Length;i++)
+            {
+                Assert.That(Call(controller,"SubmitAt",notes[i]),Is.EqualTo(true));
+                Call(Get(controller,"hudView"),"Refresh");Call(controller,"AdvancePresentation",.30f);
+                Assert.That(Value<Vector3>(controller,"NextWorkContactPoint").sqrMagnitude,Is.GreaterThan(0f));
+            }
+            Assert.That(Value<int>(controller,"Score"),Is.GreaterThan(score));
+            Assert.That(Value<bool>(Run,"Failed"),Is.False);yield return AdvanceCurrentPhase();
+        }
+
+        [UnityTest]
         public IEnumerator AbortDuringCutting_ReturnsToShopWithoutClearOrReward()
         {
             StartRun();yield return ReachPhase(6);Assert.That(Call(controller,"SubmitAt",Notes[0]),Is.EqualTo(true));

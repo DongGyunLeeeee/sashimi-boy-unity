@@ -18,14 +18,14 @@ namespace SashimiBoy.EditorTools
     {
         public const string Root = "Assets/_SashimiBoy/Art/Generated/Stage03FilletCuts";
         private const string PresentationRoot = Stage03FlounderAuthoring.Root;
-        private const string Algorithm = "Stage03FilletClip-2";
+        private const string Algorithm = "Stage03FilletClip-3";
         private static readonly string[] Roles = { "FrontFillet", "BackFillet" };
 
         [Serializable] private sealed class Receipt
         {
             public int issue = 87;
             public string algorithm = Algorithm;
-            public string contract = "Twelve equal longitudinal cuts; immutable original coordinate frame; cut normal -Z; original skin UV/normals retained; continuous 0..1 planar cap UV; opaque cap albedo sampled from the supplied SashimiSlice flesh; source bytes/importers untouched.";
+            public string contract = "Twelve equal longitudinal cuts; immutable original coordinate frame; cut normal -Z; original skin UV/normals retained; actual 2D intersection edges split before planar face tracing; double-precision ear clipping with conserved contour area; continuous 0..1 planar cap UV; opaque cap albedo sampled from the supplied SashimiSlice flesh; source bytes/importers untouched.";
             public FleshReference capFleshReference;
             public Entry[] fillets;
         }
@@ -41,6 +41,7 @@ namespace SashimiBoy.EditorTools
             public string role, sourceMeshPath, sourceDependencyHash, cachePath;
             public int cutsPerFillet, sourceVertices;
             public int[] remainingVertices, surfaceTriangles, capTriangles;
+            public int[] sectionIntersectionSplits;
             public float[] cutPositions;
             public Vector3[] remainingSizes;
             public long generationMilliseconds;
@@ -88,7 +89,7 @@ namespace SashimiBoy.EditorTools
                     role = role, sourceMeshPath = sourcePath, sourceDependencyHash = dependencyBefore,
                     cachePath = CachePath(role), cutsPerFillet = Stage03FilletCutCache.ApprovedCutsPerFillet,
                     sourceVertices = source.vertexCount,
-                    remainingVertices = new int[Stage03FilletCutCache.ApprovedCutsPerFillet], surfaceTriangles = new int[Stage03FilletCutCache.ApprovedCutsPerFillet], capTriangles = new int[Stage03FilletCutCache.ApprovedCutsPerFillet], remainingSizes = new Vector3[Stage03FilletCutCache.ApprovedCutsPerFillet]
+                    remainingVertices = new int[Stage03FilletCutCache.ApprovedCutsPerFillet], surfaceTriangles = new int[Stage03FilletCutCache.ApprovedCutsPerFillet], capTriangles = new int[Stage03FilletCutCache.ApprovedCutsPerFillet], remainingSizes = new Vector3[Stage03FilletCutCache.ApprovedCutsPerFillet], sectionIntersectionSplits = new int[Stage03FilletCutCache.ApprovedCutsPerFillet]
                 };
                 for (int cuts = 1; cuts <= Stage03FilletCutCache.ApprovedCutsPerFillet; cuts++)
                 {
@@ -96,7 +97,9 @@ namespace SashimiBoy.EditorTools
                         cuts / (float)Stage03FilletCutCache.ApprovedCutsPerFillet);
                     cache.cutPositions[cuts - 1] = plane;
                     if (cuts == Stage03FilletCutCache.ApprovedCutsPerFillet) continue;
-                    Mesh generated = BuildClippedMesh(source, plane);
+                    var builder=new ClipBuilder(source,plane);
+                    Mesh generated=builder.Build();
+                    entry.sectionIntersectionSplits[cuts]=builder.IntersectionSplits;
                     generated.name = "MS_" + role + "_Remaining_" + cuts;
                     cache.remainingMeshes[cuts] = SaveMesh(generated,
                         Root + "/Meshes/" + generated.name + ".asset");
@@ -313,6 +316,7 @@ namespace SashimiBoy.EditorTools
             private readonly Dictionary<Vector2Int, List<int>> boundaryBins = new Dictionary<Vector2Int, List<int>>();
             private readonly HashSet<EdgeKey> boundaryEdges = new HashSet<EdgeKey>();
             private readonly List<BoundaryNode> boundary = new List<BoundaryNode>();
+            public int IntersectionSplits {get;private set;}
 
             public ClipBuilder(Mesh source, float plane)
             {
@@ -350,10 +354,11 @@ namespace SashimiBoy.EditorTools
                     }
                 }
                 Require(skin.Count > 0 && boundaryEdges.Count > 2, "The fillet plane did not intersect a residual solid.");
+                SplitCrossingBoundaryEdges();
                 var contours = TraceContours();
                 // A hollow source scan may contain nested rings. Sealing the
                 // outer ring fills the flesh rather than reproducing a hole.
-                contours.Sort((a, b) => Mathf.Abs(Area(b)).CompareTo(Mathf.Abs(Area(a))));
+                contours.Sort((a, b) => Math.Abs(Area(b)).CompareTo(Math.Abs(Area(a))));
                 var outerContours = new List<List<int>>();
                 foreach (var contour in contours)
                 {
@@ -411,6 +416,60 @@ namespace SashimiBoy.EditorTools
                 skin.Add(a); skin.Add(b); skin.Add(c);
             }
 
+            private void SplitCrossingBoundaryEdges()
+            {
+                // The supplied scan has a small true bow-tie intersection at
+                // the seventh front cut. Its endpoints are farther apart than
+                // the weld tolerance: treating its outline as a simple polygon
+                // cannot produce a non-overlapping cap. Construct the actual
+                // planar arrangement, adding vertices only where two measured
+                // boundary segments intersect. No hull, gap bridge or displaced
+                // cutting plane is used.
+                var edges=boundaryEdges.OrderBy(edge=>edge.A).ThenBy(edge=>edge.B).ToArray();
+                var pieces=edges.ToDictionary(edge=>edge,edge=>new List<int>{edge.A,edge.B});
+                for(int i=0;i<edges.Length;i++)for(int j=i+1;j<edges.Length;j++)
+                {
+                    EdgeKey first=edges[i],second=edges[j];
+                    if(first.A==second.A||first.A==second.B||first.B==second.A||first.B==second.B)continue;
+                    Vector3 a=boundary[first.A].Position,b=boundary[first.B].Position;
+                    Vector3 c=boundary[second.A].Position,d=boundary[second.B].Position;
+                    if(Math.Max(a.x,b.x)<Math.Min(c.x,d.x)||Math.Max(c.x,d.x)<Math.Min(a.x,b.x)||
+                       Math.Max(a.y,b.y)<Math.Min(c.y,d.y)||Math.Max(c.y,d.y)<Math.Min(a.y,b.y))continue;
+                    double rx=(double)b.x-a.x,ry=(double)b.y-a.y;
+                    double sx=(double)d.x-c.x,sy=(double)d.y-c.y;
+                    double denominator=rx*sy-ry*sx;
+                    if(denominator==0d)continue;
+                    double cx=(double)c.x-a.x,cy=(double)c.y-a.y;
+                    double t=(cx*sy-cy*sx)/denominator,u=(cx*ry-cy*rx)/denominator;
+                    if(t<0d||t>1d||u<0d||u>1d)continue;
+                    int node=FindBoundaryNode(new Vector3((float)(a.x+t*rx),(float)(a.y+t*ry),plane));
+                    if(!pieces[first].Contains(node))pieces[first].Add(node);
+                    if(!pieces[second].Contains(node))pieces[second].Add(node);
+                    IntersectionSplits++;
+                }
+                if(IntersectionSplits==0)return;
+                boundaryEdges.Clear();foreach(var node in boundary)node.Neighbours.Clear();
+                foreach(EdgeKey edge in edges)
+                {
+                    Vector3 a=boundary[edge.A].Position,b=boundary[edge.B].Position;
+                    double dx=(double)b.x-a.x,dy=(double)b.y-a.y;
+                    var nodes=pieces[edge];
+                    nodes.Sort((first,second)=>
+                    {
+                        Vector3 p=boundary[first].Position,q=boundary[second].Position;
+                        return (((double)p.x-a.x)*dx+((double)p.y-a.y)*dy).CompareTo(
+                            ((double)q.x-a.x)*dx+((double)q.y-a.y)*dy);
+                    });
+                    for(int i=1;i<nodes.Count;i++)
+                    {
+                        if(nodes[i-1]==nodes[i])continue;
+                        var split=new EdgeKey(nodes[i-1],nodes[i]);
+                        if(!boundaryEdges.Add(split))continue;
+                        boundary[split.A].Neighbours.Add(split.B);boundary[split.B].Neighbours.Add(split.A);
+                    }
+                }
+            }
+
             private List<List<int>> TraceContours()
             {
                 // A supplied scan can have coincident seams and short dangling
@@ -420,7 +479,7 @@ namespace SashimiBoy.EditorTools
                     node.Neighbours.Sort((a, b) =>
                     {
                         Vector3 da = boundary[a].Position - node.Position, db = boundary[b].Position - node.Position;
-                        return Mathf.Atan2(da.y, da.x).CompareTo(Mathf.Atan2(db.y, db.x));
+                        return Math.Atan2(da.y,da.x).CompareTo(Math.Atan2(db.y,db.x));
                     });
                 var used = new HashSet<long>(); var contours = new List<List<int>>();
                 foreach (EdgeKey edge in boundaryEdges.OrderBy(e => e.A).ThenBy(e => e.B))
@@ -480,12 +539,12 @@ namespace SashimiBoy.EditorTools
                     }
                 } while (removed);
             }
-            private float Area(List<int> contour)
+            private double Area(List<int> contour)
             {
                 double area = 0;
                 for (int i = 0; i < contour.Count; i++)
                 { var a = boundary[contour[i]].Position; var b = boundary[contour[(i + 1) % contour.Count]].Position; area += (double)a.x * b.y - (double)b.x * a.y; }
-                return (float)(area * .5);
+                return area * .5;
             }
             private bool ContainsPoint(List<int> contour, Vector2 p)
             {
@@ -501,6 +560,8 @@ namespace SashimiBoy.EditorTools
             {
                 var contour = new List<int>(sourceContour);
                 if (Area(contour) > 0f) contour.Reverse();
+                double expectedArea=Math.Abs(Area(contour)),sealedArea=0d;
+                double epsilon=Math.Max(1e-24d,(double)weld*weld*.000001d);
                 var capIndex = new Dictionary<int, int>();
                 float minX = contour.Min(i => boundary[i].Position.x), maxX = contour.Max(i => boundary[i].Position.x);
                 float minY = contour.Min(i => boundary[i].Position.y), maxY = contour.Max(i => boundary[i].Position.y);
@@ -519,8 +580,11 @@ namespace SashimiBoy.EditorTools
                     {
                         int a = contour[(i + remaining - 1) % remaining], b = contour[i], c = contour[(i + 1) % remaining];
                         Vector3 pa = boundary[a].Position, pb = boundary[b].Position, pc = boundary[c].Position;
-                        float cross = Cross(pa, pb, pc);
-                        if (Mathf.Abs(cross) < weld * weld * .01f)
+                        double cross = Cross(pa, pb, pc);
+                        // Remove only a numerically collinear point lying
+                        // between its neighbours. A reflex spur is not an ear.
+                        double between=((double)pb.x-pa.x)*(pb.x-pc.x)+((double)pb.y-pa.y)*(pb.y-pc.y);
+                        if (Math.Abs(cross) <= epsilon&&between<=0d)
                         { contour.RemoveAt(i); remaining--; clipped = true; break; }
                         if (cross >= 0f) continue;
                         bool contains = false;
@@ -528,17 +592,24 @@ namespace SashimiBoy.EditorTools
                         {
                             int p = contour[j]; if (p == a || p == b || p == c) continue;
                             Vector3 point = boundary[p].Position;
-                            if (Cross(pa, pb, point) < -1e-12f && Cross(pb, pc, point) < -1e-12f && Cross(pc, pa, point) < -1e-12f)
+                            // A vertex on a proposed diagonal also blocks that
+                            // ear. Strict-interior-only tests can cut across a
+                            // collinear boundary vertex and leave an inverted
+                            // final triangle despite an apparently simple loop.
+                            if (Cross(pa, pb, point) <= epsilon && Cross(pb, pc, point) <= epsilon && Cross(pc, pa, point) <= epsilon)
                             { contains = true; break; }
                         }
                         if (contains) continue;
                         cap.Add(capIndex[a]); cap.Add(capIndex[b]); cap.Add(capIndex[c]);
+                        sealedArea-=cross*.5d;
                         contour.RemoveAt(i); remaining--; clipped = true; break;
                     }
                     Require(clipped && ++attempts <= sourceContour.Count, "Non-simple fillet cross-section could not be sealed without overlapping cap triangles.");
                 }
+                Require(Math.Abs(sealedArea-expectedArea)<=Math.Max(epsilon*sourceContour.Count,expectedArea*1e-9d),
+                    "Fillet cap area differs from its measured contour at z="+plane+"; refusing incomplete or overlapping sealing.");
             }
-            private static float Cross(Vector3 a, Vector3 b, Vector3 c) => (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
+            private static double Cross(Vector3 a, Vector3 b, Vector3 c) => ((double)b.x-a.x)*((double)c.y-a.y)-((double)b.y-a.y)*((double)c.x-a.x);
         }
     }
 }

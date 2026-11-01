@@ -63,6 +63,38 @@ namespace SashimiBoy.Tests
         }
 
         [Test]
+        public void TrueCrossingScanEdges_AreSplitIntoTheirActualLobesWithoutAHullOrOverlappingCaps()
+        {
+            // Two triangular lobes meet at (1,1). The measured scan outline
+            // crosses itself: a convex hull would incorrectly cover area four,
+            // while skipping the troublesome crossing would leave an open cap.
+            var contour=new[]{new Vector2(0,0),new Vector2(2,2),new Vector2(0,2),new Vector2(2,0)};
+            Mesh original=CrossedScanPrism(contour),clipped=null;
+            Vector3[] before=original.vertices;
+            try
+            {
+                clipped=(Mesh)RuntimeReflection.InvokeStatic(Generator,"BuildClippedMesh",original,1f);
+                Assert.That(original.vertices,Is.EqualTo(before));
+                var vertices=clipped.vertices;int[] cap=clipped.GetTriangles(1);double area=0d;
+                Assert.That(cap.Length,Is.GreaterThan(0));
+                Assert.That(cap.Any(index=>Vector3.Distance(vertices[index],new Vector3(1,1,1))<.00001f),Is.True,
+                    "A true crossing must become a shared measured intersection vertex.");
+                for(int i=0;i<cap.Length;i+=3)
+                {
+                    Vector3 a=vertices[cap[i]],b=vertices[cap[i+1]],c=vertices[cap[i+2]];
+                    Vector3 normal=Vector3.Cross(b-a,c-a);
+                    Assert.That(normal.z,Is.LessThan(0f));area-=normal.z*.5d;
+                    Vector3 midpoint=(a+b+c)/3f;
+                    bool lower=midpoint.y<=1f&&midpoint.x>=midpoint.y-.00001f&&midpoint.x<=2f-midpoint.y+.00001f;
+                    bool upper=midpoint.y>=1f&&midpoint.x>=2f-midpoint.y-.00001f&&midpoint.x<=midpoint.y+.00001f;
+                    Assert.That(lower||upper,Is.True,"Cap triangles must stay inside the two actual source lobes.");
+                }
+                Assert.That(area,Is.EqualTo(2d).Within(.00001d),"The cap must cover each measured lobe once, preserving the missing side regions.");
+            }
+            finally{if(clipped!=null)Object.DestroyImmediate(clipped);Object.DestroyImmediate(original);}
+        }
+
+        [Test]
         public void BothWholeSideCachesHaveElevenClosedResidualStatesAndAnEmptyTwelfthState()
         {
             foreach (string role in new[] { "FrontFillet", "BackFillet" })
@@ -142,7 +174,7 @@ namespace SashimiBoy.Tests
             Assert.That(reference, Is.Not.Null); Assert.That(reference.mainTexture, Is.Not.Null);
             string sourcePath = AssetDatabase.GetAssetPath(reference.mainTexture);
             var receipt = JsonUtility.FromJson<CapReceiptProbe>(File.ReadAllText(Root + "/Stage03FilletCutReport.json"));
-            Assert.That(receipt.algorithm, Is.EqualTo("Stage03FilletClip-2"));
+            Assert.That(receipt.algorithm, Is.EqualTo("Stage03FilletClip-3"));
             Assert.That(receipt.capFleshReference, Is.Not.Null);
             Assert.That(receipt.capFleshReference.materialPath, Is.EqualTo(referencePath));
             Assert.That(receipt.capFleshReference.texturePath, Is.EqualTo(sourcePath));
@@ -229,6 +261,25 @@ namespace SashimiBoy.Tests
             }
             var mesh = new Mesh { name = "ConcaveFilletFixture", vertices = vertices, uv = uv, triangles = triangles.ToArray() };
             mesh.RecalculateNormals(); mesh.RecalculateBounds(); return mesh;
+        }
+        private static Mesh CrossedScanPrism(Vector2[] contour)
+        {
+            var vertices=new Vector3[contour.Length*2];var uv=new Vector2[vertices.Length];var triangles=new List<int>();
+            for(int i=0;i<contour.Length;i++)
+            {
+                vertices[i]=new Vector3(contour[i].x,contour[i].y,0);
+                vertices[i+contour.Length]=new Vector3(contour[i].x,contour[i].y,2);
+                uv[i]=uv[i+contour.Length]=contour[i]*.5f;
+                int next=(i+1)%contour.Length;
+                triangles.AddRange(new[]{i,next,next+contour.Length,i,next+contour.Length,i+contour.Length});
+            }
+            for(int i=1;i+1<contour.Length;i++)
+            {
+                triangles.AddRange(new[]{0,i+1,i});
+                triangles.AddRange(new[]{contour.Length,i+contour.Length,i+1+contour.Length});
+            }
+            var mesh=new Mesh{name="CrossedScanFilletFixture",vertices=vertices,uv=uv,triangles=triangles.ToArray()};
+            mesh.RecalculateNormals();mesh.RecalculateBounds();return mesh;
         }
     }
 }

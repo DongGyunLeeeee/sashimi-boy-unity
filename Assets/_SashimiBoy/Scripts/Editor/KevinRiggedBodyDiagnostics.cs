@@ -5,6 +5,7 @@ using System.Linq;
 using System.Reflection;
 using System.Security.Cryptography;
 using UnityEditor;
+using Unity.Collections;
 using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.Rendering;
@@ -64,7 +65,9 @@ namespace SashimiBoy.EditorTools
         {
             public int phase,ordinal;
             public float requestedU,actualU,fieldOfView,rightError,leftError,cameraBodyForwardDot,authoredSweepDot;
-            public bool striking,contactDelivered;
+            public bool striking,contactDelivered,supportMeshInspected;
+            public int supportMeshVertices;
+            public float supportMeshPlaneGap;
             public Vector3 root,eye,camera,cameraForward,focus,workPoint,contact,grip,gripContactOffset;
             public Vector3 authoredBlade,sweepAxis,actualBlade;
             public Vector3 rightTarget,leftTarget,rightUpper,rightLower,rightHand,rightPalm,leftUpper,leftLower,leftHand,leftPalm;
@@ -117,7 +120,10 @@ namespace SashimiBoy.EditorTools
                         Invoke(cooking,"LateUpdate");body.ApplyPose();
                         Vector3 currentWork=(Vector3)cooking.GetType().GetField("workPoint",BindingFlags.Instance|BindingFlags.NonPublic).GetValue(cooking);
                         Vector3 focus=currentWork+Vector3.down*.04f;
+                        bool inspectGeometry=ordinal==0||ordinal==count-1||ordinal==controller.Run.RequiredHits-1;
+                        var gap=inspectGeometry?InspectSupportMeshPlane(cooking):(vertices:0,gap:0f);
                         report.poses.Add(new StrokeCameraPose{phase=phase,ordinal=ordinal,requestedU=u,actualU=cooking.MotionProgress01,
+                            supportMeshInspected=inspectGeometry,supportMeshVertices=gap.vertices,supportMeshPlaneGap=gap.gap,
                             striking=cooking.IsStriking,contactDelivered=cooking.ContactDelivered,fieldOfView=cooking.gameCamera.fieldOfView,
                             root=body.transform.position,rootRotation=body.transform.rotation,rootScale=body.transform.lossyScale,
                             eye=body.eyeAnchor.position,camera=cooking.gameCamera.transform.position,cameraForward=cooking.gameCamera.transform.forward,
@@ -144,6 +150,52 @@ namespace SashimiBoy.EditorTools
             File.WriteAllText(Path.Combine(KevinRiggedBodyAuthoring.EvidenceDirectory,"stage03-stroke-camera-evidence.json"),JsonUtility.ToJson(report,true));
             EditorSceneManager.NewScene(NewSceneSetup.EmptyScene,NewSceneMode.Single);
             Debug.Log("[OwnerFeedback87StrokeCamera] Editor stroke poses/rendering recorded, not runtime PASS: "+KevinRiggedBodyAuthoring.EvidenceDirectory);
+        }
+
+        // A positive separating-plane gap is a conservative actual-geometry
+        // nonintersection proof for this stroke's longitudinal blade sweep.
+        // Read the provided knife in the Editor without changing its importer.
+        private static (int vertices,float gap) InspectSupportMeshPlane(Stage03CookingView cooking)
+        {
+            Vector3 axis=Vector3.ProjectOnPlane(cooking.knifeRoot.forward,Vector3.up).normalized;
+            Vector3 normal=Vector3.Cross(Vector3.up,axis).normalized;
+            if(Vector3.Dot(normal,Vector3.left)<-.01f)normal=-normal;
+            float toolMax=float.NegativeInfinity,handMin=float.PositiveInfinity;int count=0;
+            foreach(var filter in cooking.knifeRoot.GetComponentsInChildren<MeshFilter>(true))
+            {
+                using(var data=MeshUtility.AcquireReadOnlyMeshData(filter.sharedMesh))
+                using(var points=new NativeArray<Vector3>(data[0].vertexCount,Allocator.Temp))
+                {
+                    data[0].GetVertices(points);
+                    foreach(var point in points)toolMax=Mathf.Max(toolMax,Vector3.Dot(filter.transform.TransformPoint(point),normal));
+                }
+            }
+            Transform hand=cooking.body.left.hand;
+            foreach(var renderer in cooking.body.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+            {
+                var mesh=renderer.sharedMesh;if(mesh==null)continue;
+                var weights=mesh.boneWeights;var bones=renderer.bones;
+                var indices=new List<int>();
+                bool IsHand(int index)=>index>=0&&index<bones.Length&&bones[index]!=null&&(bones[index]==hand||bones[index].IsChildOf(hand));
+                for(int i=0;i<weights.Length;i++)
+                {
+                    var w=weights[i];
+                    float influence=(IsHand(w.boneIndex0)?w.weight0:0)+(IsHand(w.boneIndex1)?w.weight1:0)+
+                        (IsHand(w.boneIndex2)?w.weight2:0)+(IsHand(w.boneIndex3)?w.weight3:0);
+                    if(influence>.01f)indices.Add(i);
+                }
+                if(indices.Count==0)continue;
+                var baked=new Mesh();
+                try
+                {
+                    renderer.BakeMesh(baked,false);var positions=baked.vertices;
+                    foreach(int index in indices)
+                    {handMin=Mathf.Min(handMin,Vector3.Dot(renderer.transform.TransformPoint(positions[index]),normal));count++;}
+                }
+                finally{Object.DestroyImmediate(baked);}
+            }
+            if(count==0||float.IsNegativeInfinity(toolMax))throw new InvalidOperationException("Actual support-hand or provided knife geometry could not be inspected.");
+            return (count,handMin-toolMax);
         }
 
         private static void CaptureStrokeGameCamera(Stage03CookingView cooking,string file)
