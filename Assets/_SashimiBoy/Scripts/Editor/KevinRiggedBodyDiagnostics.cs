@@ -68,7 +68,7 @@ namespace SashimiBoy.EditorTools
             public bool striking,contactDelivered,supportMeshInspected;
             public int supportMeshVertices;
             public string supportHandBone;
-            public float supportMeshPlaneGap;
+            public float supportMeshPlaneGap,supportRuntimeGap,supportBoneGap,supportHandProjection,supportKnifeProjection,supportCachedKnifeProjection,supportCpuHandProjection;
             public Vector3 root,eye,camera,cameraForward,focus,workPoint,contact,grip,gripContactOffset;
             public Vector3 authoredBlade,sweepAxis,actualBlade;
             public Vector3 rightTarget,leftTarget,rightUpper,rightLower,rightHand,rightPalm,leftUpper,leftLower,leftHand,leftPalm;
@@ -123,9 +123,10 @@ namespace SashimiBoy.EditorTools
                         Vector3 currentWork=(Vector3)cooking.GetType().GetField("workPoint",BindingFlags.Instance|BindingFlags.NonPublic).GetValue(cooking);
                         Vector3 focus=currentWork+Vector3.down*.04f;
                         bool inspectGeometry=ordinal==0||ordinal==count-1||ordinal==controller.Run.RequiredHits-1;
-                        var gap=inspectGeometry?InspectSupportMeshPlane(cooking):(vertices:0,gap:0f);
+                        var gap=inspectGeometry?InspectSupportMeshPlane(cooking):new SupportInspection();
                         report.poses.Add(new StrokeCameraPose{phase=phase,ordinal=ordinal,requestedU=u,actualU=cooking.MotionProgress01,
-                            supportMeshInspected=inspectGeometry,supportMeshVertices=gap.vertices,supportMeshPlaneGap=gap.gap,supportHandBone=body.left.hand.name,
+                            supportMeshInspected=inspectGeometry,supportMeshVertices=gap.vertices,supportMeshPlaneGap=gap.gap,supportHandBone=body.left.hand.name,supportRuntimeGap=cooking.SupportSurfaceGap,supportBoneGap=cooking.SupportBladeClearance,
+                            supportHandProjection=gap.handMin,supportKnifeProjection=gap.toolMax,supportCachedKnifeProjection=gap.cachedToolMax,supportCpuHandProjection=gap.cpuHandMin,
                             striking=cooking.IsStriking,contactDelivered=cooking.ContactDelivered,fieldOfView=cooking.gameCamera.fieldOfView,
                             root=body.transform.position,rootRotation=body.transform.rotation,rootScale=body.transform.lossyScale,
                             eye=body.eyeAnchor.position,camera=cooking.gameCamera.transform.position,cameraForward=cooking.gameCamera.transform.forward,
@@ -157,7 +158,9 @@ namespace SashimiBoy.EditorTools
         // A positive separating-plane gap is a conservative actual-geometry
         // nonintersection proof for this stroke's longitudinal blade sweep.
         // Read the provided knife in the Editor without changing its importer.
-        private static (int vertices,float gap) InspectSupportMeshPlane(Stage03CookingView cooking)
+        private sealed class SupportInspection
+        {public int vertices;public float gap,handMin,toolMax,cachedToolMax,cpuHandMin;}
+        private static SupportInspection InspectSupportMeshPlane(Stage03CookingView cooking)
         {
             Vector3 axis=Vector3.ProjectOnPlane(cooking.knifeRoot.forward,Vector3.up).normalized;
             Vector3 normal=Vector3.Cross(Vector3.up,axis).normalized;
@@ -206,7 +209,13 @@ namespace SashimiBoy.EditorTools
                 finally{Object.DestroyImmediate(baked);}
             }
             if(count==0||float.IsNegativeInfinity(toolMax))throw new InvalidOperationException("Actual support-hand or provided knife geometry could not be inspected.");
-            return (count,handMin-toolMax);
+            float cachedToolMax=float.NegativeInfinity;
+            Vector3 absolute=new Vector3(Mathf.Abs(normal.x),Mathf.Abs(normal.y),Mathf.Abs(normal.z));
+            foreach(var renderer in cooking.knifeRoot.GetComponentsInChildren<Renderer>(true))
+            {var bounds=renderer.bounds;cachedToolMax=Mathf.Max(cachedToolMax,Vector3.Dot(bounds.center,normal)+Vector3.Dot(bounds.extents,absolute));}
+            var surface=cooking.GetType().GetField("supportSurface",BindingFlags.Instance|BindingFlags.NonPublic).GetValue(cooking);
+            float cpuHandMin=(float)surface.GetType().GetMethod("MinimumProjection").Invoke(surface,new object[]{cooking.body,normal});
+            return new SupportInspection{vertices=count,gap=handMin-toolMax,handMin=handMin,toolMax=toolMax,cachedToolMax=cachedToolMax,cpuHandMin=cpuHandMin};
         }
 
         private static void CaptureStrokeGameCamera(Stage03CookingView cooking,string file)
