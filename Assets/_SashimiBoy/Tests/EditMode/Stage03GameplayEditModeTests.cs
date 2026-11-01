@@ -124,6 +124,29 @@ namespace SashimiBoy.Tests
         }
 
         [Test]
+        public void OppositeCutAxis_KeepsTheHandleOnTheAuthoredSide_WithoutReversingThePull()
+        {
+            var host=new GameObject("Undirected neck cut fixture");
+            try
+            {
+                var cooking=host.AddComponent(RuntimeReflection.RuntimeType("SashimiBoy.Stage03CookingView"));
+                Quaternion rest=Quaternion.Euler(0,31,0);
+                Vector3 forward=rest*Vector3.forward;
+                RuntimeReflection.SetField(cooking,"knifeRotation",rest);
+                Assert.That(Call(cooking,"BeginStroke",0,Vector3.zero,forward,(Action)null,(Action)null),Is.EqualTo(true));
+                Quaternion first=(Quaternion)RuntimeReflection.GetField(cooking,"strokeRotation");
+                Call(cooking,"CancelStroke");
+                Assert.That(Call(cooking,"BeginStroke",0,Vector3.zero,-forward,(Action)null,(Action)null),Is.EqualTo(true));
+                Quaternion reverse=(Quaternion)RuntimeReflection.GetField(cooking,"strokeRotation");
+                Assert.That(Quaternion.Angle(first,reverse),Is.LessThan(.001f),
+                    "A neck-cut line has no facing: reversing its mathematical axis must not put the handle across the fish and move Kevin behind his own shoulder.");
+                Assert.That(Vector3.Distance((Vector3)RuntimeReflection.GetField(cooking,"sweepAxis"),-forward),Is.LessThan(.0001f),
+                    "Keep the accepted draw direction; only the blade's facing is selected on the same cut line.");
+            }
+            finally {UnityEngine.Object.DestroyImmediate(host);}
+        }
+
+        [Test]
         public void CookingStroke_ContactIsSingle_FreezeAndCancelDoNotDeliverLateActions()
         {
             var host=new GameObject("Stroke lifecycle fixture");

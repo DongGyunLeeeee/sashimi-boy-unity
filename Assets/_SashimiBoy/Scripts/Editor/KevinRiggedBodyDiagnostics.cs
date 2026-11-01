@@ -60,6 +60,138 @@ namespace SashimiBoy.EditorTools
             public string evidenceKind="Editor-authored stable phase/zero remaining tool action and synthetic note events; actual Game camera and fresh posed body. Not runtime input/music/save or Owner approval.";
             public List<LegacyCameraPose> poses=new List<LegacyCameraPose>();
         }
+        [Serializable] private sealed class StrokeCameraPose
+        {
+            public int phase,ordinal;
+            public float requestedU,actualU,fieldOfView,rightError,leftError,cameraBodyForwardDot,authoredSweepDot;
+            public bool striking,contactDelivered;
+            public Vector3 root,eye,camera,cameraForward,focus,workPoint,contact,grip,gripContactOffset;
+            public Vector3 authoredBlade,sweepAxis,actualBlade;
+            public Vector3 rightTarget,leftTarget,rightUpper,rightLower,rightHand,rightPalm,leftUpper,leftLower,leftHand,leftPalm;
+            public Vector3 rightWristTarget,leftWristTarget,rootScale;
+            public Quaternion rootRotation,rightRotation,leftRotation;
+        }
+        [Serializable] private sealed class StrokeCameraReport
+        {
+            public string evidenceKind="Editor-only ordered actual BeginStroke/AdvancePresentation/LateUpdate samples, visual part transitions and fresh posed Game-camera renders. No DSP, judged gameplay, reward/save, fixed-stance feasibility or Owner PASS is asserted.";
+            public string scope;
+            public List<StrokeCameraPose> poses=new List<StrokeCameraPose>();
+        }
+
+        public static void InspectStage03StrokeCamerasBatch()
+        {
+            if(EditorApplication.isPlayingOrWillChangePlaymode)throw new InvalidOperationException("Exit Play mode first.");
+            for(int i=0;i<SceneManager.sceneCount;i++)
+                if(SceneManager.GetSceneAt(i).isDirty)throw new InvalidOperationException("Save unsaved scenes first.");
+            Directory.CreateDirectory(KevinRiggedBodyAuthoring.EvidenceDirectory);
+            EditorSceneManager.OpenScene("Assets/_SashimiBoy/Scenes/Stage03_Flounder.unity",OpenSceneMode.Single);
+            var controller=Object.FindFirstObjectByType<Stage03GameController>();
+            if(controller==null||controller.cooking==null)throw new InvalidOperationException("Stage3 authored controller/view missing.");
+            var cooking=controller.cooking;var body=cooking.body;
+            foreach(var surface in controller.fillets)Invoke(surface,"Awake");
+            Invoke(cooking,"Awake");controller.autoStart=false;Invoke(controller,"Start");cooking.gameCamera.aspect=16f/9f;
+            controller.startPanel.SetActive(false);
+            Vector3 authored=Vector3.ProjectOnPlane(cooking.knifeRoot.forward,Vector3.up).normalized;
+            bool all=Environment.GetEnvironmentVariable("SASHIMI_STROKE_ALL_PHASES")=="1";
+            var report=new StrokeCameraReport{scope=all?"All 9 phases/all 44 strokes numerically; phase0 all strokes and other phases first/last strokes rendered.":"Phase0 all 4 strokes sampled/rendered. Set SASHIMI_STROKE_ALL_PHASES=1 for all nine phases."};
+            float[] samples={0f,.2f,.45f,.65f,.85f,1f};
+            for(int phase=0;phase<(all?9:1);phase++)
+            {
+                if(controller.Run.Phase!=phase)throw new InvalidOperationException("Diagnostic run phase did not advance: "+phase);
+                Invoke(controller,"PreparePhase");
+                Vector3 stance=cooking.standingPosition;
+                Vector3 work=(Vector3)cooking.GetType().GetField("workPoint",BindingFlags.Instance|BindingFlags.NonPublic).GetValue(cooking);
+                stance.x=Mathf.Clamp(work.x-.14f,-.65f,.55f);body.transform.position=stance;
+                int count=controller.Run.RequiredHits;
+                for(int ordinal=0;ordinal<count;ordinal++)
+                {
+                    Vector3 point=(Vector3)controller.GetType().GetMethod("CutContactPoint",BindingFlags.Instance|BindingFlags.NonPublic).Invoke(controller,new object[]{phase,ordinal});
+                    Vector3 direction=(Vector3)controller.GetType().GetMethod("CutDirection",BindingFlags.Instance|BindingFlags.NonPublic).Invoke(controller,new object[]{phase});
+                    if(!controller.Run.TryHit())throw new InvalidOperationException("Diagnostic semantic hit rejected: "+phase+"/"+ordinal);
+                    int currentPhase=phase,currentOrdinal=ordinal;
+                    Action commit=()=>
+                    {
+                        if(currentPhase>=5)
+                        {
+                            if(!controller.fillets[currentPhase-5].TryCut(currentOrdinal))throw new InvalidOperationException("Diagnostic actual fillet cut rejected.");
+                            Invoke(controller,"UpdateFilletSupport",currentPhase-5);
+                        }
+                        else if(currentOrdinal==3)
+                        {
+                            bool changed=currentPhase==0?controller.assembly.TryRemoveHead():controller.assembly.TrySeparateFillet(currentPhase-1);
+                            if(!changed)throw new InvalidOperationException("Diagnostic visual part transition rejected.");
+                        }
+                    };
+                    Action finish=()=>{if(currentPhase>=5)cooking.SetWorkPoint(controller.fillets[currentPhase-5].NextCutPosition);};
+                    if(!cooking.BeginStroke(phase,point,direction,commit,finish))throw new InvalidOperationException("Diagnostic BeginStroke rejected.");
+                    float previous=0f;
+                    foreach(float u in samples)
+                    {
+                        float delta=u==1f?cooking.RemainingStrokeSeconds:(u-previous)*Stage03CookingView.DurationForPhase(phase);previous=u;
+                        if(delta>0){cooking.AdvancePresentation(delta);controller.assembly.AdvancePresentation(delta);Invoke(controller,"GroundBody");}
+                        Invoke(cooking,"LateUpdate");body.ApplyPose();
+                        Vector3 currentWork=(Vector3)cooking.GetType().GetField("workPoint",BindingFlags.Instance|BindingFlags.NonPublic).GetValue(cooking);
+                        Vector3 focus=new Vector3(currentWork.x,currentWork.y-.04f,-.1f);
+                        report.poses.Add(new StrokeCameraPose{phase=phase,ordinal=ordinal,requestedU=u,actualU=cooking.MotionProgress01,
+                            striking=cooking.IsStriking,contactDelivered=cooking.ContactDelivered,fieldOfView=cooking.gameCamera.fieldOfView,
+                            root=body.transform.position,rootRotation=body.transform.rotation,rootScale=body.transform.lossyScale,
+                            eye=body.eyeAnchor.position,camera=cooking.gameCamera.transform.position,cameraForward=cooking.gameCamera.transform.forward,
+                            cameraBodyForwardDot=Vector3.Dot(cooking.gameCamera.transform.forward,body.transform.forward),
+                            focus=focus,workPoint=currentWork,contact=cooking.contact.position,grip=cooking.grip.position,
+                            authoredBlade=authored,sweepAxis=direction.normalized,actualBlade=cooking.knifeRoot.forward,
+                            authoredSweepDot=Vector3.Dot(authored,direction.normalized),gripContactOffset=cooking.grip.position-cooking.contact.position,
+                            rightTarget=body.rightTarget,leftTarget=body.leftTarget,rightRotation=body.rightRotation,leftRotation=body.leftRotation,
+                            rightUpper=body.right.upper.position,rightLower=body.right.lower.position,rightHand=body.right.hand.position,rightPalm=body.right.palm.position,
+                            leftUpper=body.left.upper.position,leftLower=body.left.lower.position,leftHand=body.left.hand.position,leftPalm=body.left.palm.position,
+                            rightWristTarget=body.rightTarget-body.rightRotation*Vector3.Scale(body.right.palm.localPosition,body.right.hand.lossyScale),
+                            leftWristTarget=body.leftTarget-body.leftRotation*Vector3.Scale(body.left.palm.localPosition,body.left.hand.lossyScale),
+                            rightError=Vector3.Distance(body.right.palm.position,body.rightTarget),leftError=Vector3.Distance(body.left.palm.position,body.leftTarget)});
+                        if(phase==0||ordinal==0||ordinal==count-1)
+                            CaptureStrokeGameCamera(cooking,"stroke-phase-"+phase+"-ordinal-"+ordinal+"-u"+Mathf.RoundToInt(u*100).ToString("000")+".png");
+                    }
+                }
+                controller.assembly.AdvancePresentation(2f);Invoke(controller,"GroundBody");
+                if(phase==2)
+                {
+                    controller.Run.TryAdvance();
+                    if(!controller.assembly.TryTurnOver())throw new InvalidOperationException("Diagnostic turn rejected.");
+                    controller.assembly.AdvancePresentation(2f);
+                    if(!controller.Run.FinishTurn())throw new InvalidOperationException("Diagnostic semantic turn rejected.");
+                }
+                else if(!controller.Run.TryAdvance())throw new InvalidOperationException("Diagnostic phase advance rejected.");
+            }
+            File.WriteAllText(Path.Combine(KevinRiggedBodyAuthoring.EvidenceDirectory,"stage03-stroke-camera-evidence.json"),JsonUtility.ToJson(report,true));
+            EditorSceneManager.NewScene(NewSceneSetup.EmptyScene,NewSceneMode.Single);
+            Debug.Log("[OwnerFeedback87StrokeCamera] Editor stroke poses/rendering recorded, not runtime PASS: "+KevinRiggedBodyAuthoring.EvidenceDirectory);
+        }
+
+        private static void CaptureStrokeGameCamera(Stage03CookingView cooking,string file)
+        {
+            Camera camera=cooking.gameCamera;
+            var originals=cooking.body.GetComponentsInChildren<Renderer>(true);var states=originals.Select(r=>r.enabled).ToArray();
+            var snapshot=CloneHierarchy(cooking.body.transform,cooking.body.gameObject.scene);
+            var appearance=cooking.body.GetComponent<KevinAppearance>();
+            if(appearance!=null)snapshot.GetComponent<KevinAppearance>()?.ApplyFace(appearance.SelectedFaceId);
+            var oldTarget=camera.targetTexture;var oldActive=RenderTexture.active;
+            var target=new RenderTexture(1280,720,24);var pixels=new Texture2D(1280,720,TextureFormat.RGB24,false);
+            var canvases=Object.FindObjectsByType<Canvas>(FindObjectsSortMode.None).Where(c=>c.renderMode==RenderMode.ScreenSpaceOverlay)
+                .Select(c=>(canvas:c,camera:c.worldCamera,distance:c.planeDistance)).ToArray();
+            try
+            {
+                foreach(var renderer in originals)renderer.enabled=false;
+                foreach(var item in canvases){item.canvas.renderMode=RenderMode.ScreenSpaceCamera;item.canvas.worldCamera=camera;item.canvas.planeDistance=.15f;}
+                Canvas.ForceUpdateCanvases();camera.targetTexture=target;camera.Render();RenderTexture.active=target;
+                pixels.ReadPixels(new Rect(0,0,1280,720),0,0);pixels.Apply();
+                File.WriteAllBytes(Path.Combine(KevinRiggedBodyAuthoring.EvidenceDirectory,file),pixels.EncodeToPNG());
+            }
+            finally
+            {
+                foreach(var item in canvases){item.canvas.renderMode=RenderMode.ScreenSpaceOverlay;item.canvas.worldCamera=item.camera;item.canvas.planeDistance=item.distance;}
+                for(int i=0;i<originals.Length;i++)originals[i].enabled=states[i];
+                camera.targetTexture=oldTarget;RenderTexture.active=oldActive;
+                Object.DestroyImmediate(snapshot);Object.DestroyImmediate(target);Object.DestroyImmediate(pixels);
+            }
+        }
 
         public static void InspectLegacyGameCamerasBatch()
         {
