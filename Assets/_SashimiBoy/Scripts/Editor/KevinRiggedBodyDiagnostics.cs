@@ -68,7 +68,8 @@ namespace SashimiBoy.EditorTools
             public bool striking,contactDelivered,supportMeshInspected;
             public int supportMeshVertices;
             public string supportHandBone;
-            public float supportMeshPlaneGap,supportRuntimeGap,supportBoneGap,supportHandProjection,supportKnifeProjection,supportCachedKnifeProjection,supportCpuHandProjection;
+            public float supportMeshPlaneGap,supportRuntimeGap,supportBoneGap,supportHandProjection,supportKnifeProjection,supportCachedKnifeProjection,supportCpuHandProjection,supportCpuBakeMaxError,supportBakeScalePathMaxError;
+            public Vector3 supportRendererScale;
             public Vector3 root,eye,camera,cameraForward,focus,workPoint,contact,grip,gripContactOffset;
             public Vector3 authoredBlade,sweepAxis,actualBlade;
             public Vector3 rightTarget,leftTarget,rightUpper,rightLower,rightHand,rightPalm,leftUpper,leftLower,leftHand,leftPalm;
@@ -79,7 +80,7 @@ namespace SashimiBoy.EditorTools
         {
             public string evidenceKind="Editor-only ordered actual BeginStroke/AdvancePresentation/LateUpdate samples, visual part transitions and fresh posed Game-camera renders. No DSP, judged gameplay, reward/save, fixed-stance feasibility or Owner PASS is asserted.";
             public string scope;
-            public string supportGeometryScope="Selected first/quota/last strokes at six poses each; all nonzero hand/finger influenced vertices plus their incident-triangle vertices; generated body has the preserved four-weight representation. Positive plane gap proves separation only at the recorded poses, not human approval.";
+            public string supportGeometryScope="Selected first/quota/last strokes at six poses each; all nonzero hand/finger influenced vertices plus their incident-triangle vertices; generated body has the preserved four-weight representation. Unity6000.4 BakeMesh(true)+fullTRS is cross-checked against false+TR(noScale) and per-vertex CPU world skin. Positive plane gap proves separation only at the recorded poses, not human approval.";
             public List<StrokeCameraPose> poses=new List<StrokeCameraPose>();
         }
 
@@ -98,7 +99,7 @@ namespace SashimiBoy.EditorTools
             if(assemblyInstance!=null)PrefabUtility.UnpackPrefabInstance(assemblyInstance,PrefabUnpackMode.Completely,InteractionMode.AutomatedAction);
             var cooking=controller.cooking;var body=cooking.body;
             foreach(var surface in controller.fillets)Invoke(surface,"Awake");
-            Invoke(cooking,"Awake");controller.autoStart=false;Invoke(controller,"Start");cooking.gameCamera.aspect=16f/9f;
+            Invoke(cooking,"Awake");if(controller.hudView!=null)Invoke(controller.hudView,"Awake");controller.autoStart=false;Invoke(controller,"Start");cooking.gameCamera.aspect=16f/9f;
             controller.startPanel.SetActive(false);
             if(!controller.StartRun())throw new InvalidOperationException("Diagnostic AudioClock did not start.");
             Vector3 authored=Vector3.ProjectOnPlane(cooking.knifeRoot.forward,Vector3.up).normalized;
@@ -119,14 +120,14 @@ namespace SashimiBoy.EditorTools
                     {
                         float delta=u==1f?cooking.RemainingStrokeSeconds:(u-previous)*duration;previous=u;
                         if(delta>0)controller.AdvancePresentation(delta);
-                        Invoke(cooking,"LateUpdate");body.ApplyPose();
+                        Invoke(cooking,"LateUpdate");body.ApplyPose();if(controller.hudView!=null)controller.hudView.Refresh();
                         Vector3 currentWork=(Vector3)cooking.GetType().GetField("workPoint",BindingFlags.Instance|BindingFlags.NonPublic).GetValue(cooking);
                         Vector3 focus=currentWork+Vector3.down*.04f;
                         bool inspectGeometry=ordinal==0||ordinal==count-1||ordinal==controller.Run.RequiredHits-1;
                         var gap=inspectGeometry?InspectSupportMeshPlane(cooking):new SupportInspection();
                         report.poses.Add(new StrokeCameraPose{phase=phase,ordinal=ordinal,requestedU=u,actualU=cooking.MotionProgress01,
                             supportMeshInspected=inspectGeometry,supportMeshVertices=gap.vertices,supportMeshPlaneGap=gap.gap,supportHandBone=body.left.hand.name,supportRuntimeGap=cooking.SupportSurfaceGap,supportBoneGap=cooking.SupportBladeClearance,
-                            supportHandProjection=gap.handMin,supportKnifeProjection=gap.toolMax,supportCachedKnifeProjection=gap.cachedToolMax,supportCpuHandProjection=gap.cpuHandMin,
+                            supportHandProjection=gap.handMin,supportKnifeProjection=gap.toolMax,supportCachedKnifeProjection=gap.cachedToolMax,supportCpuHandProjection=gap.cpuHandMin,supportCpuBakeMaxError=gap.cpuBakeMaxError,supportBakeScalePathMaxError=gap.bakeScalePathMaxError,supportRendererScale=gap.rendererScale,
                             striking=cooking.IsStriking,contactDelivered=cooking.ContactDelivered,fieldOfView=cooking.gameCamera.fieldOfView,
                             root=body.transform.position,rootRotation=body.transform.rotation,rootScale=body.transform.lossyScale,
                             eye=body.eyeAnchor.position,camera=cooking.gameCamera.transform.position,cameraForward=cooking.gameCamera.transform.forward,
@@ -159,13 +160,13 @@ namespace SashimiBoy.EditorTools
         // nonintersection proof for this stroke's longitudinal blade sweep.
         // Read the provided knife in the Editor without changing its importer.
         private sealed class SupportInspection
-        {public int vertices;public float gap,handMin,toolMax,cachedToolMax,cpuHandMin;}
+        {public int vertices;public float gap,handMin,toolMax,cachedToolMax,cpuHandMin,cpuBakeMaxError,bakeScalePathMaxError;public Vector3 rendererScale;}
         private static SupportInspection InspectSupportMeshPlane(Stage03CookingView cooking)
         {
             Vector3 axis=Vector3.ProjectOnPlane(cooking.knifeRoot.forward,Vector3.up).normalized;
             Vector3 normal=Vector3.Cross(Vector3.up,axis).normalized;
             if(Vector3.Dot(normal,Vector3.left)<-.01f)normal=-normal;
-            float toolMax=float.NegativeInfinity,handMin=float.PositiveInfinity;int count=0;
+            float toolMax=float.NegativeInfinity,handMin=float.PositiveInfinity,cpuBakeMaxError=0,bakeScalePathMaxError=0;int count=0;Vector3 rendererScale=Vector3.zero;
             foreach(var filter in cooking.knifeRoot.GetComponentsInChildren<MeshFilter>(true))
             {
                 using(var data=MeshUtility.AcquireReadOnlyMeshData(filter.sharedMesh))
@@ -199,14 +200,31 @@ namespace SashimiBoy.EditorTools
                     if(selected[triangles[i]]||selected[triangles[i+1]]||selected[triangles[i+2]])
                         expanded[triangles[i]]=expanded[triangles[i+1]]=expanded[triangles[i+2]]=true;
                 var indices=Enumerable.Range(0,expanded.Length).Where(i=>expanded[i]).ToArray();
-                var baked=new Mesh();
+                var baked=new Mesh();var scaledBake=new Mesh();
                 try
                 {
-                    renderer.BakeMesh(baked,false);var positions=baked.vertices;
+                    // Unity 6000.4: true compensates Transform scale. False
+                    // already includes that scale; use only TR for that path.
+                    renderer.BakeMesh(baked,true);renderer.BakeMesh(scaledBake,false);
+                    var positions=baked.vertices;var scaledPositions=scaledBake.vertices;
+                    var unscaledTR=Matrix4x4.TRS(renderer.transform.position,renderer.transform.rotation,Vector3.one);
+                    var bindposes=mesh.bindposes;var matrices=bones.Select((bone,i)=>bone.localToWorldMatrix*bindposes[i]).ToArray();
+                    var sourcePositions=mesh.vertices;rendererScale=renderer.transform.lossyScale;
                     foreach(int index in indices)
-                    {handMin=Mathf.Min(handMin,Vector3.Dot(renderer.transform.TransformPoint(positions[index]),normal));count++;}
+                    {
+                        Vector3 world=renderer.transform.TransformPoint(positions[index]);
+                        Vector3 alternate=unscaledTR.MultiplyPoint3x4(scaledPositions[index]);
+                        var w=weights[index];Vector3 point=sourcePositions[index],cpu=Vector3.zero;
+                        if(w.weight0>0)cpu+=matrices[w.boneIndex0].MultiplyPoint3x4(point)*w.weight0;
+                        if(w.weight1>0)cpu+=matrices[w.boneIndex1].MultiplyPoint3x4(point)*w.weight1;
+                        if(w.weight2>0)cpu+=matrices[w.boneIndex2].MultiplyPoint3x4(point)*w.weight2;
+                        if(w.weight3>0)cpu+=matrices[w.boneIndex3].MultiplyPoint3x4(point)*w.weight3;
+                        cpuBakeMaxError=Mathf.Max(cpuBakeMaxError,Vector3.Distance(cpu,world));
+                        bakeScalePathMaxError=Mathf.Max(bakeScalePathMaxError,Vector3.Distance(alternate,world));
+                        handMin=Mathf.Min(handMin,Vector3.Dot(world,normal));count++;
+                    }
                 }
-                finally{Object.DestroyImmediate(baked);}
+                finally{Object.DestroyImmediate(baked);Object.DestroyImmediate(scaledBake);}
             }
             if(count==0||float.IsNegativeInfinity(toolMax))throw new InvalidOperationException("Actual support-hand or provided knife geometry could not be inspected.");
             float cachedToolMax=float.NegativeInfinity;
@@ -215,7 +233,7 @@ namespace SashimiBoy.EditorTools
             {var bounds=renderer.bounds;cachedToolMax=Mathf.Max(cachedToolMax,Vector3.Dot(bounds.center,normal)+Vector3.Dot(bounds.extents,absolute));}
             var surface=cooking.GetType().GetField("supportSurface",BindingFlags.Instance|BindingFlags.NonPublic).GetValue(cooking);
             float cpuHandMin=(float)surface.GetType().GetMethod("MinimumProjection").Invoke(surface,new object[]{cooking.body,normal});
-            return new SupportInspection{vertices=count,gap=handMin-toolMax,handMin=handMin,toolMax=toolMax,cachedToolMax=cachedToolMax,cpuHandMin=cpuHandMin};
+            return new SupportInspection{vertices=count,gap=handMin-toolMax,handMin=handMin,toolMax=toolMax,cachedToolMax=cachedToolMax,cpuHandMin=cpuHandMin,cpuBakeMaxError=cpuBakeMaxError,bakeScalePathMaxError=bakeScalePathMaxError,rendererScale=rendererScale};
         }
 
         private static void CaptureStrokeGameCamera(Stage03CookingView cooking,string file)

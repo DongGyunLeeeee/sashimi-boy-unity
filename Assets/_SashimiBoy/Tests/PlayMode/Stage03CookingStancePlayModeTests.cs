@@ -28,7 +28,9 @@ namespace SashimiBoy.Tests
         SkinnedMeshRenderer supportRenderer;
         int[] supportIndices;
         Mesh supportBake;
+        Mesh supportUncompensatedBake;
         readonly List<Vector3> supportBakedVertices=new List<Vector3>();
+        readonly List<Vector3> supportUncompensatedVertices=new List<Vector3>();
         Renderer[] knifeRenderers;
 
         [UnitySetUp]
@@ -58,7 +60,8 @@ namespace SashimiBoy.Tests
         public void TearDown()
         {
             if(supportBake!=null)UnityEngine.Object.DestroyImmediate(supportBake);
-            supportBake=null;supportBakedVertices.Clear();
+            if(supportUncompensatedBake!=null)UnityEngine.Object.DestroyImmediate(supportUncompensatedBake);
+            supportBake=null;supportUncompensatedBake=null;supportBakedVertices.Clear();supportUncompensatedVertices.Clear();
             if (controller != null) Call(Get(controller, "clock"), "Stop");
             if (save != null)
             {
@@ -180,6 +183,7 @@ namespace SashimiBoy.Tests
                 supportIndices=Enumerable.Range(0,expanded.Length).Where(i=>expanded[i]).ToArray();
                 Assert.That(supportIndices.Length,Is.EqualTo(1190),"Validate the complete provided support hand and its incident triangles.");
                 supportBake=new Mesh{name="Stage03IndependentSupportSkinValidation"};
+                supportUncompensatedBake=new Mesh{name="Stage03IndependentUncompensatedSkinValidation"};
                 knifeRenderers=((Transform)Get(cooking,"knifeRoot")).GetComponentsInChildren<Renderer>(true);
             }
             Transform knife=(Transform)Get(cooking,"knifeRoot");
@@ -192,16 +196,29 @@ namespace SashimiBoy.Tests
                 toolMax=Mathf.Max(toolMax,Vector3.Dot(renderer.bounds.center,normal)+Vector3.Dot(renderer.bounds.extents,absolute));
             // Independent native skinning: do not reproduce the runtime's
             // weighted bone/bindpose multiplication in this regression.
-            supportRenderer.BakeMesh(supportBake,false);supportBake.GetVertices(supportBakedVertices);
-            float handMin=float.PositiveInfinity;
+            // true compensates the renderer scale, so its local vertices use
+            // the complete renderer TRS exactly once. false already includes
+            // that scale and must use only translation+rotation to reach world.
+            supportRenderer.BakeMesh(supportBake,true);supportBake.GetVertices(supportBakedVertices);
+            supportRenderer.BakeMesh(supportUncompensatedBake,false);supportUncompensatedBake.GetVertices(supportUncompensatedVertices);
+            Matrix4x4 unscaledToWorld=Matrix4x4.TRS(supportRenderer.transform.position,supportRenderer.transform.rotation,Vector3.one);
+            float handMin=float.PositiveInfinity,uncompensatedMin=float.PositiveInfinity,maxPathDifference=0f;
             foreach(int index in supportIndices)
-                handMin=Mathf.Min(handMin,Vector3.Dot(supportRenderer.transform.TransformPoint(supportBakedVertices[index]),normal));
+            {
+                Vector3 world=supportRenderer.transform.TransformPoint(supportBakedVertices[index]);
+                Vector3 fromUncompensated=unscaledToWorld.MultiplyPoint3x4(supportUncompensatedVertices[index]);
+                maxPathDifference=Mathf.Max(maxPathDifference,Vector3.Distance(world,fromUncompensated));
+                handMin=Mathf.Min(handMin,Vector3.Dot(world,normal));
+                uncompensatedMin=Mathf.Min(uncompensatedMin,Vector3.Dot(fromUncompensated,normal));
+            }
+            Assert.That(maxPathDifference,Is.LessThan(.00005f),"Compensated and uncompensated native skin paths must agree without applying the renderer scale twice: "+context);
             float actualGap=handMin-toolMax;
             Assert.That(actualGap,Is.GreaterThanOrEqualTo(.0199f),"Actual native-baked hand surface must clear the conservative knife bounds by 2cm: "+context);
+            Assert.That(uncompensatedMin-toolMax,Is.GreaterThanOrEqualTo(.0199f),context);
             Assert.That(Value<int>(cooking,"SupportMeshVertexCount"),Is.EqualTo(supportIndices.Length));
             Assert.That(Value<float>(cooking,"SupportSurfaceGap"),Is.GreaterThanOrEqualTo(.0199f),context);
             Assert.That(Value<float>(cooking,"SupportSurfaceGap"),Is.EqualTo(actualGap).Within(.00005f),
-                "Cached CPU skinning must agree with independent BakeMesh(false) in world space: "+context);
+                "Cached CPU skinning must agree with independent BakeMesh(true) plus full TRS in world space: "+context);
         }
 
         static void AssertPalm(object arm, Vector3 target, string context)

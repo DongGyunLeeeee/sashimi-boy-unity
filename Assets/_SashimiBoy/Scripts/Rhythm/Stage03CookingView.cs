@@ -214,7 +214,8 @@ namespace SashimiBoy
                 {
                     // Author one stable view of the complete board. Neither the
                     // grounded reach solver nor per-cut grip rotation owns it.
-                    fixedCameraPosition=new Vector3(0,Mathf.Max(eyeHeight,workPoint.y+.72f),-.20f);
+                    if(body.eyeAnchor==null)throw new InvalidOperationException("Stage3 requires the supplied body's real eye anchor.");
+                    fixedCameraPosition=new Vector3(0,body.eyeAnchor.position.y,-.20f);
                     fixedCameraRotation=Quaternion.LookRotation(new Vector3(0,workPoint.y-.04f,-.07f)-fixedCameraPosition,Vector3.up);
                     cameraPoseSet=true;
                 }
