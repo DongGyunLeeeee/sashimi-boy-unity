@@ -132,9 +132,17 @@ namespace SashimiBoy.Tests
                 var cooking=host.AddComponent(RuntimeReflection.RuntimeType("SashimiBoy.Stage03CookingView"));
                 Quaternion rest=Quaternion.Euler(0,31,0);
                 Vector3 forward=rest*Vector3.forward;
-                RuntimeReflection.SetField(cooking,"knifeRotation",rest);
+                var knife=new GameObject("Blade fixture").transform;knife.SetParent(host.transform,false);knife.rotation=rest;
+                var grip=new GameObject("Hilt fixture").transform;grip.SetParent(knife,false);grip.localPosition=new Vector3(0,.05f,-.18f);
+                var contact=new GameObject("Edge fixture").transform;contact.SetParent(knife,false);
+                RuntimeReflection.SetField(cooking,"knifeRoot",knife);
+                RuntimeReflection.SetField(cooking,"grip",grip);
+                RuntimeReflection.SetField(cooking,"contact",contact);
+                Call(cooking,"Awake");
                 Assert.That(Call(cooking,"BeginStroke",0,Vector3.zero,forward,(Action)null,(Action)null),Is.EqualTo(true));
                 Quaternion first=(Quaternion)RuntimeReflection.GetField(cooking,"strokeRotation");
+                Call(cooking,"PoseKnife",.45f);
+                Assert.That(grip.position.y,Is.GreaterThan(contact.position.y),"The hilt stays above the board during a forward cut.");
                 Call(cooking,"CancelStroke");
                 Assert.That(Call(cooking,"BeginStroke",0,Vector3.zero,-forward,(Action)null,(Action)null),Is.EqualTo(true));
                 Quaternion reverse=(Quaternion)RuntimeReflection.GetField(cooking,"strokeRotation");
@@ -142,6 +150,8 @@ namespace SashimiBoy.Tests
                     "A neck-cut line has no facing: reversing its mathematical axis must not put the handle across the fish and move Kevin behind his own shoulder.");
                 Assert.That(Vector3.Distance((Vector3)RuntimeReflection.GetField(cooking,"sweepAxis"),-forward),Is.LessThan(.0001f),
                     "Keep the accepted draw direction; only the blade's facing is selected on the same cut line.");
+                Call(cooking,"PoseKnife",.45f);
+                Assert.That(grip.position.y,Is.GreaterThan(contact.position.y),"Drawing backwards must also keep the hilt above the cut plane.");
             }
             finally {UnityEngine.Object.DestroyImmediate(host);}
         }

@@ -126,7 +126,7 @@ namespace SashimiBoy.EditorTools
                             if(!changed)throw new InvalidOperationException("Diagnostic visual part transition rejected.");
                         }
                     };
-                    Action finish=()=>{if(currentPhase>=5)cooking.SetWorkPoint(controller.fillets[currentPhase-5].NextCutPosition);};
+                    Action finish=()=>{if(currentPhase>=5&&!controller.Run.PhaseSatisfied)cooking.SetWorkPoint(controller.fillets[currentPhase-5].NextCutPosition);};
                     if(!cooking.BeginStroke(phase,point,direction,commit,finish))throw new InvalidOperationException("Diagnostic BeginStroke rejected.");
                     float previous=0f;
                     foreach(float u in samples)

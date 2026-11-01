@@ -98,7 +98,10 @@ namespace SashimiBoy
             if(knifeRoot==null||contact==null)return;
             Vector3 offset=motionActive?StrokeOffset(motionPhase,progress):new Vector3(0,.035f,0);
             float tilt=motionActive?(motionPhase==0?8f:motionPhase<5?26f:17f)*Mathf.Sin(progress*Mathf.PI):0;
-            knifeRoot.rotation=motionActive?Quaternion.AngleAxis(tilt,Vector3.Cross(Vector3.up,sweepAxis))*strokeRotation:strokeRotation;
+            Vector3 bladeForward=Vector3.ProjectOnPlane(strokeRotation*Vector3.forward,Vector3.up).normalized;
+            // Pitch follows the selected blade facing too: a reversed draw
+            // must not press the hilt (and Kevin's wrist) below the cut plane.
+            knifeRoot.rotation=motionActive?Quaternion.AngleAxis(tilt,Vector3.Cross(Vector3.up,bladeForward))*strokeRotation:strokeRotation;
             Vector3 target=motionActive?strokePoint+sweepAxis*offset.x+Vector3.up*offset.y:workPoint+Vector3.up*.035f;
             if(motionActive&&progress>.78f)
                 target=Vector3.Lerp(target,workPoint+Vector3.up*.035f,Mathf.SmoothStep(0,1,(progress-.78f)/.22f));
