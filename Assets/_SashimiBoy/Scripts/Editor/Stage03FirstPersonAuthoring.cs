@@ -131,6 +131,10 @@ namespace SashimiBoy.EditorTools
                 AssetDatabase.GetAssetDependencyHash(KevinRiggedBodyAuthoring.BodyPath).ToString() != rawDependencyBefore)
                 throw new InvalidOperationException("The first-person generator modified a protected body source/prefab.");
             WriteText(ReportPath, JsonUtility.ToJson(report, true) + "\n");
+            // The mesh save and synchronous report import above create their
+            // metadata first. Normalize last so newly-created folder/asset/JSON
+            // metas are covered without another save rewriting empty scalars.
+            NormalizeGeneratedText();
         }
 
         public static void Bind(Stage03GameController controller)
@@ -227,6 +231,30 @@ namespace SashimiBoy.EditorTools
         {
             if (!File.Exists(path) || File.ReadAllText(path) != text) File.WriteAllText(path, text, new System.Text.UTF8Encoding(false));
             AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceSynchronousImport);
+        }
+        private static void NormalizeGeneratedText()
+        {
+            var paths = Directory.GetFiles(Root, "*", SearchOption.AllDirectories).Append(Root + ".meta");
+            foreach (string path in paths)
+            {
+                string owned = path.Replace('\\', '/');
+                if (owned != Root + ".meta" && !owned.StartsWith(Root + "/", StringComparison.Ordinal))
+                    throw new InvalidOperationException("First-person normalization must remain inside its generated root.");
+                if (!File.Exists(path) || !new[] { ".asset", ".meta", ".json" }.Contains(Path.GetExtension(path), StringComparer.OrdinalIgnoreCase)) continue;
+                bool bom;
+                using (var input = File.OpenRead(path))
+                {
+                    int first = input.ReadByte(), second = input.ReadByte(), third = input.ReadByte();
+                    bom = first == 0xef && second == 0xbb && third == 0xbf;
+                    // A binary mesh is not a text-normalization target.
+                    if (Path.GetExtension(path).Equals(".asset", StringComparison.OrdinalIgnoreCase) && first != '%' && !bom) continue;
+                }
+                string original = File.ReadAllText(path);
+                string normalized = string.Join("\n", File.ReadAllLines(path).Select(line => line.TrimEnd(' ', '\t'))) + "\n";
+                if (original == normalized && !bom) continue;
+                AssetDatabase.ReleaseCachedFileHandles();
+                File.WriteAllText(path, normalized, new System.Text.UTF8Encoding(false));
+            }
         }
     }
 }

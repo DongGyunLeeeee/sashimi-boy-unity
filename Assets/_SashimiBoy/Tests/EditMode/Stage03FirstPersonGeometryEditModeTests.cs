@@ -187,12 +187,14 @@ namespace SashimiBoy.Tests
                 .Concat(new[] { BodyMeshPath, BodyMeshPath + ".meta", BodyPrefabPath, BodyPrefabPath + ".meta" })
                 .OrderBy(p => p, StringComparer.Ordinal).ToArray();
             var protectedBefore = protectedFiles.ToDictionary(p => p, Hash);
+            AssertCanonicalGeneratedText();
             var generatedBefore = Snapshot(Root);
             Scene previous = SceneManager.GetActiveScene();
             Scene[] scenes = Enumerable.Range(0, SceneManager.sceneCount).Select(SceneManager.GetSceneAt).ToArray();
             bool[] dirty = scenes.Select(s => s.isDirty).ToArray();
             int[][] roots = scenes.Select(s => s.GetRootGameObjects().Select(go => go.GetInstanceID()).OrderBy(i => i).ToArray()).ToArray();
             RuntimeReflection.InvokeStatic("SashimiBoy.EditorTools.Stage03FirstPersonAuthoring", "BuildMeshSourceOwner");
+            AssertCanonicalGeneratedText();
             Assert.That(Snapshot(Root), Is.EquivalentTo(generatedBefore));
             Assert.That(protectedFiles.ToDictionary(p => p, Hash), Is.EquivalentTo(protectedBefore));
             Assert.That(SceneManager.sceneCount, Is.EqualTo(scenes.Length)); Assert.That(SceneManager.GetActiveScene(), Is.EqualTo(previous));
@@ -227,6 +229,21 @@ namespace SashimiBoy.Tests
             var paths = Directory.GetFiles(directory, "*", SearchOption.AllDirectories).AsEnumerable();
             if (File.Exists(directory + ".meta")) paths = paths.Append(directory + ".meta");
             return paths.ToDictionary(p => p, Hash);
+        }
+        static void AssertCanonicalGeneratedText()
+        {
+            foreach (string path in Directory.GetFiles(Root, "*", SearchOption.AllDirectories).Append(Root + ".meta"))
+            {
+                if (!new[] { ".asset", ".meta", ".json" }.Contains(Path.GetExtension(path), StringComparer.OrdinalIgnoreCase)) continue;
+                byte[] bytes = File.ReadAllBytes(path);
+                if (Path.GetExtension(path).Equals(".asset", StringComparison.OrdinalIgnoreCase) && bytes.Length > 0 && bytes[0] != '%' && bytes[0] != 0xef) continue;
+                Assert.That(bytes.Take(3), Is.Not.EqualTo(new byte[] { 0xef, 0xbb, 0xbf }), "Generated UTF-8 text must omit a BOM: " + path);
+                string text = new System.Text.UTF8Encoding(false, true).GetString(bytes);
+                Assert.That(text, Does.Not.Contain("\r"), "Generated text must use LF: " + path);
+                Assert.That(text.EndsWith("\n", StringComparison.Ordinal), Is.True, "Generated text requires a final newline: " + path);
+                Assert.That(text.Split('\n').All(line => line.Length == 0 || (line[line.Length - 1] != ' ' && line[line.Length - 1] != '\t')), Is.True,
+                    "Unity empty YAML scalars must not retain trailing whitespace: " + path);
+            }
         }
         static string Hash(string path)
         {
