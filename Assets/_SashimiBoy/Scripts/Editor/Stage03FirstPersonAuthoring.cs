@@ -23,7 +23,7 @@ namespace SashimiBoy.EditorTools
 
         [Serializable] public sealed class Report
         {
-            public string algorithm = "Stage03FirstPerson-1";
+            public string algorithm = "Stage03FirstPerson-2";
             public string sourceMeshPath, sourceMeshGuid, sourceMeshSha256;
             public string sourcePrefabPath, sourcePrefabGuid, sourcePrefabSha256;
             public string rawBodyPath, rawBodyGuid, rawBodySha256, rawBodyMetaSha256;
@@ -32,7 +32,7 @@ namespace SashimiBoy.EditorTools
             public int leftArmTriangles, rightArmTriangles, leftHandIncidentVertices, rightHandIncidentVertices;
             public float minimumArmWeight = MinimumArmWeight;
             public bool vertexStreamsPreserved, weightsPreserved, bindposesPreserved;
-            public string filterContract = "Keep a source triangle only if every corner has total weight >=0.5 in the same actual left.upper or right.upper descendant chain. Preserve all source vertices/channels/skin data and original retained indices; do not construct new anatomy or a second skeleton. Every nonzero hand-influenced triangle and its incident vertices must remain represented.";
+            public string filterContract = "Keep a source triangle only if every corner has total weight >=0.5 in the same actual left.lower or right.lower descendant chain. This first-person forearm/hand surface excludes upper-arm/shoulder clothing at its original skin-weight boundary. Preserve all source vertices/channels/skin data and original retained indices; do not construct new anatomy or a second skeleton. Every nonzero hand-influenced triangle and its incident vertices must remain represented.";
         }
 
         public static void BuildMeshSourceOwner()
@@ -41,7 +41,7 @@ namespace SashimiBoy.EditorTools
             var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(KevinEmbodimentAuthoring.PrefabPath);
             if (prefab == null) throw new InvalidOperationException("Generate the provided Kevin body before the Stage3 arm variant.");
             var rig = prefab.GetComponent<KevinBodyRig>();
-            if (rig == null || rig.left.upper == null || rig.right.upper == null || rig.left.hand == null || rig.right.hand == null)
+            if (rig == null || rig.left.lower == null || rig.right.lower == null || rig.left.hand == null || rig.right.hand == null)
                 throw new InvalidOperationException("The provided body has incomplete attached arm chains.");
             var sourceRenderer = SourceBody(rig);
             Mesh source = sourceRenderer.sharedMesh;
@@ -74,7 +74,7 @@ namespace SashimiBoy.EditorTools
                 (Belongs(w.boneIndex2, ancestor) ? w.weight2 : 0) + (Belongs(w.boneIndex3, ancestor) ? w.weight3 : 0);
             for (int i = 0; i < weights.Length; i++)
             {
-                left[i] = Influence(weights[i], rig.left.upper); right[i] = Influence(weights[i], rig.right.upper);
+                left[i] = Influence(weights[i], rig.left.lower); right[i] = Influence(weights[i], rig.right.lower);
                 leftHand[i] = Influence(weights[i], rig.left.hand) > 0; rightHand[i] = Influence(weights[i], rig.right.hand) > 0;
             }
             var leftIncident = (bool[])leftHand.Clone(); var rightIncident = (bool[])rightHand.Clone();

@@ -52,7 +52,7 @@ namespace SashimiBoy.Tests
             var left = Get(rig, "left"); var right = Get(rig, "right");
             bool[] Descendants(Transform ancestor) => renderer.bones.Select(b => b != null && (b == ancestor || b.IsChildOf(ancestor))).ToArray();
             return new Reference { source = source, arms = arms, renderer = renderer, weights = source.boneWeights,
-                leftArm = Descendants((Transform)Get(left, "upper")), rightArm = Descendants((Transform)Get(right, "upper")),
+                leftArm = Descendants((Transform)Get(left, "lower")), rightArm = Descendants((Transform)Get(right, "lower")),
                 leftHand = Descendants((Transform)Get(left, "hand")), rightHand = Descendants((Transform)Get(right, "hand")) };
         }
 
@@ -82,7 +82,7 @@ namespace SashimiBoy.Tests
         }
 
         [Test]
-        public void FilteredTriangles_BelongEntirelyToOneArm_AndRetainAllOriginalHandIncidentGeometry()
+        public void FilteredTriangles_BelongEntirelyToOneForearmChain_AndRetainAllOriginalHandIncidentGeometry()
         {
             var r = ReadReference();
             int leftCount = 0, rightCount = 0;
@@ -118,10 +118,10 @@ namespace SashimiBoy.Tests
                         Assert.That(actualFaces.Contains((a, b, c)), Is.True, "A source triangle touching the real hand/finger skin must remain intact.");
                     }
                 }
-                Assert.That(actual, Is.EqualTo(expected.ToArray()), "Only complete same-arm triangles may survive, in their original index order; mixed torso/leg faces must be absent.");
+                Assert.That(actual, Is.EqualTo(expected.ToArray()), "Only complete same-forearm triangles may survive, in their original index order; upper-arm/shoulder and mixed torso/leg faces must be absent.");
             }
             Assert.That(leftCount, Is.GreaterThan(0)); Assert.That(rightCount, Is.GreaterThan(0));
-            Assert.That(leftHandIncident.Count, Is.GreaterThan(0)); Assert.That(rightHandIncident.Count, Is.GreaterThan(0));
+            Assert.That(leftHandIncident.Count, Is.EqualTo(1190)); Assert.That(rightHandIncident.Count, Is.EqualTo(1129));
             Assert.That(leftHandIncident.All(used.Contains) && rightHandIncident.All(used.Contains), Is.True);
             var receipt = ReadReceipt();
             Assert.That(receipt.leftArmTriangles, Is.EqualTo(leftCount)); Assert.That(receipt.rightArmTriangles, Is.EqualTo(rightCount));
@@ -164,7 +164,7 @@ namespace SashimiBoy.Tests
         public void RegeneratingArms_IsByteStable_AndPreservesTheFullBodyRawAssetsEverySceneAndOpenSceneState()
         {
             var receipt = ReadReceipt();
-            Assert.That(receipt.algorithm, Is.EqualTo("Stage03FirstPerson-1"));
+            Assert.That(receipt.algorithm, Is.EqualTo("Stage03FirstPerson-2"));
             Assert.That(receipt.sourceMeshPath, Is.EqualTo(BodyMeshPath)); Assert.That(receipt.sourcePrefabPath, Is.EqualTo(BodyPrefabPath));
             Assert.That(receipt.rawBodyPath, Is.EqualTo(RawBodyPath)); Assert.That(receipt.generatedMeshPath, Is.EqualTo(ArmsMeshPath));
             Assert.That(receipt.sourceMeshGuid, Is.EqualTo(AssetDatabase.AssetPathToGUID(BodyMeshPath)));
