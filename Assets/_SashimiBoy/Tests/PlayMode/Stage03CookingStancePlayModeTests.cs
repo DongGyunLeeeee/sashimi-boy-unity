@@ -32,6 +32,7 @@ namespace SashimiBoy.Tests
         readonly List<Vector3> supportBakedVertices=new List<Vector3>();
         readonly List<Vector3> supportUncompensatedVertices=new List<Vector3>();
         Renderer[] knifeRenderers;
+        Stage03StanceLateFrameProbe lateFrameProbe;
 
         [UnitySetUp]
         public IEnumerator SetUp()
@@ -54,11 +55,14 @@ namespace SashimiBoy.Tests
             Call(controller,"ResetRun"); // Normal entry autoplays; this fixture drives controlled input timestamps.
             observedCamera=false;
             supportRenderer=null;supportIndices=null;knifeRenderers=null;
+            lateFrameProbe=new GameObject("Stage03_IndependentLateFrameProbe").AddComponent<Stage03StanceLateFrameProbe>();
         }
 
         [TearDown]
         public void TearDown()
         {
+            if(lateFrameProbe!=null)UnityEngine.Object.DestroyImmediate(lateFrameProbe.gameObject);
+            lateFrameProbe=null;
             if(supportBake!=null)UnityEngine.Object.DestroyImmediate(supportBake);
             if(supportUncompensatedBake!=null)UnityEngine.Object.DestroyImmediate(supportUncompensatedBake);
             supportBake=null;supportUncompensatedBake=null;supportBakedVertices.Clear();supportUncompensatedVertices.Clear();
@@ -149,11 +153,8 @@ namespace SashimiBoy.Tests
         {
             float deadline = Time.realtimeSinceStartup + 4f;
             Assert.That(Value<bool>(cooking, "IsStriking"), Is.True, "A judged hit must begin an actual tool motion: " + context);
-            do
+            lateFrameProbe.Capture=()=>
             {
-                // Use real scene frames through the entire approach/contact/follow-through,
-                // rather than a fixed fixture or only the former 0.28-second vertical pulse.
-                yield return null;
                 Assert.That(Value<bool>(Run, "Failed"), Is.False, context);
                 AssertPalm(right, (Vector3)Get(body, "rightTarget"), "knife: " + context);
                 AssertPalm(left, (Vector3)Get(body, "leftTarget"), "support: " + context);
@@ -174,11 +175,39 @@ namespace SashimiBoy.Tests
                 Assert.That(Value<float>(cooking,"SupportBladeClearance"),Is.GreaterThanOrEqualTo(.0749f),"Actual posed support-hand and finger joints must remain clear of the swept blade plane: "+context);
                 AssertSupportSurface(cooking,body,left,context);
                 Assert.That(Vector3.Distance(((Transform)Get(left,"palm")).position,Value<Vector3>(cooking,"SafeSupportTarget")),Is.LessThanOrEqualTo(.015f),context);
-                if (Time.realtimeSinceStartup >= deadline &&
-                    (Value<bool>(cooking, "IsStriking") || Value<int>(controller, "PendingVisualCuts") > 0))
-                    Assert.Fail("The accepted stroke did not complete its actual presentation: " + context);
+            };
+            try
+            {
+                // Use real frames throughout approach/contact/follow-through.
+                // Do not manually invoke the production pose/measurement code,
+                // and do not depend on WaitForEndOfFrame in batch-mode tests.
+                while(true)
+                {
+                    int before=lateFrameProbe.Samples;
+                    yield return null;
+                    AssertLateFrame(before,context);
+                    bool moving=Value<bool>(cooking,"IsStriking")||Value<int>(controller,"PendingVisualCuts")>0;
+                    if(!moving)
+                    {
+                        // The stroke can end in this Update, before this coroutine
+                        // resumes. Include that frame's final LateUpdate as well.
+                        before=lateFrameProbe.Samples;
+                        yield return null;
+                        AssertLateFrame(before,context);
+                        break;
+                    }
+                    if(Time.realtimeSinceStartup>=deadline)
+                        Assert.Fail("The accepted stroke did not complete its actual presentation: "+context);
+                }
             }
-            while (Value<bool>(cooking, "IsStriking") || Value<int>(controller, "PendingVisualCuts") > 0);
+            finally {if(lateFrameProbe!=null)lateFrameProbe.Capture=null;}
+        }
+
+        void AssertLateFrame(int before,string context)
+        {
+            Assert.That(lateFrameProbe.Samples,Is.GreaterThan(before),"An actual post-rig LateUpdate sample is required: "+context);
+            if(lateFrameProbe.Failure!=null)
+                System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(lateFrameProbe.Failure).Throw();
         }
 
         void AssertSupportSurface(object cooking,Component body,object left,string context)
