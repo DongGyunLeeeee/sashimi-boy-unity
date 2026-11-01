@@ -113,6 +113,12 @@ namespace SashimiBoy.EditorTools
             Stage03PlayableAuthoring.Scan(scene);
             EditorSceneManager.MarkSceneDirty(scene);
             if (!EditorSceneManager.SaveScene(scene)) throw new InvalidOperationException("Stage3 knife scene save failed.");
+            // Match the owning Stage3 generator's canonical YAML. Unity adds
+            // trailing spaces to empty serialized scalars whenever it saves.
+            AssetDatabase.ReleaseCachedFileHandles();
+            string canonical = string.Join("\n", File.ReadAllLines(Stage03PlayableAuthoring.ScenePath)
+                .Select(line => line.TrimEnd(' ', '\t'))) + "\n";
+            File.WriteAllText(Stage03PlayableAuthoring.ScenePath, canonical, new System.Text.UTF8Encoding(false));
             Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(output)));
             File.WriteAllText(output, JsonUtility.ToJson(report, true) + "\n");
             Debug.Log("[Stage03Knife] Actual supplied +Y cutting edge faces the fish; geometry report: " + output);
