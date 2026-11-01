@@ -27,6 +27,11 @@ namespace SashimiBoy
         private Quaternion strokeRotation=Quaternion.identity;
         private Action contactAction, finishedAction;
         private bool ready;
+        private bool cameraPoseSet;
+        private Vector3 fixedCameraPosition;
+        private Quaternion fixedCameraRotation;
+        public Vector3 SafeSupportTarget {get;private set;}
+        public float SupportBladeClearance {get;private set;}
         public void SetWorkPoint(Vector3 value) {workPoint=value;ready=true;}
         public void SetSupportPoint(Vector3 value) {supportPoint=value;hasSupportPoint=true;}
         public void ClearSupportPoint() {hasSupportPoint=false;}
@@ -38,7 +43,7 @@ namespace SashimiBoy
         public int MotionPhase=>motionPhase;
         public Vector3 CurrentContactPoint=>motionActive?strokePoint:workPoint;
         public const float ContactFraction=.45f;
-        public static float DurationForPhase(int phase)=>phase==0?.44f:phase<5?.52f:.46f;
+        public static float DurationForPhase(int phase)=>phase==3?.24f:phase==1||phase==4?.23f:phase>=6?.20f:.22f;
 
         // The controller advances one presentation clock. Judge timestamps and
         // score never depend on these animation frames or on camera rendering.
@@ -85,10 +90,10 @@ namespace SashimiBoy
         public static Vector3 StrokeOffset(int phase,float progress)
         {
             float u=Mathf.Clamp01(progress);
-            float travel=phase==0?.11f:phase<5?.16f:.105f;
-            float lift=phase==0?.052f:phase<5?.025f:.038f;
+            float travel=phase==0?.06f:phase==1||phase==4?.105f:phase==2||phase==5?.08f:phase==3?0f:.055f;
+            float lift=phase==1||phase==4?.012f:phase==3?.12f:phase==8?.065f:.035f;
             Vector3 approach=new Vector3(-travel*.5f,lift,0);
-            Vector3 follow=new Vector3(travel*.5f,phase<5?.002f:.006f,0);
+            Vector3 follow=new Vector3(travel*.5f,phase==1||phase==4?.002f:.006f,0);
             if(u<=ContactFraction)return Vector3.Lerp(approach,Vector3.zero,Mathf.SmoothStep(0,1,u/ContactFraction));
             if(u<=.78f)return Vector3.Lerp(Vector3.zero,follow,Mathf.SmoothStep(0,1,(u-ContactFraction)/(.78f-ContactFraction)));
             return Vector3.Lerp(follow,new Vector3(0,.035f,0),Mathf.SmoothStep(0,1,(u-.78f)/.22f));
@@ -97,12 +102,14 @@ namespace SashimiBoy
         {
             if(knifeRoot==null||contact==null)return;
             Vector3 offset=motionActive?StrokeOffset(motionPhase,progress):new Vector3(0,.035f,0);
-            float tilt=motionActive?(motionPhase==0?8f:motionPhase<5?26f:17f)*Mathf.Sin(progress*Mathf.PI):0;
+            float tilt=motionActive?(motionPhase==1||motionPhase==4?4f:motionPhase==3?0f:motionPhase==8?0f:12f)*Mathf.Sin(progress*Mathf.PI):0;
             Vector3 bladeForward=Vector3.ProjectOnPlane(strokeRotation*Vector3.forward,Vector3.up).normalized;
             // Pitch follows the selected blade facing too: a reversed draw
             // must not press the hilt (and Kevin's wrist) below the cut plane.
             knifeRoot.rotation=motionActive?Quaternion.AngleAxis(tilt,Vector3.Cross(Vector3.up,bladeForward))*strokeRotation:strokeRotation;
             Vector3 target=motionActive?strokePoint+sweepAxis*offset.x+Vector3.up*offset.y:workPoint+Vector3.up*.035f;
+            if(motionActive&&motionPhase==3)target=strokePoint+Vector3.up*.16f; // Knife stays clear while the fish rolls.
+            if(motionActive&&motionPhase==8)target+=Vector3.up*.07f; // Finishing beats keep the edge above the completed work.
             if(motionActive&&progress>.78f)
                 target=Vector3.Lerp(target,workPoint+Vector3.up*.035f,Mathf.SmoothStep(0,1,(progress-.78f)/.22f));
             knifeRoot.position+=target-contact.position;
@@ -125,7 +132,7 @@ namespace SashimiBoy
         }
         public void ResetPresentation()
         {
-            CancelStroke();motionPaused=false;strokeRotation=knifeRotation;
+            CancelStroke();motionPaused=false;strokeRotation=knifeRotation;cameraPoseSet=false;
             if(!presentingPlate)return;
             if(hiddenBodyRenderers!=null)
                 for(int i=0;i<hiddenBodyRenderers.Length;i++)
@@ -159,16 +166,45 @@ namespace SashimiBoy
             body.workingLeanDegrees=40f;
             body.rightTarget=grip.position;
             body.rightRotation=knifeRoot.rotation*Quaternion.Euler(0,180,0)*body.right.handWorldRest;
-            body.leftTarget=hasSupportPoint?supportPoint:workPoint+new Vector3(-.13f,.012f,-.035f);
-            if(!hasSupportPoint)body.leftTarget=new Vector3(body.leftTarget.x,body.leftTarget.y,Mathf.Min(body.leftTarget.z,-.16f));
+            Vector3 requested=hasSupportPoint?supportPoint:workPoint+new Vector3(-.14f,.012f,0);
+            Vector3 edgeDirection=Vector3.ProjectOnPlane(knifeRoot.forward,Vector3.up).normalized;
+            Vector3 safeNormal=Vector3.Cross(Vector3.up,edgeDirection).normalized;
+            if(Vector3.Dot(safeNormal,Vector3.left)<-.01f)safeNormal=-safeNormal;
+            Vector3 edgePoint=motionActive?strokePoint:workPoint;
+            float separation=Vector3.Dot(requested-edgePoint,safeNormal);
+            // The palm and curled fingers remain on the side of the blade's
+            // swept plane. Sliding along the knife is not a clearance measure.
+            requested+=safeNormal*Mathf.Max(0,.155f-separation);
+            if(motionActive&&motionPhase==3)requested=edgePoint+safeNormal*.18f+Vector3.up*.08f;
+            SafeSupportTarget=requested;SupportBladeClearance=Vector3.Dot(requested-edgePoint,safeNormal);
+            body.leftTarget=requested;
             body.leftRotation=Quaternion.Euler(0,90,0)*body.left.handWorldRest;
             Vector3 preferred=Vector3.Lerp(body.transform.position,stance,1-Mathf.Exp(-12*Time.deltaTime));
             body.ApplyWorkingPoseAtRoot(preferred);
+            // Validate the posed support fingers too, not only their palm target.
+            // Include a skin-width margin around the complete swept blade plane.
+            for(int pass=0;pass<2;pass++)
+            {
+                float clearance=float.PositiveInfinity;
+                foreach(var joint in body.left.hand.GetComponentsInChildren<Transform>())
+                    clearance=Mathf.Min(clearance,Vector3.Dot(joint.position-edgePoint,safeNormal));
+                SupportBladeClearance=clearance;
+                if(clearance>=.075f)break;
+                body.leftTarget+=safeNormal*(.075f-clearance);
+                body.ApplyWorkingPoseAtRoot(preferred);
+            }
+            SafeSupportTarget=body.leftTarget;
             if(gameCamera!=null)
             {
-                gameCamera.transform.position=body.eyeAnchor!=null?body.eyeAnchor.position:body.transform.position+new Vector3(0,eyeHeight,.27f);
-                Vector3 focus=workPoint+Vector3.down*.04f;
-                gameCamera.transform.rotation=Quaternion.LookRotation(focus-gameCamera.transform.position,Vector3.up);
+                if(!cameraPoseSet)
+                {
+                    // Author one stable view of the complete board. Neither the
+                    // grounded reach solver nor per-cut grip rotation owns it.
+                    fixedCameraPosition=new Vector3(0,Mathf.Max(eyeHeight,workPoint.y+.72f),-.74f);
+                    fixedCameraRotation=Quaternion.LookRotation(new Vector3(0,workPoint.y-.04f,-.07f)-fixedCameraPosition,Vector3.up);
+                    cameraPoseSet=true;
+                }
+                gameCamera.transform.SetPositionAndRotation(fixedCameraPosition,fixedCameraRotation);
             }
         }
     }

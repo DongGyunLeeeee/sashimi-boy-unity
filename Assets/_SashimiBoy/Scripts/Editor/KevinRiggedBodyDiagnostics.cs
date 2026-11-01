@@ -95,44 +95,25 @@ namespace SashimiBoy.EditorTools
             foreach(var surface in controller.fillets)Invoke(surface,"Awake");
             Invoke(cooking,"Awake");controller.autoStart=false;Invoke(controller,"Start");cooking.gameCamera.aspect=16f/9f;
             controller.startPanel.SetActive(false);
+            if(!controller.StartRun())throw new InvalidOperationException("Diagnostic AudioClock did not start.");
             Vector3 authored=Vector3.ProjectOnPlane(cooking.knifeRoot.forward,Vector3.up).normalized;
             bool all=Environment.GetEnvironmentVariable("SASHIMI_STROKE_ALL_PHASES")=="1";
-            var report=new StrokeCameraReport{scope=all?"All 9 phases/all 44 strokes numerically; phase0 all strokes and other phases first/last strokes rendered.":"Phase0 all 4 strokes sampled/rendered. Set SASHIMI_STROKE_ALL_PHASES=1 for all nine phases."};
+            var report=new StrokeCameraReport{scope=all?"Eight sections, every authored note through actual public controller APIs; selected first/quota/last strokes rendered.":"First section through actual public controller APIs."};
             float[] samples={0f,.2f,.45f,.65f,.85f,1f};
-            for(int phase=0;phase<(all?9:1);phase++)
+            for(int phase=0;phase<(all?8:1);phase++)
             {
-                if(controller.Run.Phase!=phase)throw new InvalidOperationException("Diagnostic run phase did not advance: "+phase);
-                Invoke(controller,"PreparePhase");
-                Vector3 stance=cooking.standingPosition;
-                Vector3 work=(Vector3)cooking.GetType().GetField("workPoint",BindingFlags.Instance|BindingFlags.NonPublic).GetValue(cooking);
-                stance.x=Mathf.Clamp(work.x-.14f,-.65f,.55f);body.transform.position=stance;
-                int count=controller.Run.RequiredHits;
+                if(controller.Run.Phase!=phase)throw new InvalidOperationException("Diagnostic phase did not advance: "+phase);
+                var notes=controller.chart.phases[phase].noteTimesMs;
+                int count=notes.Length;
                 for(int ordinal=0;ordinal<count;ordinal++)
                 {
-                    Vector3 point=(Vector3)controller.GetType().GetMethod("CutContactPoint",BindingFlags.Instance|BindingFlags.NonPublic).Invoke(controller,new object[]{phase,ordinal});
                     Vector3 direction=(Vector3)controller.GetType().GetMethod("CutDirection",BindingFlags.Instance|BindingFlags.NonPublic).Invoke(controller,new object[]{phase});
-                    if(!controller.Run.TryHit())throw new InvalidOperationException("Diagnostic semantic hit rejected: "+phase+"/"+ordinal);
-                    int currentPhase=phase,currentOrdinal=ordinal;
-                    Action commit=()=>
-                    {
-                        if(currentPhase>=5)
-                        {
-                            if(!controller.fillets[currentPhase-5].TryCut(currentOrdinal))throw new InvalidOperationException("Diagnostic actual fillet cut rejected.");
-                            Invoke(controller,"UpdateFilletSupport",currentPhase-5);
-                        }
-                        else if(currentOrdinal==3)
-                        {
-                            bool changed=currentPhase==0?controller.assembly.TryRemoveHead():controller.assembly.TrySeparateFillet(currentPhase-1);
-                            if(!changed)throw new InvalidOperationException("Diagnostic visual part transition rejected.");
-                        }
-                    };
-                    Action finish=()=>{if(currentPhase>=5&&!controller.Run.PhaseSatisfied)cooking.SetWorkPoint(controller.fillets[currentPhase-5].NextCutPosition);};
-                    if(!cooking.BeginStroke(phase,point,direction,commit,finish))throw new InvalidOperationException("Diagnostic BeginStroke rejected.");
-                    float previous=0f;
+                    if(!controller.SubmitAt(notes[ordinal]))throw new InvalidOperationException("Diagnostic actual controller hit rejected: "+phase+"/"+ordinal);
+                    float duration=cooking.RemainingStrokeSeconds,previous=0;
                     foreach(float u in samples)
                     {
-                        float delta=u==1f?cooking.RemainingStrokeSeconds:(u-previous)*Stage03CookingView.DurationForPhase(phase);previous=u;
-                        if(delta>0){cooking.AdvancePresentation(delta);controller.assembly.AdvancePresentation(delta);Invoke(controller,"GroundBody");}
+                        float delta=u==1f?cooking.RemainingStrokeSeconds:(u-previous)*duration;previous=u;
+                        if(delta>0)controller.AdvancePresentation(delta);
                         Invoke(cooking,"LateUpdate");body.ApplyPose();
                         Vector3 currentWork=(Vector3)cooking.GetType().GetField("workPoint",BindingFlags.Instance|BindingFlags.NonPublic).GetValue(cooking);
                         Vector3 focus=currentWork+Vector3.down*.04f;
@@ -150,20 +131,16 @@ namespace SashimiBoy.EditorTools
                             rightWristTarget=body.rightTarget-body.rightRotation*Vector3.Scale(body.right.palm.localPosition,body.right.hand.lossyScale),
                             leftWristTarget=body.leftTarget-body.leftRotation*Vector3.Scale(body.left.palm.localPosition,body.left.hand.lossyScale),
                             rightError=Vector3.Distance(body.right.palm.position,body.rightTarget),leftError=Vector3.Distance(body.left.palm.position,body.leftTarget)});
-                        if(phase==0||ordinal==0||ordinal==count-1)
+                        if(ordinal==0||ordinal==count-1||ordinal==controller.Run.RequiredHits-1)
                             CaptureStrokeGameCamera(cooking,"stroke-phase-"+phase+"-ordinal-"+ordinal+"-u"+Mathf.RoundToInt(u*100).ToString("000")+".png");
+
                     }
                 }
-                controller.assembly.AdvancePresentation(2f);Invoke(controller,"GroundBody");
-                if(phase==2)
-                {
-                    controller.Run.TryAdvance();
-                    if(!controller.assembly.TryTurnOver())throw new InvalidOperationException("Diagnostic turn rejected.");
-                    controller.assembly.AdvancePresentation(2f);
-                    if(!controller.Run.FinishTurn())throw new InvalidOperationException("Diagnostic semantic turn rejected.");
-                }
-                else if(!controller.Run.TryAdvance())throw new InvalidOperationException("Diagnostic phase advance rejected.");
+                controller.AdvancePresentation(2f);
+                controller.TickAt(controller.chart.phases[phase].endTimeMs+1);
+                if(controller.Run.Failed||controller.Run.Phase!=phase+1)throw new InvalidOperationException("Diagnostic section deadline failed: "+phase);
             }
+            controller.clock.Stop();
             File.WriteAllText(Path.Combine(KevinRiggedBodyAuthoring.EvidenceDirectory,"stage03-stroke-camera-evidence.json"),JsonUtility.ToJson(report,true));
             EditorSceneManager.NewScene(NewSceneSetup.EmptyScene,NewSceneMode.Single);
             Debug.Log("[OwnerFeedback87StrokeCamera] Editor stroke poses/rendering recorded, not runtime PASS: "+KevinRiggedBodyAuthoring.EvidenceDirectory);

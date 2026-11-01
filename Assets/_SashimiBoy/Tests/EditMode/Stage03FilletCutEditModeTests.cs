@@ -63,7 +63,7 @@ namespace SashimiBoy.Tests
         }
 
         [Test]
-        public void BothSourceBackedCachesHaveFiveClippedClosedStatesAndAnEmptySixthState()
+        public void BothWholeSideCachesHaveElevenClosedResidualStatesAndAnEmptyTwelfthState()
         {
             foreach (string role in new[] { "FrontFillet", "BackFillet" })
             {
@@ -72,10 +72,10 @@ namespace SashimiBoy.Tests
                 Assert.That(Property<bool>(cache, "IsValid"), Is.True, role);
                 var meshes = (Mesh[])RuntimeReflection.GetField(cache, "remainingMeshes");
                 var planes = (float[])RuntimeReflection.GetField(cache, "cutPositions");
-                Assert.That(meshes.Length, Is.EqualTo(7)); Assert.That(meshes[6], Is.Null);
+                Assert.That(meshes.Length, Is.EqualTo(13)); Assert.That(meshes[12], Is.Null);
                 Assert.That(AssetDatabase.GetAssetPath(meshes[0]), Is.EqualTo(
-                    "Assets/_SashimiBoy/Art/Generated/Stage03Flounder/Meshes/MS_" + role + ".asset"));
-                for (int cut = 1; cut < 6; cut++)
+                    "Assets/_SashimiBoy/Art/Generated/Stage03Flounder/Meshes/MS_" + role.Replace("Fillet","WholeFillet") + ".asset"));
+                for (int cut = 1; cut < 12; cut++)
                 {
                     Mesh mesh = meshes[cut];
                     Assert.That(mesh, Is.Not.Null, role + " cut " + cut);

@@ -129,6 +129,7 @@ namespace SashimiBoy.EditorTools
                     Debug.Log("[Stage03Flounder] " + role + " vertices " + report.sourceVertices + " -> " + report.derivedVertices + "; generation/cache " + watch.ElapsedMilliseconds + " ms.");
                 }
             }
+            Stage03TwoFilletAuthoring.BuildGeometry();
             BuildAssembly(footprint);
             var reportFile = new AuthoringReport { wholeFootprint = footprint, models = reports.ToArray() };
             WriteIfDifferent(ReportPath, JsonUtility.ToJson(reportFile, true) + "\n");
@@ -143,6 +144,58 @@ namespace SashimiBoy.EditorTools
         {
             BuildBatch();
             CapturePreviewsBatch();
+        }
+
+        public static string WholeFilletPrefabPath(int side) => Stage03TwoFilletAuthoring.WholeFilletPrefabPath(side);
+
+        public static void RebuildTwoFilletPresentationBatch()
+        {
+            RequireEditor();
+            using var console = new EditorConsoleFailureScope();
+            try { Stage03TwoFilletAuthoring.BuildAndBind(); }
+            finally { NormalizeGeneratedText(); }
+        }
+
+        // Opt-in render evidence; never opens or saves an authored game scene.
+        public static void CaptureTwoFilletPreviewsBatch()
+        {
+            RequireEditor();
+            using var console = new EditorConsoleFailureScope();
+            var report = JsonUtility.FromJson<AuthoringReport>(File.ReadAllText(ProjectFile(ReportPath)));
+            using var preview = new PreviewSpace();
+            var root = preview.Instantiate(AssetDatabase.LoadAssetAtPath<GameObject>(AssemblyPath));
+            try
+            {
+                FlounderPreviewDiagnostics.PrepareRuntimeClone(root);
+                var view = root.GetComponent<FlounderAssemblyView>();
+                view.BeginTwoFilletPreparation();
+                var frame = new Bounds(new Vector3(0, report.wholeFootprint.y * .5f, 0), report.wholeFootprint * 1.25f);
+                void Capture(string id)
+                {
+                    Texture2D image = preview.Capture(frame, 1000, 800);
+                    try { WriteImage(EvidencePath("two-fillets-" + id + ".png"), image); }
+                    finally { Object.DestroyImmediate(image); }
+                }
+                Capture("0-whole");
+                Require(view.TryRemoveHead(), "Two-side head removal rejected."); view.AdvancePresentation(5); Capture("1-headless-front-skin");
+                Require(view.TryRemoveSkin(0), "Front skin rejected."); view.AdvancePresentation(.35f); Capture("2-front-skin-peeling");
+                view.AdvancePresentation(5); Capture("3-entire-front-skinned");
+                Require(view.TrySeparateWholeFillet(0), "Whole front rejected."); view.AdvancePresentation(5); Capture("4-front-filleted");
+                Require(view.TryTurnOver(), "Two-side turn rejected."); view.AdvancePresentation(5); Capture("5-back-skin");
+                Require(view.TryRemoveSkin(1), "Back skin rejected."); view.AdvancePresentation(.35f); Capture("6-back-skin-peeling");
+                view.AdvancePresentation(5); Capture("7-entire-back-skinned");
+                Require(view.TrySeparateWholeFillet(1), "Whole back rejected."); Capture("8-final-spine");
+                view.AdvancePresentation(5);
+                foreach (int side in new[] { 0, 1 })
+                {
+                    var fillet = view.GetStoredWholeFillet(side);
+                    Require(fillet != null, "Whole fillet did not reach storage.");
+                    var image = preview.Capture(GeometryBounds(fillet.gameObject), 800, 640);
+                    try { WriteImage(EvidencePath("two-fillets-" + (side == 0 ? "front" : "back") + "-edible.png"), image); }
+                    finally { Object.DestroyImmediate(image); }
+                }
+            }
+            finally { Object.DestroyImmediate(root); }
         }
 
         public static void ProbeBatch()
@@ -716,6 +769,7 @@ namespace SashimiBoy.EditorTools
                 view.sashimiOutputAnchor = Anchor(root.transform, "SashimiOutput", new Vector3(whole.x * .65f, whole.y * .5f, -whole.z * .1f));
                 view.plateOutputAnchor = Anchor(root.transform, "PlateOutput", new Vector3(-whole.x * 1.4f, 0, -whole.z * .2f));
                 view.sashimiSlicePrefab = AssetDatabase.LoadAssetAtPath<GameObject>(WrapperPath("SashimiSlice"));
+                Stage03TwoFilletAuthoring.BindAssemblyRoot(root);
                 Require(PrefabUtility.SaveAsPrefabAsset(root, AssemblyPath) != null, "Could not save flounder assembly.");
             }
             finally { Object.DestroyImmediate(root); }

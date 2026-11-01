@@ -22,7 +22,7 @@ namespace SashimiBoy.Tests
         }
 
         [UnityTest]
-        public IEnumerator SixOrdinalCutsAreIndependentAndDoNotCreateMeshesOrSpawnSlices()
+        public IEnumerator TwelveOrdinalCutsAreIndependentAndDoNotCreateMeshesOrSpawnSlices()
         {
             ScriptableObject cache = CreateCache();
             Component a = CreateSurface(cache, "FrontFillet0"), b = CreateSurface(cache, "FrontFillet1");
@@ -32,7 +32,7 @@ namespace SashimiBoy.Tests
             int meshCount = Resources.FindObjectsOfTypeAll<Mesh>().Length;
             int childCount = a.transform.childCount;
             Assert.That(Cut(a, 1), Is.False, "A future ordinal must not skip uncut flesh.");
-            for (int cut = 0; cut < 6; cut++)
+            for (int cut = 0; cut < 12; cut++)
             {
                 Assert.That(Cut(a, cut), Is.True);
                 Assert.That(Cut(a, cut), Is.False, "The same resolved input cannot cut twice.");
@@ -44,7 +44,7 @@ namespace SashimiBoy.Tests
             Assert.That(Value<bool>(a, "IsEmpty"), Is.True);
             Assert.That(a.GetComponent<MeshRenderer>().enabled, Is.False);
             Assert.That(filterA.sharedMesh, Is.Null);
-            Assert.That(Cut(a, 6), Is.False);
+            Assert.That(Cut(a, 12), Is.False);
             Assert.That(a.transform.childCount, Is.EqualTo(childCount), "Stage controller owns slice output.");
             Assert.That(Resources.FindObjectsOfTypeAll<Mesh>().Length, Is.EqualTo(meshCount), "Gameplay must only swap the offline cache.");
             RuntimeReflection.Invoke(a, "ResetCuts");
@@ -84,10 +84,10 @@ namespace SashimiBoy.Tests
             mesh.RecalculateBounds(); owned.Add(mesh);
             var material = new Material(Shader.Find("Standard")); owned.Add(material);
             var cache = ScriptableObject.CreateInstance(RuntimeReflection.RuntimeType("SashimiBoy.Stage03FilletCutCache")); owned.Add(cache);
-            var meshes = new Mesh[7]; for (int i = 0; i < 6; i++) meshes[i] = mesh;
+            var meshes = new Mesh[13]; for (int i = 0; i < 12; i++) meshes[i] = mesh;
             RuntimeReflection.SetField(cache, "modelRole", "Fixture");
             RuntimeReflection.SetField(cache, "remainingMeshes", meshes);
-            RuntimeReflection.SetField(cache, "cutPositions", new[] { 1f, 2f, 3f, 4f, 5f, 6f });
+            RuntimeReflection.SetField(cache, "cutPositions", new[] { 1f,2f,3f,4f,5f,6f,7f,8f,9f,10f,11f,12f });
             RuntimeReflection.SetField(cache, "surfaceMaterial", material);
             RuntimeReflection.SetField(cache, "capMaterial", material);
             return cache;

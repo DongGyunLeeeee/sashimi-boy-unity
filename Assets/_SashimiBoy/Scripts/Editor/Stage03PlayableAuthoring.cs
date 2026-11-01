@@ -27,6 +27,59 @@ namespace SashimiBoy.EditorTools
             data.bpm=AssetDatabase.LoadAssetAtPath<Stage03Chart>(ChartPath).bpm;
             EditorUtility.SetDirty(data);AssetDatabase.SaveAssets();
         }
+        // Rebuild only the Stage3 content changed by the continuous-rhythm Owner decision.
+        public static void ApplyContinuousRhythmBatch()
+        {
+            Stage03BuildInputGuard.ValidateMaterializedAssets();
+            if(EditorApplication.isPlayingOrWillChangePlaymode)throw new InvalidOperationException("Exit Play mode first.");
+            for(int i=0;i<SceneManager.sceneCount;i++)if(SceneManager.GetSceneAt(i).isDirty)throw new InvalidOperationException("Save unsaved scenes first.");
+            byte[] salmon=File.ReadAllBytes(Stage01PlayableAuthoring.ScenePath),rockfish=File.ReadAllBytes(Stage02RockfishAuthoring.ScenePath);
+            Stage03FlounderAuthoring.RebuildTwoFilletPresentationBatch();
+            Stage03FilletCutAuthoring.BuildBatch();BuildChart();
+            var scene=EditorSceneManager.OpenScene(ScenePath,OpenSceneMode.Single);
+            var controller=Find<Stage03GameController>(scene);
+            if(controller==null)throw new InvalidOperationException("Existing Stage3 scene is required.");
+            PlaceAssembly(controller,scene);BindTwoSurfaces(controller);
+            controller.chart=AssetDatabase.LoadAssetAtPath<Stage03Chart>(ChartPath);
+            controller.clock.audioSource.clip=controller.chart.music;
+            Stage03HudAuthoring.Apply(scene,controller);
+            EditorUtility.SetDirty(controller);Scan(scene);
+            EditorSceneManager.MarkSceneDirty(scene);
+            if(!EditorSceneManager.SaveScene(scene))throw new InvalidOperationException("Stage3 scene save failed.");
+            var data=AssetDatabase.LoadAssetAtPath<StageDefinition>("Assets/_SashimiBoy/Data/Generated/Stage_03_Sole.asset");
+            data.bpm=controller.chart.bpm;EditorUtility.SetDirty(data);
+            AssetDatabase.SaveAssets();NormalizeOwnedOutputs();
+            if(!File.ReadAllBytes(Stage01PlayableAuthoring.ScenePath).SequenceEqual(salmon)||!File.ReadAllBytes(Stage02RockfishAuthoring.ScenePath).SequenceEqual(rockfish))
+                throw new InvalidOperationException("Stage1/2 scene bytes changed.");
+            Debug.Log("[Stage03Playable] Continuous eight-section rhythm, two whole-side fillets and twenty-four slices authored.");
+        }
+        private static void BindTwoSurfaces(Stage03GameController controller)
+        {
+            var assembly=controller.assembly;
+            if(assembly.wholeFillets==null||assembly.wholeFillets.Length!=2)throw new InvalidOperationException("Generate whole-side fillets first.");
+            // Retire the old four half-fillet cutting components in this scene;
+            // their source library parts remain available and keep their GUIDs.
+            foreach(var legacy in assembly.fillets)
+                foreach(var old in legacy.GetComponents<Stage03FilletSurface>())Object.DestroyImmediate(old);
+            controller.fillets=new Stage03FilletSurface[2];
+            for(int i=0;i<2;i++)
+            {
+                var part=assembly.wholeFillets[i];
+                var surface=part.GetComponent<Stage03FilletSurface>();
+                if(surface==null)surface=part.gameObject.AddComponent<Stage03FilletSurface>();
+                surface.meshFilter=part.GetComponentInChildren<MeshFilter>(true);
+                surface.meshRenderer=surface.meshFilter.GetComponent<MeshRenderer>();
+                surface.Bind(AssetDatabase.LoadAssetAtPath<Stage03FilletCutCache>(Stage03FilletCutAuthoring.CachePath(i==0?"FrontFillet":"BackFillet")));
+                controller.fillets[i]=surface;
+                EditorUtility.SetDirty(surface);
+                PrefabUtility.RecordPrefabInstancePropertyModifications(surface);
+                var bounds=surface.meshFilter.sharedMesh.bounds;
+                float scale=assembly.transform.lossyScale.x;
+                assembly.wholeFilletStorageAnchors[i].SetPositionAndRotation(new Vector3(-.3f+i*.6f-bounds.center.x*scale,
+                    controller.boardTop+.008f-bounds.min.y*scale,.28f-bounds.center.z*scale),Quaternion.identity);
+            }
+            foreach(var t in assembly.GetComponentsInChildren<Transform>(true))PrefabUtility.RecordPrefabInstancePropertyModifications(t);
+        }
         [MenuItem("Sashimi Boy/Stage 03/Apply Complete Playable Stage")]
         public static void ApplyBatch()
         {
@@ -34,6 +87,7 @@ namespace SashimiBoy.EditorTools
             Stage03BuildInputGuard.ValidateMaterializedAssets();
             for(int i=0;i<SceneManager.sceneCount;i++)if(SceneManager.GetSceneAt(i).isDirty)throw new InvalidOperationException("Save unsaved scenes first.");
             byte[] salmon=File.ReadAllBytes(Stage01PlayableAuthoring.ScenePath),rockfish=File.ReadAllBytes(Stage02RockfishAuthoring.ScenePath);
+            Stage03FlounderAuthoring.RebuildTwoFilletPresentationBatch();
             Stage03FilletCutAuthoring.BuildBatch();
             Stage03DayWorldAuthoring.ApplyBatch();
             BuildChart();
@@ -51,12 +105,7 @@ namespace SashimiBoy.EditorTools
             controller.chart=AssetDatabase.LoadAssetAtPath<Stage03Chart>(ChartPath);
             controller.clock.audioSource.clip=controller.chart.music;
             controller.clock.playOnStart=false;
-            for(int i=0;i<4;i++)
-            {
-                string role=i<2?"FrontFillet":"BackFillet";
-                controller.fillets[i].Bind(AssetDatabase.LoadAssetAtPath<Stage03FilletCutCache>(Stage03FilletCutAuthoring.CachePath(role)));
-                EditorUtility.SetDirty(controller.fillets[i]);
-            }
+            BindTwoSurfaces(controller);
             EditorUtility.SetDirty(controller);
             var data=AssetDatabase.LoadAssetAtPath<StageDefinition>("Assets/_SashimiBoy/Data/Generated/Stage_03_Sole.asset");
             if(data==null)throw new InvalidOperationException("Existing Stage3 stable-ID definition missing.");
@@ -71,7 +120,7 @@ namespace SashimiBoy.EditorTools
             NormalizeOwnedOutputs();
             if(!File.ReadAllBytes(Stage01PlayableAuthoring.ScenePath).SequenceEqual(salmon)||!File.ReadAllBytes(Stage02RockfishAuthoring.ScenePath).SequenceEqual(rockfish))
                 throw new InvalidOperationException("Stage1/2 scenes changed during Stage3 authoring.");
-            Debug.Log("[Stage03Playable] Created 9-phase, four-fillet, 24-slice play and Day3 world. Stage1/2 bytes preserved.");
+            Debug.Log("[Stage03Playable] Created eight-section, two-fillet, 24-slice play and Day3 world. Stage1/2 bytes preserved.");
         }
         private static void CleanupLegacyDemo(Scene scene)
         {

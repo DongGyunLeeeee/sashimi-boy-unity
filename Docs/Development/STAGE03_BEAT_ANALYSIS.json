@@ -13,7 +13,7 @@
   "fftSize": 1024,
   "hopSamples": 128,
   "timestampReference": "STFT window center",
-  "auditoryInspection": "Unavailable: audio tool did not support audio input. No direct-listening claim.",
+  "auditoryInspection": "Unavailable: audio input is unsupported. No direct-listening claim.",
   "humanMusicSyncVerification": "Pending Owner playback and timing/readability/feel approval.",
   "bandHz": {
     "kick": [
@@ -39,387 +39,6623 @@
   "fittedPhaseSeconds": 0.2,
   "pulseCount": 372,
   "maximumPulseSnapMs": 84.441,
+  "globalQuarterAccent": 1,
+  "phraseSelection": {
+    "lowAttackBoundary": 0.171,
+    "highAttackBoundary": 0.234,
+    "barEnergy": [
+      {
+        "bar": -1,
+        "meanAttack": 0.144
+      },
+      {
+        "bar": 0,
+        "meanAttack": 0.088
+      },
+      {
+        "bar": 1,
+        "meanAttack": 0.063
+      },
+      {
+        "bar": 2,
+        "meanAttack": 0.092
+      },
+      {
+        "bar": 3,
+        "meanAttack": 0.092
+      },
+      {
+        "bar": 4,
+        "meanAttack": 0.087
+      },
+      {
+        "bar": 5,
+        "meanAttack": 0.139
+      },
+      {
+        "bar": 6,
+        "meanAttack": 0.149
+      },
+      {
+        "bar": 7,
+        "meanAttack": 0.196
+      },
+      {
+        "bar": 8,
+        "meanAttack": 0.172
+      },
+      {
+        "bar": 9,
+        "meanAttack": 0.198
+      },
+      {
+        "bar": 10,
+        "meanAttack": 0.163
+      },
+      {
+        "bar": 11,
+        "meanAttack": 0.214
+      },
+      {
+        "bar": 12,
+        "meanAttack": 0.192
+      },
+      {
+        "bar": 13,
+        "meanAttack": 0.179
+      },
+      {
+        "bar": 14,
+        "meanAttack": 0.229
+      },
+      {
+        "bar": 15,
+        "meanAttack": 0.217
+      },
+      {
+        "bar": 16,
+        "meanAttack": 0.201
+      },
+      {
+        "bar": 17,
+        "meanAttack": 0.211
+      },
+      {
+        "bar": 18,
+        "meanAttack": 0.211
+      },
+      {
+        "bar": 19,
+        "meanAttack": 0.234
+      },
+      {
+        "bar": 20,
+        "meanAttack": 0.212
+      },
+      {
+        "bar": 21,
+        "meanAttack": 0.233
+      },
+      {
+        "bar": 22,
+        "meanAttack": 0.204
+      },
+      {
+        "bar": 23,
+        "meanAttack": 0.247
+      },
+      {
+        "bar": 24,
+        "meanAttack": 0.235
+      },
+      {
+        "bar": 25,
+        "meanAttack": 0.266
+      },
+      {
+        "bar": 26,
+        "meanAttack": 0.21
+      },
+      {
+        "bar": 27,
+        "meanAttack": 0.235
+      },
+      {
+        "bar": 28,
+        "meanAttack": 0.221
+      },
+      {
+        "bar": 29,
+        "meanAttack": 0.261
+      },
+      {
+        "bar": 30,
+        "meanAttack": 0.228
+      },
+      {
+        "bar": 31,
+        "meanAttack": 0.215
+      },
+      {
+        "bar": 32,
+        "meanAttack": 0.168
+      },
+      {
+        "bar": 33,
+        "meanAttack": 0.218
+      },
+      {
+        "bar": 34,
+        "meanAttack": 0.23
+      },
+      {
+        "bar": 35,
+        "meanAttack": 0.18
+      },
+      {
+        "bar": 36,
+        "meanAttack": 0.257
+      },
+      {
+        "bar": 37,
+        "meanAttack": 0.282
+      },
+      {
+        "bar": 38,
+        "meanAttack": 0.245
+      },
+      {
+        "bar": 39,
+        "meanAttack": 0.256
+      },
+      {
+        "bar": 40,
+        "meanAttack": 0.254
+      },
+      {
+        "bar": 41,
+        "meanAttack": 0.248
+      },
+      {
+        "bar": 42,
+        "meanAttack": 0.234
+      },
+      {
+        "bar": 43,
+        "meanAttack": 0.216
+      },
+      {
+        "bar": 44,
+        "meanAttack": 0.171
+      },
+      {
+        "bar": 45,
+        "meanAttack": 0.186
+      },
+      {
+        "bar": 46,
+        "meanAttack": 0.178
+      },
+      {
+        "bar": 47,
+        "meanAttack": 0.204
+      },
+      {
+        "bar": 48,
+        "meanAttack": 0.207
+      },
+      {
+        "bar": 49,
+        "meanAttack": 0.219
+      },
+      {
+        "bar": 50,
+        "meanAttack": 0.235
+      },
+      {
+        "bar": 51,
+        "meanAttack": 0.245
+      },
+      {
+        "bar": 52,
+        "meanAttack": 0.228
+      },
+      {
+        "bar": 53,
+        "meanAttack": 0.271
+      },
+      {
+        "bar": 54,
+        "meanAttack": 0.244
+      },
+      {
+        "bar": 55,
+        "meanAttack": 0.262
+      },
+      {
+        "bar": 56,
+        "meanAttack": 0.237
+      },
+      {
+        "bar": 57,
+        "meanAttack": 0.254
+      },
+      {
+        "bar": 58,
+        "meanAttack": 0.251
+      },
+      {
+        "bar": 59,
+        "meanAttack": 0.264
+      },
+      {
+        "bar": 60,
+        "meanAttack": 0.21
+      },
+      {
+        "bar": 61,
+        "meanAttack": 0.185
+      },
+      {
+        "bar": 62,
+        "meanAttack": 0.146
+      },
+      {
+        "bar": 63,
+        "meanAttack": 0.187
+      },
+      {
+        "bar": 64,
+        "meanAttack": 0.179
+      },
+      {
+        "bar": 65,
+        "meanAttack": 0.176
+      },
+      {
+        "bar": 66,
+        "meanAttack": 0.202
+      },
+      {
+        "bar": 67,
+        "meanAttack": 0.276
+      },
+      {
+        "bar": 68,
+        "meanAttack": 0.258
+      },
+      {
+        "bar": 69,
+        "meanAttack": 0.253
+      },
+      {
+        "bar": 70,
+        "meanAttack": 0.262
+      },
+      {
+        "bar": 71,
+        "meanAttack": 0.26
+      },
+      {
+        "bar": 72,
+        "meanAttack": 0.256
+      },
+      {
+        "bar": 73,
+        "meanAttack": 0.18
+      },
+      {
+        "bar": 74,
+        "meanAttack": 0.168
+      },
+      {
+        "bar": 75,
+        "meanAttack": 0.18
+      },
+      {
+        "bar": 76,
+        "meanAttack": 0.105
+      },
+      {
+        "bar": 77,
+        "meanAttack": 0.102
+      },
+      {
+        "bar": 78,
+        "meanAttack": 0.128
+      },
+      {
+        "bar": 79,
+        "meanAttack": 0.091
+      },
+      {
+        "bar": 80,
+        "meanAttack": 0.097
+      },
+      {
+        "bar": 81,
+        "meanAttack": 0.108
+      },
+      {
+        "bar": 82,
+        "meanAttack": 0.114
+      },
+      {
+        "bar": 83,
+        "meanAttack": 0.188
+      },
+      {
+        "bar": 84,
+        "meanAttack": 0.15
+      },
+      {
+        "bar": 85,
+        "meanAttack": 0.132
+      },
+      {
+        "bar": 86,
+        "meanAttack": 0.155
+      },
+      {
+        "bar": 87,
+        "meanAttack": 0.171
+      },
+      {
+        "bar": 88,
+        "meanAttack": 0.18
+      },
+      {
+        "bar": 89,
+        "meanAttack": 0.198
+      },
+      {
+        "bar": 90,
+        "meanAttack": 0.184
+      },
+      {
+        "bar": 91,
+        "meanAttack": 0.195
+      },
+      {
+        "bar": 92,
+        "meanAttack": 0.003
+      }
+    ]
+  },
+  "chartMetrics": {
+    "totalNotes": 297,
+    "totalRequiredHits": 211,
+    "quarterNotes": 249,
+    "eighthNotes": 48,
+    "averageNotesPerSecond": 1.371,
+    "minimumGapMs": 288.0,
+    "medianGapMs": 610.016,
+    "maximumGapMs": 3690.667,
+    "minimumPhaseGapMs": 2186.667,
+    "phaseBoundaryGapsMs": [
+      3093.334,
+      2517.334,
+      2805.333,
+      3690.667,
+      2186.667,
+      2453.333,
+      2976.0
+    ],
+    "maximumEighthSnapMs": 32.0,
+    "hardChartNoteCountTarget": [
+      280,
+      350
+    ],
+    "targetMet": true,
+    "oldChartNotes": 62,
+    "oldRequiredHits": 44,
+    "oldAverageNotesPerSecond": 0.292,
+    "countMultiplier": 4.79
+  },
+  "animationContract": {
+    "maximumStrokeSeconds": 0.24,
+    "unchangedCasualWindowMs": 125,
+    "phaseContactTailMs": 1000,
+    "minimumBoundaryGapMs": 1250,
+    "turnoverIsJudgedSpaceNote": true,
+    "quotaNeverDisablesLaterNotes": true,
+    "failureRestartsWholeStage": true
+  },
   "fullSourceSections": [
     {
       "startSeconds": 0,
       "endSeconds": 20,
       "rms": 0.094,
       "meanAttack": 0.108,
-      "highAttack": 0.333
+      "highAttack": 0.333,
+      "chartNotes": 10,
+      "eighthNotes": 0
     },
     {
       "startSeconds": 20,
       "endSeconds": 40,
       "rms": 0.12,
       "meanAttack": 0.189,
-      "highAttack": 0.55
+      "highAttack": 0.55,
+      "chartNotes": 27,
+      "eighthNotes": 5
     },
     {
       "startSeconds": 40,
       "endSeconds": 60,
       "rms": 0.113,
       "meanAttack": 0.216,
-      "highAttack": 0.571
+      "highAttack": 0.571,
+      "chartNotes": 29,
+      "eighthNotes": 5
     },
     {
       "startSeconds": 60,
       "endSeconds": 80,
       "rms": 0.112,
       "meanAttack": 0.229,
-      "highAttack": 0.604
+      "highAttack": 0.604,
+      "chartNotes": 24,
+      "eighthNotes": 4
     },
     {
       "startSeconds": 80,
       "endSeconds": 100,
       "rms": 0.125,
       "meanAttack": 0.226,
-      "highAttack": 0.598
+      "highAttack": 0.598,
+      "chartNotes": 34,
+      "eighthNotes": 6
     },
     {
       "startSeconds": 100,
       "endSeconds": 120,
       "rms": 0.124,
       "meanAttack": 0.205,
-      "highAttack": 0.502
+      "highAttack": 0.502,
+      "chartNotes": 31,
+      "eighthNotes": 8
     },
     {
       "startSeconds": 120,
       "endSeconds": 140,
       "rms": 0.13,
       "meanAttack": 0.235,
-      "highAttack": 0.615
+      "highAttack": 0.615,
+      "chartNotes": 31,
+      "eighthNotes": 5
     },
     {
       "startSeconds": 140,
       "endSeconds": 160,
       "rms": 0.124,
       "meanAttack": 0.211,
-      "highAttack": 0.531
+      "highAttack": 0.531,
+      "chartNotes": 32,
+      "eighthNotes": 5
     },
     {
       "startSeconds": 160,
       "endSeconds": 180,
       "rms": 0.151,
       "meanAttack": 0.233,
-      "highAttack": 0.636
+      "highAttack": 0.636,
+      "chartNotes": 34,
+      "eighthNotes": 9
     },
     {
       "startSeconds": 180,
       "endSeconds": 200,
       "rms": 0.148,
       "meanAttack": 0.144,
-      "highAttack": 0.4
+      "highAttack": 0.4,
+      "chartNotes": 21,
+      "eighthNotes": 1
     },
     {
       "startSeconds": 200,
       "endSeconds": 220,
       "rms": 0.168,
       "meanAttack": 0.144,
-      "highAttack": 0.396
+      "highAttack": 0.396,
+      "chartNotes": 18,
+      "eighthNotes": 0
     },
     {
       "startSeconds": 220,
       "endSeconds": 230.92,
       "rms": 0.184,
       "meanAttack": 0.158,
-      "highAttack": 0.428
+      "highAttack": 0.428,
+      "chartNotes": 6,
+      "eighthNotes": 0
     }
   ],
   "phaseEvidence": [
     {
+      "phase": 0,
       "label": "머리 제거",
       "regionSeconds": [
         8,
-        25
+        23
       ],
-      "selectedBeatIndices": [
-        17,
-        20,
+      "opportunities": 15,
+      "requiredHits": 11,
+      "passRule": "ceil(0.70 * opportunities); all notes remain judgeable",
+      "firstNoteMs": 8234.667,
+      "lastNoteMs": 21941.333,
+      "endTimeMs": 22941.333,
+      "quarterNotes": 14,
+      "eighthNotes": 1,
+      "notes": [
+        {
+          "phase": 0,
+          "ordinal": 0,
+          "timeMs": 8234.667,
+          "subdivision": "quarter",
+          "beatIndex": 13,
+          "bar": 3,
+          "beatInBar": 0,
+          "pattern": "sparse",
+          "expectedSubdivisionTimeMs": 8234.667,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -6.847,
+          "measuredAttack": 0.205,
+          "bandAttack": {
+            "kick": 0.306,
+            "body": 0.258,
+            "hats": 0.0
+          },
+          "barMeanAttack": 0.092
+        },
+        {
+          "phase": 0,
+          "ordinal": 1,
+          "timeMs": 9578.667,
+          "subdivision": "quarter",
+          "beatIndex": 15,
+          "bar": 3,
+          "beatInBar": 2,
+          "pattern": "sparse",
+          "expectedSubdivisionTimeMs": 9578.667,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 18.987,
+          "measuredAttack": 0.347,
+          "bandAttack": {
+            "kick": 0.0,
+            "body": 0.76,
+            "hats": 0.651
+          },
+          "barMeanAttack": 0.092
+        },
+        {
+          "phase": 0,
+          "ordinal": 2,
+          "timeMs": 10794.667,
+          "subdivision": "quarter",
+          "beatIndex": 17,
+          "bar": 4,
+          "beatInBar": 0,
+          "pattern": "sparse",
+          "expectedSubdivisionTimeMs": 10794.667,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 35.646,
+          "measuredAttack": 0.795,
+          "bandAttack": {
+            "kick": 1.372,
+            "body": 0.544,
+            "hats": 0.0
+          },
+          "barMeanAttack": 0.087
+        },
+        {
+          "phase": 0,
+          "ordinal": 3,
+          "timeMs": 12053.17,
+          "subdivision": "quarter",
+          "beatIndex": 19,
+          "bar": 4,
+          "beatInBar": 2,
+          "pattern": "sparse",
+          "expectedSubdivisionTimeMs": 12053.17,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 0.0,
+          "measuredAttack": 0.048,
+          "bandAttack": {
+            "kick": 0.096,
+            "body": 0.0,
+            "hats": 0.0
+          },
+          "barMeanAttack": 0.087
+        },
+        {
+          "phase": 0,
+          "ordinal": 4,
+          "timeMs": 13382.343,
+          "subdivision": "quarter",
+          "beatIndex": 21,
+          "bar": 5,
+          "beatInBar": 0,
+          "pattern": "sparse",
+          "expectedSubdivisionTimeMs": 13382.343,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 0.0,
+          "measuredAttack": 0.0,
+          "bandAttack": {
+            "kick": 0.0,
+            "body": 0.0,
+            "hats": 0.0
+          },
+          "barMeanAttack": 0.139
+        },
+        {
+          "phase": 0,
+          "ordinal": 5,
+          "timeMs": 14624.0,
+          "subdivision": "quarter",
+          "beatIndex": 23,
+          "bar": 5,
+          "beatInBar": 2,
+          "pattern": "sparse",
+          "expectedSubdivisionTimeMs": 14624.0,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 42.926,
+          "measuredAttack": 0.744,
+          "bandAttack": {
+            "kick": 1.094,
+            "body": 0.156,
+            "hats": 0.552
+          },
+          "barMeanAttack": 0.139
+        },
+        {
+          "phase": 0,
+          "ordinal": 6,
+          "timeMs": 15776.0,
+          "subdivision": "quarter",
+          "beatIndex": 25,
+          "bar": 6,
+          "beatInBar": 0,
+          "pattern": "sparse",
+          "expectedSubdivisionTimeMs": 15776.0,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -51.63,
+          "measuredAttack": 1.223,
+          "bandAttack": {
+            "kick": 1.843,
+            "body": 1.068,
+            "hats": 0.292
+          },
+          "barMeanAttack": 0.149
+        },
+        {
+          "phase": 0,
+          "ordinal": 7,
+          "timeMs": 17002.667,
+          "subdivision": "quarter",
+          "beatIndex": 27,
+          "bar": 6,
+          "beatInBar": 2,
+          "pattern": "sparse",
+          "expectedSubdivisionTimeMs": 17002.667,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -2.354,
+          "measuredAttack": 1.017,
+          "bandAttack": {
+            "kick": 1.551,
+            "body": 1.206,
+            "hats": 0.0
+          },
+          "barMeanAttack": 0.149
+        },
+        {
+          "phase": 0,
+          "ordinal": 8,
+          "timeMs": 18250.667,
+          "subdivision": "quarter",
+          "beatIndex": 29,
+          "bar": 7,
+          "beatInBar": 0,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 18250.667,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -38.173,
+          "measuredAttack": 0.901,
+          "bandAttack": {
+            "kick": 0.86,
+            "body": 1.341,
+            "hats": 0.675
+          },
+          "barMeanAttack": 0.196
+        },
+        {
+          "phase": 0,
+          "ordinal": 9,
+          "timeMs": 19541.333,
+          "subdivision": "quarter",
+          "beatIndex": 31,
+          "bar": 7,
+          "beatInBar": 2,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 19541.333,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 51.213,
+          "measuredAttack": 0.253,
+          "bandAttack": {
+            "kick": 0.0,
+            "body": 0.352,
+            "hats": 0.609
+          },
+          "barMeanAttack": 0.196
+        },
+        {
+          "phase": 0,
+          "ordinal": 10,
+          "timeMs": 20160.0,
+          "subdivision": "quarter",
+          "beatIndex": 32,
+          "bar": 7,
+          "beatInBar": 3,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 20160.0,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -7.242,
+          "measuredAttack": 0.307,
+          "bandAttack": {
+            "kick": 0.043,
+            "body": 0.503,
+            "hats": 0.615
+          },
+          "barMeanAttack": 0.196
+        },
+        {
+          "phase": 0,
+          "ordinal": 11,
+          "timeMs": 20714.667,
+          "subdivision": "quarter",
+          "beatIndex": 33,
+          "bar": 8,
+          "beatInBar": 0,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 20714.667,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -70.517,
+          "measuredAttack": 0.95,
+          "bandAttack": {
+            "kick": 1.405,
+            "body": 1.235,
+            "hats": 0.0
+          },
+          "barMeanAttack": 0.172
+        },
+        {
+          "phase": 0,
+          "ordinal": 12,
+          "timeMs": 21354.667,
+          "subdivision": "quarter",
+          "beatIndex": 34,
+          "bar": 8,
+          "beatInBar": 1,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 21354.667,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 21.868,
+          "measuredAttack": 0.416,
+          "bandAttack": {
+            "kick": 0.28,
+            "body": 0.183,
+            "hats": 0.799
+          },
+          "barMeanAttack": 0.172
+        },
+        {
+          "phase": 0,
+          "ordinal": 13,
+          "timeMs": 21642.667,
+          "subdivision": "eighth",
+          "beatIndex": 34,
+          "bar": 8,
+          "beatInBar": 1.5,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 21648.0,
+          "snapMs": -5.333,
+          "pulseTrackingSnapMs": null,
+          "measuredAttack": 1.328,
+          "bandAttack": {
+            "kick": 0.526,
+            "body": 1.401,
+            "hats": 2.615
+          },
+          "barMeanAttack": 0.172
+        },
+        {
+          "phase": 0,
+          "ordinal": 14,
+          "timeMs": 21941.333,
+          "subdivision": "quarter",
+          "beatIndex": 35,
+          "bar": 8,
+          "beatInBar": 2,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 21941.333,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -33.652,
+          "measuredAttack": 1.114,
+          "bandAttack": {
+            "kick": 1.596,
+            "body": 1.58,
+            "hats": 0.0
+          },
+          "barMeanAttack": 0.172
+        }
+      ]
+    },
+    {
+      "phase": 1,
+      "label": "앞면 껍질 벗기기",
+      "regionSeconds": [
         25,
-        29,
-        33,
-        38
+        47
       ],
-      "measuredAttackStrength": [
-        0.795,
-        0.282,
-        1.223,
-        0.901,
-        0.95,
-        1.793
-      ],
-      "intervalsSeconds": [
-        1.952,
-        3.029,
-        2.475,
-        2.464,
-        3.072
+      "opportunities": 33,
+      "requiredHits": 24,
+      "passRule": "ceil(0.70 * opportunities); all notes remain judgeable",
+      "firstNoteMs": 25034.667,
+      "lastNoteMs": 46581.333,
+      "endTimeMs": 47581.333,
+      "quarterNotes": 27,
+      "eighthNotes": 6,
+      "notes": [
+        {
+          "phase": 1,
+          "ordinal": 0,
+          "timeMs": 25034.667,
+          "subdivision": "quarter",
+          "beatIndex": 40,
+          "bar": 9,
+          "beatInBar": 3,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 25034.667,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -10.438,
+          "measuredAttack": 0.604,
+          "bandAttack": {
+            "kick": 0.128,
+            "body": 0.862,
+            "hats": 1.225
+          },
+          "barMeanAttack": 0.198
+        },
+        {
+          "phase": 1,
+          "ordinal": 1,
+          "timeMs": 25322.667,
+          "subdivision": "eighth",
+          "beatIndex": 40,
+          "bar": 9,
+          "beatInBar": 3.5,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 25328.0,
+          "snapMs": -5.333,
+          "pulseTrackingSnapMs": null,
+          "measuredAttack": 1.403,
+          "bandAttack": {
+            "kick": 0.186,
+            "body": 2.049,
+            "hats": 3.0
+          },
+          "barMeanAttack": 0.198
+        },
+        {
+          "phase": 1,
+          "ordinal": 2,
+          "timeMs": 25621.333,
+          "subdivision": "quarter",
+          "beatIndex": 41,
+          "bar": 10,
+          "beatInBar": 0,
+          "pattern": "sparse",
+          "expectedSubdivisionTimeMs": 25621.333,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -30.727,
+          "measuredAttack": 0.789,
+          "bandAttack": {
+            "kick": 1.163,
+            "body": 1.037,
+            "hats": 0.0
+          },
+          "barMeanAttack": 0.163
+        },
+        {
+          "phase": 1,
+          "ordinal": 3,
+          "timeMs": 26848.0,
+          "subdivision": "quarter",
+          "beatIndex": 43,
+          "bar": 10,
+          "beatInBar": 2,
+          "pattern": "sparse",
+          "expectedSubdivisionTimeMs": 26848.0,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -30.223,
+          "measuredAttack": 0.997,
+          "bandAttack": {
+            "kick": 1.302,
+            "body": 1.729,
+            "hats": 0.0
+          },
+          "barMeanAttack": 0.163
+        },
+        {
+          "phase": 1,
+          "ordinal": 4,
+          "timeMs": 28117.333,
+          "subdivision": "quarter",
+          "beatIndex": 45,
+          "bar": 11,
+          "beatInBar": 0,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 28117.333,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 12.853,
+          "measuredAttack": 0.452,
+          "bandAttack": {
+            "kick": 0.235,
+            "body": 0.327,
+            "hats": 0.896
+          },
+          "barMeanAttack": 0.214
+        },
+        {
+          "phase": 1,
+          "ordinal": 5,
+          "timeMs": 29344.0,
+          "subdivision": "quarter",
+          "beatIndex": 47,
+          "bar": 11,
+          "beatInBar": 2,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 29344.0,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 37.078,
+          "measuredAttack": 0.299,
+          "bandAttack": {
+            "kick": 0.0,
+            "body": 0.179,
+            "hats": 0.876
+          },
+          "barMeanAttack": 0.214
+        },
+        {
+          "phase": 1,
+          "ordinal": 6,
+          "timeMs": 29952.0,
+          "subdivision": "quarter",
+          "beatIndex": 48,
+          "bar": 11,
+          "beatInBar": 3,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 29952.0,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -9.297,
+          "measuredAttack": 0.686,
+          "bandAttack": {
+            "kick": 0.759,
+            "body": 0.583,
+            "hats": 0.635
+          },
+          "barMeanAttack": 0.214
+        },
+        {
+          "phase": 1,
+          "ordinal": 7,
+          "timeMs": 30240.0,
+          "subdivision": "eighth",
+          "beatIndex": 48,
+          "bar": 11,
+          "beatInBar": 3.5,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 30256.0,
+          "snapMs": -16.0,
+          "pulseTrackingSnapMs": null,
+          "measuredAttack": 1.628,
+          "bandAttack": {
+            "kick": 0.413,
+            "body": 2.606,
+            "hats": 3.0
+          },
+          "barMeanAttack": 0.214
+        },
+        {
+          "phase": 1,
+          "ordinal": 8,
+          "timeMs": 30560.0,
+          "subdivision": "quarter",
+          "beatIndex": 49,
+          "bar": 12,
+          "beatInBar": 0,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 30560.0,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -8.367,
+          "measuredAttack": 0.829,
+          "bandAttack": {
+            "kick": 1.587,
+            "body": 0.175,
+            "hats": 0.001
+          },
+          "barMeanAttack": 0.192
+        },
+        {
+          "phase": 1,
+          "ordinal": 9,
+          "timeMs": 31175.53,
+          "subdivision": "quarter",
+          "beatIndex": 50,
+          "bar": 12,
+          "beatInBar": 1,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 31175.53,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 0.0,
+          "measuredAttack": 0.035,
+          "bandAttack": {
+            "kick": 0.0,
+            "body": 0.0,
+            "hats": 0.116
+          },
+          "barMeanAttack": 0.192
+        },
+        {
+          "phase": 1,
+          "ordinal": 10,
+          "timeMs": 31477.333,
+          "subdivision": "eighth",
+          "beatIndex": 50,
+          "bar": 12,
+          "beatInBar": 1.5,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 31481.099,
+          "snapMs": -3.765,
+          "pulseTrackingSnapMs": null,
+          "measuredAttack": 1.332,
+          "bandAttack": {
+            "kick": 0.309,
+            "body": 1.852,
+            "hats": 2.689
+          },
+          "barMeanAttack": 0.192
+        },
+        {
+          "phase": 1,
+          "ordinal": 11,
+          "timeMs": 31786.667,
+          "subdivision": "quarter",
+          "beatIndex": 51,
+          "bar": 12,
+          "beatInBar": 2,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 31786.667,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -4.394,
+          "measuredAttack": 0.972,
+          "bandAttack": {
+            "kick": 1.592,
+            "body": 0.879,
+            "hats": 0.0
+          },
+          "barMeanAttack": 0.192
+        },
+        {
+          "phase": 1,
+          "ordinal": 12,
+          "timeMs": 33002.667,
+          "subdivision": "quarter",
+          "beatIndex": 53,
+          "bar": 13,
+          "beatInBar": 0,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 33002.667,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -29.849,
+          "measuredAttack": 0.316,
+          "bandAttack": {
+            "kick": 0.484,
+            "body": 0.121,
+            "hats": 0.164
+          },
+          "barMeanAttack": 0.179
+        },
+        {
+          "phase": 1,
+          "ordinal": 13,
+          "timeMs": 34223.644,
+          "subdivision": "quarter",
+          "beatIndex": 55,
+          "bar": 13,
+          "beatInBar": 2,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 34223.644,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 0.0,
+          "measuredAttack": 0.003,
+          "bandAttack": {
+            "kick": 0.005,
+            "body": 0.0,
+            "hats": 0.0
+          },
+          "barMeanAttack": 0.179
+        },
+        {
+          "phase": 1,
+          "ordinal": 14,
+          "timeMs": 34890.667,
+          "subdivision": "quarter",
+          "beatIndex": 56,
+          "bar": 13,
+          "beatInBar": 3,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 34890.667,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 54.045,
+          "measuredAttack": 0.267,
+          "bandAttack": {
+            "kick": 0.015,
+            "body": 1.194,
+            "hats": 0.069
+          },
+          "barMeanAttack": 0.179
+        },
+        {
+          "phase": 1,
+          "ordinal": 15,
+          "timeMs": 35456.0,
+          "subdivision": "quarter",
+          "beatIndex": 57,
+          "bar": 14,
+          "beatInBar": 0,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 35456.0,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -53.049,
+          "measuredAttack": 1.641,
+          "bandAttack": {
+            "kick": 2.623,
+            "body": 1.582,
+            "hats": 0.043
+          },
+          "barMeanAttack": 0.229
+        },
+        {
+          "phase": 1,
+          "ordinal": 16,
+          "timeMs": 36085.333,
+          "subdivision": "quarter",
+          "beatIndex": 58,
+          "bar": 14,
+          "beatInBar": 1,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 36085.333,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 16.256,
+          "measuredAttack": 0.579,
+          "bandAttack": {
+            "kick": 0.313,
+            "body": 0.976,
+            "hats": 0.757
+          },
+          "barMeanAttack": 0.229
+        },
+        {
+          "phase": 1,
+          "ordinal": 17,
+          "timeMs": 36394.667,
+          "subdivision": "eighth",
+          "beatIndex": 58,
+          "bar": 14,
+          "beatInBar": 1.5,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 36389.333,
+          "snapMs": 5.333,
+          "pulseTrackingSnapMs": null,
+          "measuredAttack": 1.348,
+          "bandAttack": {
+            "kick": 0.724,
+            "body": 1.395,
+            "hats": 2.359
+          },
+          "barMeanAttack": 0.229
+        },
+        {
+          "phase": 1,
+          "ordinal": 18,
+          "timeMs": 36693.333,
+          "subdivision": "quarter",
+          "beatIndex": 59,
+          "bar": 14,
+          "beatInBar": 2,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 36693.333,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -6.703,
+          "measuredAttack": 1.811,
+          "bandAttack": {
+            "kick": 2.517,
+            "body": 2.017,
+            "hats": 0.497
+          },
+          "barMeanAttack": 0.229
+        },
+        {
+          "phase": 1,
+          "ordinal": 19,
+          "timeMs": 37930.667,
+          "subdivision": "quarter",
+          "beatIndex": 61,
+          "bar": 15,
+          "beatInBar": 0,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 37930.667,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -7.562,
+          "measuredAttack": 0.726,
+          "bandAttack": {
+            "kick": 1.13,
+            "body": 0.727,
+            "hats": 0.053
+          },
+          "barMeanAttack": 0.217
+        },
+        {
+          "phase": 1,
+          "ordinal": 20,
+          "timeMs": 39221.333,
+          "subdivision": "quarter",
+          "beatIndex": 63,
+          "bar": 15,
+          "beatInBar": 2,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 39221.333,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 45.074,
+          "measuredAttack": 0.304,
+          "bandAttack": {
+            "kick": 0.107,
+            "body": 0.896,
+            "hats": 0.239
+          },
+          "barMeanAttack": 0.217
+        },
+        {
+          "phase": 1,
+          "ordinal": 21,
+          "timeMs": 39872.0,
+          "subdivision": "quarter",
+          "beatIndex": 64,
+          "bar": 15,
+          "beatInBar": 3,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 39872.0,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 29.9,
+          "measuredAttack": 0.238,
+          "bandAttack": {
+            "kick": 0.318,
+            "body": 0.394,
+            "hats": 0.0
+          },
+          "barMeanAttack": 0.217
+        },
+        {
+          "phase": 1,
+          "ordinal": 22,
+          "timeMs": 40416.0,
+          "subdivision": "quarter",
+          "beatIndex": 65,
+          "bar": 16,
+          "beatInBar": 0,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 40416.0,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -79.756,
+          "measuredAttack": 0.848,
+          "bandAttack": {
+            "kick": 1.361,
+            "body": 0.76,
+            "hats": 0.053
+          },
+          "barMeanAttack": 0.201
+        },
+        {
+          "phase": 1,
+          "ordinal": 23,
+          "timeMs": 41045.333,
+          "subdivision": "quarter",
+          "beatIndex": 66,
+          "bar": 16,
+          "beatInBar": 1,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 41045.333,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 13.553,
+          "measuredAttack": 0.186,
+          "bandAttack": {
+            "kick": 0.0,
+            "body": 0.156,
+            "hats": 0.517
+          },
+          "barMeanAttack": 0.201
+        },
+        {
+          "phase": 1,
+          "ordinal": 24,
+          "timeMs": 41333.333,
+          "subdivision": "eighth",
+          "beatIndex": 66,
+          "bar": 16,
+          "beatInBar": 1.5,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 41344.0,
+          "snapMs": -10.667,
+          "pulseTrackingSnapMs": null,
+          "measuredAttack": 1.705,
+          "bandAttack": {
+            "kick": 0.77,
+            "body": 2.098,
+            "hats": 3.0
+          },
+          "barMeanAttack": 0.201
+        },
+        {
+          "phase": 1,
+          "ordinal": 25,
+          "timeMs": 41642.667,
+          "subdivision": "quarter",
+          "beatIndex": 67,
+          "bar": 16,
+          "beatInBar": 2,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 41642.667,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -19.803,
+          "measuredAttack": 1.324,
+          "bandAttack": {
+            "kick": 2.298,
+            "body": 0.874,
+            "hats": 0.0
+          },
+          "barMeanAttack": 0.201
+        },
+        {
+          "phase": 1,
+          "ordinal": 26,
+          "timeMs": 42912.0,
+          "subdivision": "quarter",
+          "beatIndex": 69,
+          "bar": 17,
+          "beatInBar": 0,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 42912.0,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 23.426,
+          "measuredAttack": 1.294,
+          "bandAttack": {
+            "kick": 1.518,
+            "body": 0.993,
+            "hats": 1.119
+          },
+          "barMeanAttack": 0.211
+        },
+        {
+          "phase": 1,
+          "ordinal": 27,
+          "timeMs": 44138.667,
+          "subdivision": "quarter",
+          "beatIndex": 71,
+          "bar": 17,
+          "beatInBar": 2,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 44138.667,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 0.842,
+          "measuredAttack": 1.019,
+          "bandAttack": {
+            "kick": 0.959,
+            "body": 1.088,
+            "hats": 1.074
+          },
+          "barMeanAttack": 0.211
+        },
+        {
+          "phase": 1,
+          "ordinal": 28,
+          "timeMs": 44768.0,
+          "subdivision": "quarter",
+          "beatIndex": 72,
+          "bar": 17,
+          "beatInBar": 3,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 44768.0,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 11.425,
+          "measuredAttack": 0.959,
+          "bandAttack": {
+            "kick": 1.598,
+            "body": 0.201,
+            "hats": 0.4
+          },
+          "barMeanAttack": 0.211
+        },
+        {
+          "phase": 1,
+          "ordinal": 29,
+          "timeMs": 45365.333,
+          "subdivision": "quarter",
+          "beatIndex": 73,
+          "bar": 18,
+          "beatInBar": 0,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 45365.333,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -21.718,
+          "measuredAttack": 1.016,
+          "bandAttack": {
+            "kick": 1.989,
+            "body": 0.106,
+            "hats": 0.0
+          },
+          "barMeanAttack": 0.211
+        },
+        {
+          "phase": 1,
+          "ordinal": 30,
+          "timeMs": 45984.0,
+          "subdivision": "quarter",
+          "beatIndex": 74,
+          "bar": 18,
+          "beatInBar": 1,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 45984.0,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 1.787,
+          "measuredAttack": 0.388,
+          "bandAttack": {
+            "kick": 0.107,
+            "body": 0.124,
+            "hats": 1.032
+          },
+          "barMeanAttack": 0.211
+        },
+        {
+          "phase": 1,
+          "ordinal": 31,
+          "timeMs": 46282.667,
+          "subdivision": "eighth",
+          "beatIndex": 74,
+          "bar": 18,
+          "beatInBar": 1.5,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 46282.667,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": null,
+          "measuredAttack": 1.474,
+          "bandAttack": {
+            "kick": 0.606,
+            "body": 1.753,
+            "hats": 2.732
+          },
+          "barMeanAttack": 0.211
+        },
+        {
+          "phase": 1,
+          "ordinal": 32,
+          "timeMs": 46581.333,
+          "subdivision": "quarter",
+          "beatIndex": 75,
+          "bar": 18,
+          "beatInBar": 2,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 46581.333,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -19.725,
+          "measuredAttack": 1.165,
+          "bandAttack": {
+            "kick": 1.842,
+            "body": 1.219,
+            "hats": 0.0
+          },
+          "barMeanAttack": 0.211
+        }
       ]
     },
     {
-      "label": "앞면 필렛 1 분리",
+      "phase": 2,
+      "label": "앞면 필렛 분리",
       "regionSeconds": [
-        29,
-        46
-      ],
-      "selectedBeatIndices": [
         49,
-        54,
-        59,
-        62,
-        69,
-        73
+        70
       ],
-      "measuredAttackStrength": [
-        0.829,
-        1.014,
-        1.811,
-        1.113,
-        1.294,
-        1.016
-      ],
-      "intervalsSeconds": [
-        3.051,
-        3.083,
-        1.867,
-        4.352,
-        2.453
+      "opportunities": 37,
+      "requiredHits": 26,
+      "passRule": "ceil(0.70 * opportunities); all notes remain judgeable",
+      "firstNoteMs": 49098.667,
+      "lastNoteMs": 69802.667,
+      "endTimeMs": 70802.667,
+      "quarterNotes": 30,
+      "eighthNotes": 7,
+      "notes": [
+        {
+          "phase": 2,
+          "ordinal": 0,
+          "timeMs": 49098.667,
+          "subdivision": "quarter",
+          "beatIndex": 79,
+          "bar": 19,
+          "beatInBar": 2,
+          "pattern": "dense",
+          "expectedSubdivisionTimeMs": 49098.667,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 57.715,
+          "measuredAttack": 1.014,
+          "bandAttack": {
+            "kick": 1.362,
+            "body": 0.574,
+            "hats": 0.729
+          },
+          "barMeanAttack": 0.234
+        },
+        {
+          "phase": 2,
+          "ordinal": 1,
+          "timeMs": 49717.333,
+          "subdivision": "quarter",
+          "beatIndex": 80,
+          "bar": 19,
+          "beatInBar": 3,
+          "pattern": "dense",
+          "expectedSubdivisionTimeMs": 49717.333,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -1.39,
+          "measuredAttack": 0.293,
+          "bandAttack": {
+            "kick": 0.415,
+            "body": 0.206,
+            "hats": 0.148
+          },
+          "barMeanAttack": 0.234
+        },
+        {
+          "phase": 2,
+          "ordinal": 2,
+          "timeMs": 50293.333,
+          "subdivision": "quarter",
+          "beatIndex": 81,
+          "bar": 20,
+          "beatInBar": 0,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 50293.333,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -43.918,
+          "measuredAttack": 1.046,
+          "bandAttack": {
+            "kick": 1.784,
+            "body": 0.769,
+            "hats": 0.0
+          },
+          "barMeanAttack": 0.212
+        },
+        {
+          "phase": 2,
+          "ordinal": 3,
+          "timeMs": 50933.333,
+          "subdivision": "quarter",
+          "beatIndex": 82,
+          "bar": 20,
+          "beatInBar": 1,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 50933.333,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 24.474,
+          "measuredAttack": 0.262,
+          "bandAttack": {
+            "kick": 0.0,
+            "body": 0.056,
+            "hats": 0.836
+          },
+          "barMeanAttack": 0.212
+        },
+        {
+          "phase": 2,
+          "ordinal": 4,
+          "timeMs": 51221.333,
+          "subdivision": "eighth",
+          "beatIndex": 82,
+          "bar": 20,
+          "beatInBar": 1.5,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 51232.0,
+          "snapMs": -10.667,
+          "pulseTrackingSnapMs": null,
+          "measuredAttack": 1.397,
+          "bandAttack": {
+            "kick": 0.327,
+            "body": 1.685,
+            "hats": 2.989
+          },
+          "barMeanAttack": 0.212
+        },
+        {
+          "phase": 2,
+          "ordinal": 5,
+          "timeMs": 51530.667,
+          "subdivision": "quarter",
+          "beatIndex": 83,
+          "bar": 20,
+          "beatInBar": 2,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 51530.667,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -20.64,
+          "measuredAttack": 1.295,
+          "bandAttack": {
+            "kick": 2.03,
+            "body": 1.149,
+            "hats": 0.167
+          },
+          "barMeanAttack": 0.212
+        },
+        {
+          "phase": 2,
+          "ordinal": 6,
+          "timeMs": 52800.0,
+          "subdivision": "quarter",
+          "beatIndex": 85,
+          "bar": 21,
+          "beatInBar": 0,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 52800.0,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 11.015,
+          "measuredAttack": 0.657,
+          "bandAttack": {
+            "kick": 0.644,
+            "body": 0.507,
+            "hats": 0.78
+          },
+          "barMeanAttack": 0.233
+        },
+        {
+          "phase": 2,
+          "ordinal": 7,
+          "timeMs": 54058.667,
+          "subdivision": "quarter",
+          "beatIndex": 87,
+          "bar": 21,
+          "beatInBar": 2,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 54058.667,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 55.855,
+          "measuredAttack": 0.8,
+          "bandAttack": {
+            "kick": 0.823,
+            "body": 0.892,
+            "hats": 0.701
+          },
+          "barMeanAttack": 0.233
+        },
+        {
+          "phase": 2,
+          "ordinal": 8,
+          "timeMs": 54624.0,
+          "subdivision": "quarter",
+          "beatIndex": 88,
+          "bar": 21,
+          "beatInBar": 3,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 54624.0,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -56.397,
+          "measuredAttack": 0.986,
+          "bandAttack": {
+            "kick": 1.443,
+            "body": 1.322,
+            "hats": 0.0
+          },
+          "barMeanAttack": 0.233
+        },
+        {
+          "phase": 2,
+          "ordinal": 9,
+          "timeMs": 54933.333,
+          "subdivision": "eighth",
+          "beatIndex": 88,
+          "bar": 21,
+          "beatInBar": 3.5,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 54938.667,
+          "snapMs": -5.333,
+          "pulseTrackingSnapMs": null,
+          "measuredAttack": 1.488,
+          "bandAttack": {
+            "kick": 0.769,
+            "body": 1.756,
+            "hats": 2.506
+          },
+          "barMeanAttack": 0.233
+        },
+        {
+          "phase": 2,
+          "ordinal": 10,
+          "timeMs": 55253.333,
+          "subdivision": "quarter",
+          "beatIndex": 89,
+          "bar": 22,
+          "beatInBar": 0,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 55253.333,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 13.243,
+          "measuredAttack": 1.08,
+          "bandAttack": {
+            "kick": 2.06,
+            "body": 0.163,
+            "hats": 0.058
+          },
+          "barMeanAttack": 0.204
+        },
+        {
+          "phase": 2,
+          "ordinal": 11,
+          "timeMs": 55861.333,
+          "subdivision": "quarter",
+          "beatIndex": 90,
+          "bar": 22,
+          "beatInBar": 1,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 55861.333,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -9.415,
+          "measuredAttack": 1.137,
+          "bandAttack": {
+            "kick": 1.329,
+            "body": 1.497,
+            "hats": 0.578
+          },
+          "barMeanAttack": 0.204
+        },
+        {
+          "phase": 2,
+          "ordinal": 12,
+          "timeMs": 56160.0,
+          "subdivision": "eighth",
+          "beatIndex": 90,
+          "bar": 22,
+          "beatInBar": 1.5,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 56165.333,
+          "snapMs": -5.333,
+          "pulseTrackingSnapMs": null,
+          "measuredAttack": 1.716,
+          "bandAttack": {
+            "kick": 0.686,
+            "body": 2.366,
+            "hats": 3.0
+          },
+          "barMeanAttack": 0.204
+        },
+        {
+          "phase": 2,
+          "ordinal": 13,
+          "timeMs": 56469.333,
+          "subdivision": "quarter",
+          "beatIndex": 91,
+          "bar": 22,
+          "beatInBar": 2,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 56469.333,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -8.473,
+          "measuredAttack": 1.781,
+          "bandAttack": {
+            "kick": 2.379,
+            "body": 1.196,
+            "hats": 1.173
+          },
+          "barMeanAttack": 0.204
+        },
+        {
+          "phase": 2,
+          "ordinal": 14,
+          "timeMs": 57749.333,
+          "subdivision": "quarter",
+          "beatIndex": 93,
+          "bar": 23,
+          "beatInBar": 0,
+          "pattern": "dense",
+          "expectedSubdivisionTimeMs": 57749.333,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -1.53,
+          "measuredAttack": 0.454,
+          "bandAttack": {
+            "kick": 0.307,
+            "body": 1.264,
+            "hats": 0.157
+          },
+          "barMeanAttack": 0.247
+        },
+        {
+          "phase": 2,
+          "ordinal": 15,
+          "timeMs": 58400.0,
+          "subdivision": "quarter",
+          "beatIndex": 94,
+          "bar": 23,
+          "beatInBar": 1,
+          "pattern": "dense",
+          "expectedSubdivisionTimeMs": 58400.0,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 30.623,
+          "measuredAttack": 0.462,
+          "bandAttack": {
+            "kick": 0.019,
+            "body": 1.354,
+            "hats": 0.605
+          },
+          "barMeanAttack": 0.247
+        },
+        {
+          "phase": 2,
+          "ordinal": 16,
+          "timeMs": 58986.667,
+          "subdivision": "quarter",
+          "beatIndex": 95,
+          "bar": 23,
+          "beatInBar": 2,
+          "pattern": "dense",
+          "expectedSubdivisionTimeMs": 58986.667,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -36.439,
+          "measuredAttack": 0.275,
+          "bandAttack": {
+            "kick": 0.463,
+            "body": 0.216,
+            "hats": 0.0
+          },
+          "barMeanAttack": 0.247
+        },
+        {
+          "phase": 2,
+          "ordinal": 17,
+          "timeMs": 59626.667,
+          "subdivision": "quarter",
+          "beatIndex": 96,
+          "bar": 23,
+          "beatInBar": 3,
+          "pattern": "dense",
+          "expectedSubdivisionTimeMs": 59626.667,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 20.538,
+          "measuredAttack": 0.838,
+          "bandAttack": {
+            "kick": 0.219,
+            "body": 1.474,
+            "hats": 1.444
+          },
+          "barMeanAttack": 0.247
+        },
+        {
+          "phase": 2,
+          "ordinal": 18,
+          "timeMs": 60192.0,
+          "subdivision": "quarter",
+          "beatIndex": 97,
+          "bar": 24,
+          "beatInBar": 0,
+          "pattern": "dense",
+          "expectedSubdivisionTimeMs": 60192.0,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -56.183,
+          "measuredAttack": 0.989,
+          "bandAttack": {
+            "kick": 1.682,
+            "body": 0.738,
+            "hats": 0.0
+          },
+          "barMeanAttack": 0.235
+        },
+        {
+          "phase": 2,
+          "ordinal": 19,
+          "timeMs": 60842.667,
+          "subdivision": "quarter",
+          "beatIndex": 98,
+          "bar": 24,
+          "beatInBar": 1,
+          "pattern": "dense",
+          "expectedSubdivisionTimeMs": 60842.667,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 34.769,
+          "measuredAttack": 0.35,
+          "bandAttack": {
+            "kick": 0.057,
+            "body": 0.315,
+            "hats": 0.862
+          },
+          "barMeanAttack": 0.235
+        },
+        {
+          "phase": 2,
+          "ordinal": 20,
+          "timeMs": 61130.667,
+          "subdivision": "eighth",
+          "beatIndex": 98,
+          "bar": 24,
+          "beatInBar": 1.5,
+          "pattern": "dense",
+          "expectedSubdivisionTimeMs": 61146.667,
+          "snapMs": -16.0,
+          "pulseTrackingSnapMs": null,
+          "measuredAttack": 1.28,
+          "bandAttack": {
+            "kick": 0.314,
+            "body": 1.445,
+            "hats": 2.779
+          },
+          "barMeanAttack": 0.235
+        },
+        {
+          "phase": 2,
+          "ordinal": 21,
+          "timeMs": 61450.667,
+          "subdivision": "quarter",
+          "beatIndex": 99,
+          "bar": 24,
+          "beatInBar": 2,
+          "pattern": "dense",
+          "expectedSubdivisionTimeMs": 61450.667,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -11.375,
+          "measuredAttack": 1.083,
+          "bandAttack": {
+            "kick": 2.077,
+            "body": 0.223,
+            "hats": 0.0
+          },
+          "barMeanAttack": 0.235
+        },
+        {
+          "phase": 2,
+          "ordinal": 22,
+          "timeMs": 62101.333,
+          "subdivision": "quarter",
+          "beatIndex": 100,
+          "bar": 24,
+          "beatInBar": 3,
+          "pattern": "dense",
+          "expectedSubdivisionTimeMs": 62101.333,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 32.43,
+          "measuredAttack": 0.525,
+          "bandAttack": {
+            "kick": 0.167,
+            "body": 1.61,
+            "hats": 0.398
+          },
+          "barMeanAttack": 0.235
+        },
+        {
+          "phase": 2,
+          "ordinal": 23,
+          "timeMs": 62688.0,
+          "subdivision": "quarter",
+          "beatIndex": 101,
+          "bar": 25,
+          "beatInBar": 0,
+          "pattern": "dense",
+          "expectedSubdivisionTimeMs": 62688.0,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -34.813,
+          "measuredAttack": 1.947,
+          "bandAttack": {
+            "kick": 2.344,
+            "body": 1.513,
+            "hats": 1.573
+          },
+          "barMeanAttack": 0.266
+        },
+        {
+          "phase": 2,
+          "ordinal": 24,
+          "timeMs": 63328.0,
+          "subdivision": "quarter",
+          "beatIndex": 102,
+          "bar": 25,
+          "beatInBar": 1,
+          "pattern": "dense",
+          "expectedSubdivisionTimeMs": 63328.0,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 22.001,
+          "measuredAttack": 0.551,
+          "bandAttack": {
+            "kick": 0.0,
+            "body": 0.899,
+            "hats": 1.237
+          },
+          "barMeanAttack": 0.266
+        },
+        {
+          "phase": 2,
+          "ordinal": 25,
+          "timeMs": 63616.0,
+          "subdivision": "eighth",
+          "beatIndex": 102,
+          "bar": 25,
+          "beatInBar": 1.5,
+          "pattern": "dense",
+          "expectedSubdivisionTimeMs": 63632.0,
+          "snapMs": -16.0,
+          "pulseTrackingSnapMs": null,
+          "measuredAttack": 1.473,
+          "bandAttack": {
+            "kick": 0.581,
+            "body": 1.411,
+            "hats": 3.0
+          },
+          "barMeanAttack": 0.266
+        },
+        {
+          "phase": 2,
+          "ordinal": 26,
+          "timeMs": 63936.0,
+          "subdivision": "quarter",
+          "beatIndex": 103,
+          "bar": 25,
+          "beatInBar": 2,
+          "pattern": "dense",
+          "expectedSubdivisionTimeMs": 63936.0,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -12.199,
+          "measuredAttack": 0.849,
+          "bandAttack": {
+            "kick": 0.59,
+            "body": 1.427,
+            "hats": 0.893
+          },
+          "barMeanAttack": 0.266
+        },
+        {
+          "phase": 2,
+          "ordinal": 27,
+          "timeMs": 64565.333,
+          "subdivision": "quarter",
+          "beatIndex": 104,
+          "bar": 25,
+          "beatInBar": 3,
+          "pattern": "dense",
+          "expectedSubdivisionTimeMs": 64565.333,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 10.354,
+          "measuredAttack": 1.249,
+          "bandAttack": {
+            "kick": 1.177,
+            "body": 1.189,
+            "hats": 1.409
+          },
+          "barMeanAttack": 0.266
+        },
+        {
+          "phase": 2,
+          "ordinal": 28,
+          "timeMs": 64853.333,
+          "subdivision": "eighth",
+          "beatIndex": 104,
+          "bar": 25,
+          "beatInBar": 3.5,
+          "pattern": "dense",
+          "expectedSubdivisionTimeMs": 64864.0,
+          "snapMs": -10.667,
+          "pulseTrackingSnapMs": null,
+          "measuredAttack": 1.394,
+          "bandAttack": {
+            "kick": 0.351,
+            "body": 1.593,
+            "hats": 3.0
+          },
+          "barMeanAttack": 0.266
+        },
+        {
+          "phase": 2,
+          "ordinal": 29,
+          "timeMs": 65162.667,
+          "subdivision": "quarter",
+          "beatIndex": 105,
+          "bar": 26,
+          "beatInBar": 0,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 65162.667,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -22.681,
+          "measuredAttack": 0.98,
+          "bandAttack": {
+            "kick": 1.882,
+            "body": 0.193,
+            "hats": 0.0
+          },
+          "barMeanAttack": 0.21
+        },
+        {
+          "phase": 2,
+          "ordinal": 30,
+          "timeMs": 65802.667,
+          "subdivision": "quarter",
+          "beatIndex": 106,
+          "bar": 26,
+          "beatInBar": 1,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 65802.667,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 22.254,
+          "measuredAttack": 0.156,
+          "bandAttack": {
+            "kick": 0.0,
+            "body": 0.521,
+            "hats": 0.172
+          },
+          "barMeanAttack": 0.21
+        },
+        {
+          "phase": 2,
+          "ordinal": 31,
+          "timeMs": 66389.333,
+          "subdivision": "quarter",
+          "beatIndex": 107,
+          "bar": 26,
+          "beatInBar": 2,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 66389.333,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -33.305,
+          "measuredAttack": 1.27,
+          "bandAttack": {
+            "kick": 2.128,
+            "body": 1.029,
+            "hats": 0.0
+          },
+          "barMeanAttack": 0.21
+        },
+        {
+          "phase": 2,
+          "ordinal": 32,
+          "timeMs": 67648.0,
+          "subdivision": "quarter",
+          "beatIndex": 109,
+          "bar": 27,
+          "beatInBar": 0,
+          "pattern": "dense",
+          "expectedSubdivisionTimeMs": 67648.0,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 34.89,
+          "measuredAttack": 0.731,
+          "bandAttack": {
+            "kick": 0.0,
+            "body": 1.929,
+            "hats": 1.151
+          },
+          "barMeanAttack": 0.235
+        },
+        {
+          "phase": 2,
+          "ordinal": 33,
+          "timeMs": 68234.667,
+          "subdivision": "quarter",
+          "beatIndex": 110,
+          "bar": 27,
+          "beatInBar": 1,
+          "pattern": "dense",
+          "expectedSubdivisionTimeMs": 68234.667,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -32.599,
+          "measuredAttack": 1.247,
+          "bandAttack": {
+            "kick": 1.629,
+            "body": 1.604,
+            "hats": 0.37
+          },
+          "barMeanAttack": 0.235
+        },
+        {
+          "phase": 2,
+          "ordinal": 34,
+          "timeMs": 68864.0,
+          "subdivision": "quarter",
+          "beatIndex": 111,
+          "bar": 27,
+          "beatInBar": 2,
+          "pattern": "dense",
+          "expectedSubdivisionTimeMs": 68864.0,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 13.327,
+          "measuredAttack": 0.339,
+          "bandAttack": {
+            "kick": 0.0,
+            "body": 0.0,
+            "hats": 1.13
+          },
+          "barMeanAttack": 0.235
+        },
+        {
+          "phase": 2,
+          "ordinal": 35,
+          "timeMs": 69514.667,
+          "subdivision": "quarter",
+          "beatIndex": 112,
+          "bar": 27,
+          "beatInBar": 3,
+          "pattern": "dense",
+          "expectedSubdivisionTimeMs": 69514.667,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 33.328,
+          "measuredAttack": 0.299,
+          "bandAttack": {
+            "kick": 0.242,
+            "body": 0.061,
+            "hats": 0.553
+          },
+          "barMeanAttack": 0.235
+        },
+        {
+          "phase": 2,
+          "ordinal": 36,
+          "timeMs": 69802.667,
+          "subdivision": "eighth",
+          "beatIndex": 112,
+          "bar": 27,
+          "beatInBar": 3.5,
+          "pattern": "dense",
+          "expectedSubdivisionTimeMs": 69813.333,
+          "snapMs": -10.667,
+          "pulseTrackingSnapMs": null,
+          "measuredAttack": 1.512,
+          "bandAttack": {
+            "kick": 0.436,
+            "body": 1.97,
+            "hats": 3.0
+          },
+          "barMeanAttack": 0.235
+        }
       ]
     },
     {
-      "label": "앞면 필렛 2 분리",
-      "regionSeconds": [
-        50,
-        67
-      ],
-      "selectedBeatIndices": [
-        84,
-        86,
-        91,
-        97,
-        101,
-        107
-      ],
-      "measuredAttackStrength": [
-        1.423,
-        1.869,
-        1.781,
-        0.989,
-        1.947,
-        1.27
-      ],
-      "intervalsSeconds": [
-        1.216,
-        3.083,
-        3.723,
-        2.496,
-        3.701
-      ]
-    },
-    {
-      "label": "뒷면 필렛 1 분리",
+      "phase": 3,
+      "label": "생선 뒤집기",
       "regionSeconds": [
         72,
-        89
+        74.5
       ],
-      "selectedBeatIndices": [
-        117,
-        123,
+      "opportunities": 1,
+      "requiredHits": 1,
+      "passRule": "ceil(0.70 * opportunities); all notes remain judgeable",
+      "firstNoteMs": 72608.0,
+      "lastNoteMs": 72608.0,
+      "endTimeMs": 73608.0,
+      "quarterNotes": 1,
+      "eighthNotes": 0,
+      "notes": [
+        {
+          "phase": 3,
+          "ordinal": 0,
+          "timeMs": 72608.0,
+          "subdivision": "quarter",
+          "beatIndex": 117,
+          "bar": 29,
+          "beatInBar": 0,
+          "pattern": "turnover",
+          "expectedSubdivisionTimeMs": 72608.0,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -13.328,
+          "measuredAttack": 1.22,
+          "bandAttack": {
+            "kick": 1.455,
+            "body": 0.666,
+            "hats": 1.197
+          },
+          "barMeanAttack": 1.22
+        }
+      ]
+    },
+    {
+      "phase": 4,
+      "label": "뒷면 껍질 벗기기",
+      "regionSeconds": [
+        76,
+        100
+      ],
+      "opportunities": 38,
+      "requiredHits": 27,
+      "passRule": "ceil(0.70 * opportunities); all notes remain judgeable",
+      "firstNoteMs": 76298.667,
+      "lastNoteMs": 99936.0,
+      "endTimeMs": 100936.0,
+      "quarterNotes": 32,
+      "eighthNotes": 6,
+      "notes": [
+        {
+          "phase": 4,
+          "ordinal": 0,
+          "timeMs": 76298.667,
+          "subdivision": "quarter",
+          "beatIndex": 123,
+          "bar": 30,
+          "beatInBar": 2,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 76298.667,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -46.328,
+          "measuredAttack": 1.757,
+          "bandAttack": {
+            "kick": 3.0,
+            "body": 1.287,
+            "hats": 0.0
+          },
+          "barMeanAttack": 0.228
+        },
+        {
+          "phase": 4,
+          "ordinal": 1,
+          "timeMs": 77589.333,
+          "subdivision": "quarter",
+          "beatIndex": 125,
+          "bar": 31,
+          "beatInBar": 0,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 77589.333,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 42.474,
+          "measuredAttack": 0.686,
+          "bandAttack": {
+            "kick": 0.738,
+            "body": 0.667,
+            "hats": 0.612
+          },
+          "barMeanAttack": 0.215
+        },
+        {
+          "phase": 4,
+          "ordinal": 2,
+          "timeMs": 78818.929,
+          "subdivision": "quarter",
+          "beatIndex": 127,
+          "bar": 31,
+          "beatInBar": 2,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 78818.929,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 0.0,
+          "measuredAttack": 0.06,
+          "bandAttack": {
+            "kick": 0.009,
+            "body": 0.279,
+            "hats": 0.0
+          },
+          "barMeanAttack": 0.215
+        },
+        {
+          "phase": 4,
+          "ordinal": 3,
+          "timeMs": 79445.333,
+          "subdivision": "quarter",
+          "beatIndex": 128,
+          "bar": 31,
+          "beatInBar": 3,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 79445.333,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 4.809,
+          "measuredAttack": 0.262,
+          "bandAttack": {
+            "kick": 0.0,
+            "body": 0.513,
+            "hats": 0.53
+          },
+          "barMeanAttack": 0.215
+        },
+        {
+          "phase": 4,
+          "ordinal": 4,
+          "timeMs": 80042.667,
+          "subdivision": "quarter",
+          "beatIndex": 129,
+          "bar": 32,
+          "beatInBar": 0,
+          "pattern": "sparse",
+          "expectedSubdivisionTimeMs": 80042.667,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -24.743,
+          "measuredAttack": 0.915,
+          "bandAttack": {
+            "kick": 1.569,
+            "body": 0.652,
+            "hats": 0.0
+          },
+          "barMeanAttack": 0.168
+        },
+        {
+          "phase": 4,
+          "ordinal": 5,
+          "timeMs": 81258.667,
+          "subdivision": "quarter",
+          "beatIndex": 131,
+          "bar": 32,
+          "beatInBar": 2,
+          "pattern": "sparse",
+          "expectedSubdivisionTimeMs": 81258.667,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -33.909,
+          "measuredAttack": 1.473,
+          "bandAttack": {
+            "kick": 2.354,
+            "body": 1.478,
+            "hats": 0.0
+          },
+          "barMeanAttack": 0.168
+        },
+        {
+          "phase": 4,
+          "ordinal": 6,
+          "timeMs": 82517.333,
+          "subdivision": "quarter",
+          "beatIndex": 133,
+          "bar": 33,
+          "beatInBar": 0,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 82517.333,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -24.266,
+          "measuredAttack": 1.271,
+          "bandAttack": {
+            "kick": 2.321,
+            "body": 0.348,
+            "hats": 0.137
+          },
+          "barMeanAttack": 0.218
+        },
+        {
+          "phase": 4,
+          "ordinal": 7,
+          "timeMs": 83797.333,
+          "subdivision": "quarter",
+          "beatIndex": 135,
+          "bar": 33,
+          "beatInBar": 2,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 83797.333,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 53.945,
+          "measuredAttack": 0.532,
+          "bandAttack": {
+            "kick": 0.628,
+            "body": 0.773,
+            "hats": 0.211
+          },
+          "barMeanAttack": 0.218
+        },
+        {
+          "phase": 4,
+          "ordinal": 8,
+          "timeMs": 84405.333,
+          "subdivision": "quarter",
+          "beatIndex": 136,
+          "bar": 33,
+          "beatInBar": 3,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 84405.333,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -15.45,
+          "measuredAttack": 0.391,
+          "bandAttack": {
+            "kick": 0.411,
+            "body": 0.357,
+            "hats": 0.382
+          },
+          "barMeanAttack": 0.218
+        },
+        {
+          "phase": 4,
+          "ordinal": 9,
+          "timeMs": 84992.0,
+          "subdivision": "quarter",
+          "beatIndex": 137,
+          "bar": 34,
+          "beatInBar": 0,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 84992.0,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -35.238,
+          "measuredAttack": 1.345,
+          "bandAttack": {
+            "kick": 2.28,
+            "body": 1.027,
+            "hats": 0.0
+          },
+          "barMeanAttack": 0.23
+        },
+        {
+          "phase": 4,
+          "ordinal": 10,
+          "timeMs": 85653.333,
+          "subdivision": "quarter",
+          "beatIndex": 138,
+          "bar": 34,
+          "beatInBar": 1,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 85653.333,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 42.952,
+          "measuredAttack": 0.374,
+          "bandAttack": {
+            "kick": 0.0,
+            "body": 0.248,
+            "hats": 1.083
+          },
+          "barMeanAttack": 0.23
+        },
+        {
+          "phase": 4,
+          "ordinal": 11,
+          "timeMs": 86229.333,
+          "subdivision": "quarter",
+          "beatIndex": 139,
+          "bar": 34,
+          "beatInBar": 2,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 86229.333,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -46.676,
+          "measuredAttack": 1.132,
+          "bandAttack": {
+            "kick": 1.958,
+            "body": 0.767,
+            "hats": 0.0
+          },
+          "barMeanAttack": 0.23
+        },
+        {
+          "phase": 4,
+          "ordinal": 12,
+          "timeMs": 87477.333,
+          "subdivision": "quarter",
+          "beatIndex": 141,
+          "bar": 35,
+          "beatInBar": 0,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 87477.333,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 11.259,
+          "measuredAttack": 1.683,
+          "bandAttack": {
+            "kick": 3.0,
+            "body": 0.917,
+            "hats": 0.0
+          },
+          "barMeanAttack": 0.18
+        },
+        {
+          "phase": 4,
+          "ordinal": 13,
+          "timeMs": 88736.0,
+          "subdivision": "quarter",
+          "beatIndex": 143,
+          "bar": 35,
+          "beatInBar": 2,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 88736.0,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 20.853,
+          "measuredAttack": 0.281,
+          "bandAttack": {
+            "kick": 0.0,
+            "body": 0.662,
+            "hats": 0.496
+          },
+          "barMeanAttack": 0.18
+        },
+        {
+          "phase": 4,
+          "ordinal": 14,
+          "timeMs": 89333.333,
+          "subdivision": "quarter",
+          "beatIndex": 144,
+          "bar": 35,
+          "beatInBar": 3,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 89333.333,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -23.899,
+          "measuredAttack": 0.236,
+          "bandAttack": {
+            "kick": 0.166,
+            "body": 0.004,
+            "hats": 0.507
+          },
+          "barMeanAttack": 0.18
+        },
+        {
+          "phase": 4,
+          "ordinal": 15,
+          "timeMs": 89653.333,
+          "subdivision": "eighth",
+          "beatIndex": 144,
+          "bar": 35,
+          "beatInBar": 3.5,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 89653.333,
+          "snapMs": -0.0,
+          "pulseTrackingSnapMs": null,
+          "measuredAttack": 1.24,
+          "bandAttack": {
+            "kick": 1.866,
+            "body": 0.593,
+            "hats": 0.629
+          },
+          "barMeanAttack": 0.18
+        },
+        {
+          "phase": 4,
+          "ordinal": 16,
+          "timeMs": 89973.333,
+          "subdivision": "quarter",
+          "beatIndex": 145,
+          "bar": 36,
+          "beatInBar": 0,
+          "pattern": "dense",
+          "expectedSubdivisionTimeMs": 89973.333,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 21.158,
+          "measuredAttack": 1.559,
+          "bandAttack": {
+            "kick": 2.139,
+            "body": 1.167,
+            "hats": 0.854
+          },
+          "barMeanAttack": 0.257
+        },
+        {
+          "phase": 4,
+          "ordinal": 17,
+          "timeMs": 90602.667,
+          "subdivision": "quarter",
+          "beatIndex": 146,
+          "bar": 36,
+          "beatInBar": 1,
+          "pattern": "dense",
+          "expectedSubdivisionTimeMs": 90602.667,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 8.375,
+          "measuredAttack": 0.623,
+          "bandAttack": {
+            "kick": 0.266,
+            "body": 0.233,
+            "hats": 1.478
+          },
+          "barMeanAttack": 0.257
+        },
+        {
+          "phase": 4,
+          "ordinal": 18,
+          "timeMs": 90912.0,
+          "subdivision": "eighth",
+          "beatIndex": 146,
+          "bar": 36,
+          "beatInBar": 1.5,
+          "pattern": "dense",
+          "expectedSubdivisionTimeMs": 90906.667,
+          "snapMs": 5.333,
+          "pulseTrackingSnapMs": null,
+          "measuredAttack": 1.498,
+          "bandAttack": {
+            "kick": 2.101,
+            "body": 0.831,
+            "hats": 0.937
+          },
+          "barMeanAttack": 0.257
+        },
+        {
+          "phase": 4,
+          "ordinal": 19,
+          "timeMs": 91210.667,
+          "subdivision": "quarter",
+          "beatIndex": 147,
+          "bar": 36,
+          "beatInBar": 2,
+          "pattern": "dense",
+          "expectedSubdivisionTimeMs": 91210.667,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -13.796,
+          "measuredAttack": 1.55,
+          "bandAttack": {
+            "kick": 2.584,
+            "body": 1.29,
+            "hats": 0.0
+          },
+          "barMeanAttack": 0.257
+        },
+        {
+          "phase": 4,
+          "ordinal": 20,
+          "timeMs": 91840.0,
+          "subdivision": "quarter",
+          "beatIndex": 148,
+          "bar": 36,
+          "beatInBar": 3,
+          "pattern": "dense",
+          "expectedSubdivisionTimeMs": 91840.0,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 8.917,
+          "measuredAttack": 1.55,
+          "bandAttack": {
+            "kick": 2.449,
+            "body": 1.019,
+            "hats": 0.405
+          },
+          "barMeanAttack": 0.257
+        },
+        {
+          "phase": 4,
+          "ordinal": 21,
+          "timeMs": 92160.0,
+          "subdivision": "eighth",
+          "beatIndex": 148,
+          "bar": 36,
+          "beatInBar": 3.5,
+          "pattern": "dense",
+          "expectedSubdivisionTimeMs": 92149.333,
+          "snapMs": 10.667,
+          "pulseTrackingSnapMs": null,
+          "measuredAttack": 1.086,
+          "bandAttack": {
+            "kick": 1.598,
+            "body": 0.589,
+            "hats": 0.566
+          },
+          "barMeanAttack": 0.257
+        },
+        {
+          "phase": 4,
+          "ordinal": 22,
+          "timeMs": 92458.667,
+          "subdivision": "quarter",
+          "beatIndex": 149,
+          "bar": 37,
+          "beatInBar": 0,
+          "pattern": "dense",
+          "expectedSubdivisionTimeMs": 92458.667,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -2.641,
+          "measuredAttack": 1.53,
+          "bandAttack": {
+            "kick": 2.424,
+            "body": 1.198,
+            "hats": 0.263
+          },
+          "barMeanAttack": 0.282
+        },
+        {
+          "phase": 4,
+          "ordinal": 23,
+          "timeMs": 93077.333,
+          "subdivision": "quarter",
+          "beatIndex": 150,
+          "bar": 37,
+          "beatInBar": 1,
+          "pattern": "dense",
+          "expectedSubdivisionTimeMs": 93077.333,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -2.377,
+          "measuredAttack": 0.424,
+          "bandAttack": {
+            "kick": 0.0,
+            "body": 0.0,
+            "hats": 1.413
+          },
+          "barMeanAttack": 0.282
+        },
+        {
+          "phase": 4,
+          "ordinal": 24,
+          "timeMs": 93717.333,
+          "subdivision": "quarter",
+          "beatIndex": 151,
+          "bar": 37,
+          "beatInBar": 2,
+          "pattern": "dense",
+          "expectedSubdivisionTimeMs": 93717.333,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 19.194,
+          "measuredAttack": 0.589,
+          "bandAttack": {
+            "kick": 0.0,
+            "body": 0.0,
+            "hats": 1.963
+          },
+          "barMeanAttack": 0.282
+        },
+        {
+          "phase": 4,
+          "ordinal": 25,
+          "timeMs": 94389.333,
+          "subdivision": "quarter",
+          "beatIndex": 152,
+          "bar": 37,
+          "beatInBar": 3,
+          "pattern": "dense",
+          "expectedSubdivisionTimeMs": 94389.333,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 49.275,
+          "measuredAttack": 0.698,
+          "bandAttack": {
+            "kick": 0.0,
+            "body": 1.305,
+            "hats": 1.456
+          },
+          "barMeanAttack": 0.282
+        },
+        {
+          "phase": 4,
+          "ordinal": 26,
+          "timeMs": 94965.333,
+          "subdivision": "quarter",
+          "beatIndex": 153,
+          "bar": 38,
+          "beatInBar": 0,
+          "pattern": "dense",
+          "expectedSubdivisionTimeMs": 94965.333,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -51.653,
+          "measuredAttack": 1.002,
+          "bandAttack": {
+            "kick": 1.713,
+            "body": 0.728,
+            "hats": 0.0
+          },
+          "barMeanAttack": 0.245
+        },
+        {
+          "phase": 4,
+          "ordinal": 27,
+          "timeMs": 95616.0,
+          "subdivision": "quarter",
+          "beatIndex": 154,
+          "bar": 38,
+          "beatInBar": 1,
+          "pattern": "dense",
+          "expectedSubdivisionTimeMs": 95616.0,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 28.179,
+          "measuredAttack": 0.545,
+          "bandAttack": {
+            "kick": 0.123,
+            "body": 0.265,
+            "hats": 1.436
+          },
+          "barMeanAttack": 0.245
+        },
+        {
+          "phase": 4,
+          "ordinal": 28,
+          "timeMs": 95914.667,
+          "subdivision": "eighth",
+          "beatIndex": 154,
+          "bar": 38,
+          "beatInBar": 1.5,
+          "pattern": "dense",
+          "expectedSubdivisionTimeMs": 95914.667,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": null,
+          "measuredAttack": 0.957,
+          "bandAttack": {
+            "kick": 0.152,
+            "body": 0.977,
+            "hats": 2.286
+          },
+          "barMeanAttack": 0.245
+        },
+        {
+          "phase": 4,
+          "ordinal": 29,
+          "timeMs": 96213.333,
+          "subdivision": "quarter",
+          "beatIndex": 155,
+          "bar": 38,
+          "beatInBar": 2,
+          "pattern": "dense",
+          "expectedSubdivisionTimeMs": 96213.333,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -27.972,
+          "measuredAttack": 1.437,
+          "bandAttack": {
+            "kick": 2.486,
+            "body": 0.97,
+            "hats": 0.0
+          },
+          "barMeanAttack": 0.245
+        },
+        {
+          "phase": 4,
+          "ordinal": 30,
+          "timeMs": 96864.0,
+          "subdivision": "quarter",
+          "beatIndex": 156,
+          "bar": 38,
+          "beatInBar": 3,
+          "pattern": "dense",
+          "expectedSubdivisionTimeMs": 96864.0,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 28.158,
+          "measuredAttack": 1.709,
+          "bandAttack": {
+            "kick": 2.676,
+            "body": 0.649,
+            "hats": 0.804
+          },
+          "barMeanAttack": 0.245
+        },
+        {
+          "phase": 4,
+          "ordinal": 31,
+          "timeMs": 97152.0,
+          "subdivision": "eighth",
+          "beatIndex": 156,
+          "bar": 38,
+          "beatInBar": 3.5,
+          "pattern": "dense",
+          "expectedSubdivisionTimeMs": 97173.333,
+          "snapMs": -21.333,
+          "pulseTrackingSnapMs": null,
+          "measuredAttack": 1.407,
+          "bandAttack": {
+            "kick": 0.252,
+            "body": 1.904,
+            "hats": 3.0
+          },
+          "barMeanAttack": 0.245
+        },
+        {
+          "phase": 4,
+          "ordinal": 32,
+          "timeMs": 97482.667,
+          "subdivision": "quarter",
+          "beatIndex": 157,
+          "bar": 39,
+          "beatInBar": 0,
+          "pattern": "dense",
+          "expectedSubdivisionTimeMs": 97482.667,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -6.657,
+          "measuredAttack": 0.347,
+          "bandAttack": {
+            "kick": 0.017,
+            "body": 0.037,
+            "hats": 1.105
+          },
+          "barMeanAttack": 0.256
+        },
+        {
+          "phase": 4,
+          "ordinal": 33,
+          "timeMs": 98080.0,
+          "subdivision": "quarter",
+          "beatIndex": 158,
+          "bar": 39,
+          "beatInBar": 1,
+          "pattern": "dense",
+          "expectedSubdivisionTimeMs": 98080.0,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -27.325,
+          "measuredAttack": 1.198,
+          "bandAttack": {
+            "kick": 1.68,
+            "body": 0.909,
+            "hats": 0.589
+          },
+          "barMeanAttack": 0.256
+        },
+        {
+          "phase": 4,
+          "ordinal": 34,
+          "timeMs": 98389.333,
+          "subdivision": "eighth",
+          "beatIndex": 158,
+          "bar": 39,
+          "beatInBar": 1.5,
+          "pattern": "dense",
+          "expectedSubdivisionTimeMs": 98400.0,
+          "snapMs": -10.667,
+          "pulseTrackingSnapMs": null,
+          "measuredAttack": 1.544,
+          "bandAttack": {
+            "kick": 0.646,
+            "body": 1.788,
+            "hats": 2.879
+          },
+          "barMeanAttack": 0.256
+        },
+        {
+          "phase": 4,
+          "ordinal": 35,
+          "timeMs": 98720.0,
+          "subdivision": "quarter",
+          "beatIndex": 159,
+          "bar": 39,
+          "beatInBar": 2,
+          "pattern": "dense",
+          "expectedSubdivisionTimeMs": 98720.0,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 18.074,
+          "measuredAttack": 0.464,
+          "bandAttack": {
+            "kick": 0.535,
+            "body": 0.084,
+            "hats": 0.597
+          },
+          "barMeanAttack": 0.256
+        },
+        {
+          "phase": 4,
+          "ordinal": 36,
+          "timeMs": 99360.0,
+          "subdivision": "quarter",
+          "beatIndex": 160,
+          "bar": 39,
+          "beatInBar": 3,
+          "pattern": "dense",
+          "expectedSubdivisionTimeMs": 99360.0,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 16.267,
+          "measuredAttack": 0.849,
+          "bandAttack": {
+            "kick": 0.137,
+            "body": 1.505,
+            "hats": 1.599
+          },
+          "barMeanAttack": 0.256
+        },
+        {
+          "phase": 4,
+          "ordinal": 37,
+          "timeMs": 99936.0,
+          "subdivision": "quarter",
+          "beatIndex": 161,
+          "bar": 40,
+          "beatInBar": 0,
+          "pattern": "dense",
+          "expectedSubdivisionTimeMs": 99936.0,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -49.36,
+          "measuredAttack": 1.133,
+          "bandAttack": {
+            "kick": 1.762,
+            "body": 1.196,
+            "hats": 0.044
+          },
+          "barMeanAttack": 0.254
+        }
+      ]
+    },
+    {
+      "phase": 5,
+      "label": "뒷면 필렛 분리",
+      "regionSeconds": [
+        102,
+        127
+      ],
+      "opportunities": 41,
+      "requiredHits": 29,
+      "passRule": "ceil(0.70 * opportunities); all notes remain judgeable",
+      "firstNoteMs": 102122.667,
+      "lastNoteMs": 126752.0,
+      "endTimeMs": 127752.0,
+      "quarterNotes": 32,
+      "eighthNotes": 9,
+      "notes": [
+        {
+          "phase": 5,
+          "ordinal": 0,
+          "timeMs": 102122.667,
+          "subdivision": "eighth",
+          "beatIndex": 164,
+          "bar": 40,
+          "beatInBar": 3.5,
+          "pattern": "dense",
+          "expectedSubdivisionTimeMs": 102117.333,
+          "snapMs": 5.333,
+          "pulseTrackingSnapMs": null,
+          "measuredAttack": 1.774,
+          "bandAttack": {
+            "kick": 1.499,
+            "body": 1.756,
+            "hats": 2.246
+          },
+          "barMeanAttack": 0.254
+        },
+        {
+          "phase": 5,
+          "ordinal": 1,
+          "timeMs": 102421.333,
+          "subdivision": "quarter",
+          "beatIndex": 165,
+          "bar": 41,
+          "beatInBar": 0,
+          "pattern": "dense",
+          "expectedSubdivisionTimeMs": 102421.333,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -13.59,
+          "measuredAttack": 1.18,
+          "bandAttack": {
+            "kick": 1.989,
+            "body": 0.926,
+            "hats": 0.0
+          },
+          "barMeanAttack": 0.248
+        },
+        {
+          "phase": 5,
+          "ordinal": 2,
+          "timeMs": 103061.333,
+          "subdivision": "quarter",
+          "beatIndex": 166,
+          "bar": 41,
+          "beatInBar": 1,
+          "pattern": "dense",
+          "expectedSubdivisionTimeMs": 103061.333,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 19.769,
+          "measuredAttack": 1.331,
+          "bandAttack": {
+            "kick": 2.296,
+            "body": 0.737,
+            "hats": 0.118
+          },
+          "barMeanAttack": 0.248
+        },
+        {
+          "phase": 5,
+          "ordinal": 3,
+          "timeMs": 103370.667,
+          "subdivision": "eighth",
+          "beatIndex": 166,
+          "bar": 41,
+          "beatInBar": 1.5,
+          "pattern": "dense",
+          "expectedSubdivisionTimeMs": 103392.0,
+          "snapMs": -21.333,
+          "pulseTrackingSnapMs": null,
+          "measuredAttack": 1.361,
+          "bandAttack": {
+            "kick": 0.291,
+            "body": 1.896,
+            "hats": 2.787
+          },
+          "barMeanAttack": 0.248
+        },
+        {
+          "phase": 5,
+          "ordinal": 4,
+          "timeMs": 103722.667,
+          "subdivision": "quarter",
+          "beatIndex": 167,
+          "bar": 41,
+          "beatInBar": 2,
+          "pattern": "dense",
+          "expectedSubdivisionTimeMs": 103722.667,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 39.125,
+          "measuredAttack": 0.464,
+          "bandAttack": {
+            "kick": 0.0,
+            "body": 1.174,
+            "hats": 0.764
+          },
+          "barMeanAttack": 0.248
+        },
+        {
+          "phase": 5,
+          "ordinal": 5,
+          "timeMs": 104330.667,
+          "subdivision": "quarter",
+          "beatIndex": 168,
+          "bar": 41,
+          "beatInBar": 3,
+          "pattern": "dense",
+          "expectedSubdivisionTimeMs": 104330.667,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -18.121,
+          "measuredAttack": 0.915,
+          "bandAttack": {
+            "kick": 0.593,
+            "body": 1.379,
+            "hats": 1.144
+          },
+          "barMeanAttack": 0.248
+        },
+        {
+          "phase": 5,
+          "ordinal": 6,
+          "timeMs": 104618.667,
+          "subdivision": "eighth",
+          "beatIndex": 168,
+          "bar": 41,
+          "beatInBar": 3.5,
+          "pattern": "dense",
+          "expectedSubdivisionTimeMs": 104624.0,
+          "snapMs": -5.333,
+          "pulseTrackingSnapMs": null,
+          "measuredAttack": 1.288,
+          "bandAttack": {
+            "kick": 0.697,
+            "body": 1.227,
+            "hats": 2.313
+          },
+          "barMeanAttack": 0.248
+        },
+        {
+          "phase": 5,
+          "ordinal": 7,
+          "timeMs": 104917.333,
+          "subdivision": "quarter",
+          "beatIndex": 169,
+          "bar": 42,
+          "beatInBar": 0,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 104917.333,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -37.642,
+          "measuredAttack": 1.114,
+          "bandAttack": {
+            "kick": 1.996,
+            "body": 0.577,
+            "hats": 0.0
+          },
+          "barMeanAttack": 0.234
+        },
+        {
+          "phase": 5,
+          "ordinal": 8,
+          "timeMs": 105514.667,
+          "subdivision": "quarter",
+          "beatIndex": 170,
+          "bar": 42,
+          "beatInBar": 1,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 105514.667,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -23.211,
+          "measuredAttack": 0.488,
+          "bandAttack": {
+            "kick": 0.254,
+            "body": 0.439,
+            "hats": 0.91
+          },
+          "barMeanAttack": 0.234
+        },
+        {
+          "phase": 5,
+          "ordinal": 9,
+          "timeMs": 105866.667,
+          "subdivision": "eighth",
+          "beatIndex": 170,
+          "bar": 42,
+          "beatInBar": 1.5,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 105845.333,
+          "snapMs": 21.333,
+          "pulseTrackingSnapMs": null,
+          "measuredAttack": 1.112,
+          "bandAttack": {
+            "kick": 0.591,
+            "body": 1.434,
+            "hats": 1.766
+          },
+          "barMeanAttack": 0.234
+        },
+        {
+          "phase": 5,
+          "ordinal": 10,
+          "timeMs": 106176.0,
+          "subdivision": "quarter",
+          "beatIndex": 171,
+          "bar": 42,
+          "beatInBar": 2,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 106176.0,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 43.11,
+          "measuredAttack": 1.129,
+          "bandAttack": {
+            "kick": 2.014,
+            "body": 0.612,
+            "hats": 0.0
+          },
+          "barMeanAttack": 0.234
+        },
+        {
+          "phase": 5,
+          "ordinal": 11,
+          "timeMs": 107434.667,
+          "subdivision": "quarter",
+          "beatIndex": 173,
+          "bar": 43,
+          "beatInBar": 0,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 107434.667,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -5.614,
+          "measuredAttack": 0.433,
+          "bandAttack": {
+            "kick": 0.226,
+            "body": 0.55,
+            "hats": 0.701
+          },
+          "barMeanAttack": 0.216
+        },
+        {
+          "phase": 5,
+          "ordinal": 12,
+          "timeMs": 108672.0,
+          "subdivision": "quarter",
+          "beatIndex": 175,
+          "bar": 43,
+          "beatInBar": 2,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 108672.0,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 30.652,
+          "measuredAttack": 0.478,
+          "bandAttack": {
+            "kick": 0.278,
+            "body": 0.6,
+            "hats": 0.73
+          },
+          "barMeanAttack": 0.216
+        },
+        {
+          "phase": 5,
+          "ordinal": 13,
+          "timeMs": 109312.0,
+          "subdivision": "quarter",
+          "beatIndex": 176,
+          "bar": 43,
+          "beatInBar": 3,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 109312.0,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 16.921,
+          "measuredAttack": 0.258,
+          "bandAttack": {
+            "kick": 0.063,
+            "body": 0.501,
+            "hats": 0.42
+          },
+          "barMeanAttack": 0.216
+        },
+        {
+          "phase": 5,
+          "ordinal": 14,
+          "timeMs": 109600.0,
+          "subdivision": "eighth",
+          "beatIndex": 176,
+          "bar": 43,
+          "beatInBar": 3.5,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 109605.333,
+          "snapMs": -5.333,
+          "pulseTrackingSnapMs": null,
+          "measuredAttack": 1.182,
+          "bandAttack": {
+            "kick": 0.404,
+            "body": 1.203,
+            "hats": 2.464
+          },
+          "barMeanAttack": 0.216
+        },
+        {
+          "phase": 5,
+          "ordinal": 15,
+          "timeMs": 109898.667,
+          "subdivision": "quarter",
+          "beatIndex": 177,
+          "bar": 44,
+          "beatInBar": 0,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 109898.667,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -38.105,
+          "measuredAttack": 1.37,
+          "bandAttack": {
+            "kick": 2.249,
+            "body": 1.139,
+            "hats": 0.058
+          },
+          "barMeanAttack": 0.171
+        },
+        {
+          "phase": 5,
+          "ordinal": 16,
+          "timeMs": 110519.628,
+          "subdivision": "quarter",
+          "beatIndex": 178,
+          "bar": 44,
+          "beatInBar": 1,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 110519.628,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 0.0,
+          "measuredAttack": 0.089,
+          "bandAttack": {
+            "kick": 0.0,
+            "body": 0.095,
+            "hats": 0.233
+          },
+          "barMeanAttack": 0.171
+        },
+        {
+          "phase": 5,
+          "ordinal": 17,
+          "timeMs": 110837.333,
+          "subdivision": "eighth",
+          "beatIndex": 178,
+          "bar": 44,
+          "beatInBar": 1.5,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 110833.147,
+          "snapMs": 4.186,
+          "pulseTrackingSnapMs": null,
+          "measuredAttack": 1.373,
+          "bandAttack": {
+            "kick": 0.77,
+            "body": 1.554,
+            "hats": 2.259
+          },
+          "barMeanAttack": 0.171
+        },
+        {
+          "phase": 5,
+          "ordinal": 18,
+          "timeMs": 111146.667,
+          "subdivision": "quarter",
+          "beatIndex": 179,
+          "bar": 44,
+          "beatInBar": 2,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 111146.667,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 6.078,
+          "measuredAttack": 1.63,
+          "bandAttack": {
+            "kick": 2.489,
+            "body": 1.293,
+            "hats": 0.422
+          },
+          "barMeanAttack": 0.171
+        },
+        {
+          "phase": 5,
+          "ordinal": 19,
+          "timeMs": 112416.0,
+          "subdivision": "quarter",
+          "beatIndex": 181,
+          "bar": 45,
+          "beatInBar": 0,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 112416.0,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -17.545,
+          "measuredAttack": 0.583,
+          "bandAttack": {
+            "kick": 0.238,
+            "body": 0.529,
+            "hats": 1.194
+          },
+          "barMeanAttack": 0.186
+        },
+        {
+          "phase": 5,
+          "ordinal": 20,
+          "timeMs": 113632.0,
+          "subdivision": "quarter",
+          "beatIndex": 183,
+          "bar": 45,
+          "beatInBar": 2,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 113632.0,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -37.678,
+          "measuredAttack": 1.069,
+          "bandAttack": {
+            "kick": 1.553,
+            "body": 0.971,
+            "hats": 0.326
+          },
+          "barMeanAttack": 0.186
+        },
+        {
+          "phase": 5,
+          "ordinal": 21,
+          "timeMs": 114229.333,
+          "subdivision": "quarter",
+          "beatIndex": 184,
+          "bar": 45,
+          "beatInBar": 3,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 114229.333,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -23.244,
+          "measuredAttack": 0.189,
+          "bandAttack": {
+            "kick": 0.0,
+            "body": 0.247,
+            "hats": 0.466
+          },
+          "barMeanAttack": 0.186
+        },
+        {
+          "phase": 5,
+          "ordinal": 22,
+          "timeMs": 114581.333,
+          "subdivision": "eighth",
+          "beatIndex": 184,
+          "bar": 45,
+          "beatInBar": 3.5,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 114560.0,
+          "snapMs": 21.333,
+          "pulseTrackingSnapMs": null,
+          "measuredAttack": 1.354,
+          "bandAttack": {
+            "kick": 0.201,
+            "body": 2.073,
+            "hats": 2.796
+          },
+          "barMeanAttack": 0.186
+        },
+        {
+          "phase": 5,
+          "ordinal": 23,
+          "timeMs": 114890.667,
+          "subdivision": "quarter",
+          "beatIndex": 185,
+          "bar": 46,
+          "beatInBar": 0,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 114890.667,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 43.081,
+          "measuredAttack": 1.709,
+          "bandAttack": {
+            "kick": 2.761,
+            "body": 1.296,
+            "hats": 0.231
+          },
+          "barMeanAttack": 0.178
+        },
+        {
+          "phase": 5,
+          "ordinal": 24,
+          "timeMs": 115509.333,
+          "subdivision": "quarter",
+          "beatIndex": 186,
+          "bar": 46,
+          "beatInBar": 1,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 115509.333,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -3.894,
+          "measuredAttack": 1.11,
+          "bandAttack": {
+            "kick": 1.842,
+            "body": 0.946,
+            "hats": 0.0
+          },
+          "barMeanAttack": 0.178
+        },
+        {
+          "phase": 5,
+          "ordinal": 25,
+          "timeMs": 115818.667,
+          "subdivision": "eighth",
+          "beatIndex": 186,
+          "bar": 46,
+          "beatInBar": 1.5,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 115824.0,
+          "snapMs": -5.333,
+          "pulseTrackingSnapMs": null,
+          "measuredAttack": 1.554,
+          "bandAttack": {
+            "kick": 0.292,
+            "body": 2.539,
+            "hats": 3.0
+          },
+          "barMeanAttack": 0.178
+        },
+        {
+          "phase": 5,
+          "ordinal": 26,
+          "timeMs": 116138.667,
+          "subdivision": "quarter",
+          "beatIndex": 187,
+          "bar": 46,
+          "beatInBar": 2,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 116138.667,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 7.162,
+          "measuredAttack": 1.562,
+          "bandAttack": {
+            "kick": 2.846,
+            "body": 0.694,
+            "hats": 0.0
+          },
+          "barMeanAttack": 0.178
+        },
+        {
+          "phase": 5,
+          "ordinal": 27,
+          "timeMs": 117397.333,
+          "subdivision": "quarter",
+          "beatIndex": 189,
+          "bar": 47,
+          "beatInBar": 0,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 117397.333,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -29.399,
+          "measuredAttack": 1.15,
+          "bandAttack": {
+            "kick": 0.774,
+            "body": 1.462,
+            "hats": 1.57
+          },
+          "barMeanAttack": 0.204
+        },
+        {
+          "phase": 5,
+          "ordinal": 28,
+          "timeMs": 118666.667,
+          "subdivision": "quarter",
+          "beatIndex": 191,
+          "bar": 47,
+          "beatInBar": 2,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 118666.667,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 15.654,
+          "measuredAttack": 0.62,
+          "bandAttack": {
+            "kick": 0.306,
+            "body": 0.556,
+            "hats": 1.186
+          },
+          "barMeanAttack": 0.204
+        },
+        {
+          "phase": 5,
+          "ordinal": 29,
+          "timeMs": 119285.333,
+          "subdivision": "quarter",
+          "beatIndex": 192,
+          "bar": 47,
+          "beatInBar": 3,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 119285.333,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -7.245,
+          "measuredAttack": 0.594,
+          "bandAttack": {
+            "kick": 0.557,
+            "body": 0.977,
+            "hats": 0.402
+          },
+          "barMeanAttack": 0.204
+        },
+        {
+          "phase": 5,
+          "ordinal": 30,
+          "timeMs": 119861.333,
+          "subdivision": "quarter",
+          "beatIndex": 193,
+          "bar": 48,
+          "beatInBar": 0,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 119861.333,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -49.187,
+          "measuredAttack": 1.713,
+          "bandAttack": {
+            "kick": 3.0,
+            "body": 1.066,
+            "hats": 0.0
+          },
+          "barMeanAttack": 0.207
+        },
+        {
+          "phase": 5,
+          "ordinal": 31,
+          "timeMs": 120480.0,
+          "subdivision": "quarter",
+          "beatIndex": 194,
+          "bar": 48,
+          "beatInBar": 1,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 120480.0,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -1.602,
+          "measuredAttack": 1.074,
+          "bandAttack": {
+            "kick": 1.58,
+            "body": 1.42,
+            "hats": 0.0
+          },
+          "barMeanAttack": 0.207
+        },
+        {
+          "phase": 5,
+          "ordinal": 32,
+          "timeMs": 120789.333,
+          "subdivision": "eighth",
+          "beatIndex": 194,
+          "bar": 48,
+          "beatInBar": 1.5,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 120789.333,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": null,
+          "measuredAttack": 1.857,
+          "bandAttack": {
+            "kick": 1.078,
+            "body": 2.087,
+            "hats": 3.0
+          },
+          "barMeanAttack": 0.207
+        },
+        {
+          "phase": 5,
+          "ordinal": 33,
+          "timeMs": 121098.667,
+          "subdivision": "quarter",
+          "beatIndex": 195,
+          "bar": 48,
+          "beatInBar": 2,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 121098.667,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -1.442,
+          "measuredAttack": 1.649,
+          "bandAttack": {
+            "kick": 3.0,
+            "body": 0.736,
+            "hats": 0.005
+          },
+          "barMeanAttack": 0.207
+        },
+        {
+          "phase": 5,
+          "ordinal": 34,
+          "timeMs": 122400.0,
+          "subdivision": "quarter",
+          "beatIndex": 197,
+          "bar": 49,
+          "beatInBar": 0,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 122400.0,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 4.166,
+          "measuredAttack": 0.436,
+          "bandAttack": {
+            "kick": 0.242,
+            "body": 1.573,
+            "hats": 0.0
+          },
+          "barMeanAttack": 0.219
+        },
+        {
+          "phase": 5,
+          "ordinal": 35,
+          "timeMs": 123626.667,
+          "subdivision": "quarter",
+          "beatIndex": 199,
+          "bar": 49,
+          "beatInBar": 2,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 123626.667,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 30.041,
+          "measuredAttack": 0.391,
+          "bandAttack": {
+            "kick": 0.0,
+            "body": 0.415,
+            "hats": 1.027
+          },
+          "barMeanAttack": 0.219
+        },
+        {
+          "phase": 5,
+          "ordinal": 36,
+          "timeMs": 124256.0,
+          "subdivision": "quarter",
+          "beatIndex": 200,
+          "bar": 49,
+          "beatInBar": 3,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 124256.0,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 5.703,
+          "measuredAttack": 1.112,
+          "bandAttack": {
+            "kick": 0.742,
+            "body": 1.104,
+            "hats": 1.734
+          },
+          "barMeanAttack": 0.219
+        },
+        {
+          "phase": 5,
+          "ordinal": 37,
+          "timeMs": 124832.0,
+          "subdivision": "quarter",
+          "beatIndex": 201,
+          "bar": 50,
+          "beatInBar": 0,
+          "pattern": "dense",
+          "expectedSubdivisionTimeMs": 124832.0,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -48.2,
+          "measuredAttack": 0.791,
+          "bandAttack": {
+            "kick": 1.23,
+            "body": 0.88,
+            "hats": 0.0
+          },
+          "barMeanAttack": 0.235
+        },
+        {
+          "phase": 5,
+          "ordinal": 38,
+          "timeMs": 125493.333,
+          "subdivision": "quarter",
+          "beatIndex": 202,
+          "bar": 50,
+          "beatInBar": 1,
+          "pattern": "dense",
+          "expectedSubdivisionTimeMs": 125493.333,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 41.953,
+          "measuredAttack": 0.475,
+          "bandAttack": {
+            "kick": 0.574,
+            "body": 0.13,
+            "hats": 0.538
+          },
+          "barMeanAttack": 0.235
+        },
+        {
+          "phase": 5,
+          "ordinal": 39,
+          "timeMs": 126080.0,
+          "subdivision": "quarter",
+          "beatIndex": 203,
+          "bar": 50,
+          "beatInBar": 2,
+          "pattern": "dense",
+          "expectedSubdivisionTimeMs": 126080.0,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -36.909,
+          "measuredAttack": 1.62,
+          "bandAttack": {
+            "kick": 2.485,
+            "body": 0.824,
+            "hats": 0.709
+          },
+          "barMeanAttack": 0.235
+        },
+        {
+          "phase": 5,
+          "ordinal": 40,
+          "timeMs": 126752.0,
+          "subdivision": "quarter",
+          "beatIndex": 204,
+          "bar": 50,
+          "beatInBar": 3,
+          "pattern": "dense",
+          "expectedSubdivisionTimeMs": 126752.0,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 52.115,
+          "measuredAttack": 0.656,
+          "bandAttack": {
+            "kick": 0.687,
+            "body": 0.945,
+            "hats": 0.413
+          },
+          "barMeanAttack": 0.235
+        }
+      ]
+    },
+    {
+      "phase": 6,
+      "label": "앞면 필렛 썰기",
+      "regionSeconds": [
         129,
-        131,
-        137,
-        141
+        174
       ],
-      "measuredAttackStrength": [
-        1.22,
-        1.757,
-        0.915,
-        1.473,
-        1.345,
-        1.683
-      ],
-      "intervalsSeconds": [
-        3.691,
-        3.744,
-        1.216,
-        3.733,
-        2.485
+      "opportunities": 78,
+      "requiredHits": 55,
+      "passRule": "ceil(0.70 * opportunities); all notes remain judgeable",
+      "firstNoteMs": 129205.333,
+      "lastNoteMs": 173440.0,
+      "endTimeMs": 174440.0,
+      "quarterNotes": 63,
+      "eighthNotes": 15,
+      "notes": [
+        {
+          "phase": 6,
+          "ordinal": 0,
+          "timeMs": 129205.333,
+          "subdivision": "quarter",
+          "beatIndex": 208,
+          "bar": 51,
+          "beatInBar": 3,
+          "pattern": "dense",
+          "expectedSubdivisionTimeMs": 129205.333,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -14.479,
+          "measuredAttack": 0.873,
+          "bandAttack": {
+            "kick": 0.502,
+            "body": 1.448,
+            "hats": 1.109
+          },
+          "barMeanAttack": 0.245
+        },
+        {
+          "phase": 6,
+          "ordinal": 1,
+          "timeMs": 129493.333,
+          "subdivision": "eighth",
+          "beatIndex": 208,
+          "bar": 51,
+          "beatInBar": 3.5,
+          "pattern": "dense",
+          "expectedSubdivisionTimeMs": 129509.333,
+          "snapMs": -16.0,
+          "pulseTrackingSnapMs": null,
+          "measuredAttack": 1.687,
+          "bandAttack": {
+            "kick": 0.842,
+            "body": 1.847,
+            "hats": 2.99
+          },
+          "barMeanAttack": 0.245
+        },
+        {
+          "phase": 6,
+          "ordinal": 2,
+          "timeMs": 129813.333,
+          "subdivision": "quarter",
+          "beatIndex": 209,
+          "bar": 52,
+          "beatInBar": 0,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 129813.333,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -13.031,
+          "measuredAttack": 0.674,
+          "bandAttack": {
+            "kick": 1.225,
+            "body": 0.146,
+            "hats": 0.107
+          },
+          "barMeanAttack": 0.228
+        },
+        {
+          "phase": 6,
+          "ordinal": 3,
+          "timeMs": 130474.667,
+          "subdivision": "quarter",
+          "beatIndex": 210,
+          "bar": 52,
+          "beatInBar": 1,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 130474.667,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 41.605,
+          "measuredAttack": 0.415,
+          "bandAttack": {
+            "kick": 0.0,
+            "body": 0.686,
+            "hats": 0.927
+          },
+          "barMeanAttack": 0.228
+        },
+        {
+          "phase": 6,
+          "ordinal": 4,
+          "timeMs": 131050.667,
+          "subdivision": "quarter",
+          "beatIndex": 211,
+          "bar": 52,
+          "beatInBar": 2,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 131050.667,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -47.889,
+          "measuredAttack": 1.109,
+          "bandAttack": {
+            "kick": 2.122,
+            "body": 0.241,
+            "hats": 0.0
+          },
+          "barMeanAttack": 0.228
+        },
+        {
+          "phase": 6,
+          "ordinal": 5,
+          "timeMs": 132288.0,
+          "subdivision": "quarter",
+          "beatIndex": 213,
+          "bar": 53,
+          "beatInBar": 0,
+          "pattern": "dense",
+          "expectedSubdivisionTimeMs": 132288.0,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 11.344,
+          "measuredAttack": 0.953,
+          "bandAttack": {
+            "kick": 1.505,
+            "body": 0.8,
+            "hats": 0.133
+          },
+          "barMeanAttack": 0.271
+        },
+        {
+          "phase": 6,
+          "ordinal": 6,
+          "timeMs": 132896.0,
+          "subdivision": "quarter",
+          "beatIndex": 214,
+          "bar": 53,
+          "beatInBar": 1,
+          "pattern": "dense",
+          "expectedSubdivisionTimeMs": 132896.0,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -11.124,
+          "measuredAttack": 1.191,
+          "bandAttack": {
+            "kick": 1.656,
+            "body": 1.049,
+            "hats": 0.512
+          },
+          "barMeanAttack": 0.271
+        },
+        {
+          "phase": 6,
+          "ordinal": 7,
+          "timeMs": 133216.0,
+          "subdivision": "eighth",
+          "beatIndex": 214,
+          "bar": 53,
+          "beatInBar": 1.5,
+          "pattern": "dense",
+          "expectedSubdivisionTimeMs": 133237.333,
+          "snapMs": -21.333,
+          "pulseTrackingSnapMs": null,
+          "measuredAttack": 1.716,
+          "bandAttack": {
+            "kick": 0.861,
+            "body": 2.216,
+            "hats": 2.807
+          },
+          "barMeanAttack": 0.271
+        },
+        {
+          "phase": 6,
+          "ordinal": 8,
+          "timeMs": 133578.667,
+          "subdivision": "quarter",
+          "beatIndex": 215,
+          "bar": 53,
+          "beatInBar": 2,
+          "pattern": "dense",
+          "expectedSubdivisionTimeMs": 133578.667,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 64.655,
+          "measuredAttack": 0.518,
+          "bandAttack": {
+            "kick": 0.024,
+            "body": 1.466,
+            "hats": 0.709
+          },
+          "barMeanAttack": 0.271
+        },
+        {
+          "phase": 6,
+          "ordinal": 9,
+          "timeMs": 134208.0,
+          "subdivision": "quarter",
+          "beatIndex": 216,
+          "bar": 53,
+          "beatInBar": 3,
+          "pattern": "dense",
+          "expectedSubdivisionTimeMs": 134208.0,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 4.856,
+          "measuredAttack": 0.59,
+          "bandAttack": {
+            "kick": 0.0,
+            "body": 1.222,
+            "hats": 1.151
+          },
+          "barMeanAttack": 0.271
+        },
+        {
+          "phase": 6,
+          "ordinal": 10,
+          "timeMs": 134784.0,
+          "subdivision": "quarter",
+          "beatIndex": 217,
+          "bar": 54,
+          "beatInBar": 0,
+          "pattern": "dense",
+          "expectedSubdivisionTimeMs": 134784.0,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -48.963,
+          "measuredAttack": 0.839,
+          "bandAttack": {
+            "kick": 1.532,
+            "body": 0.365,
+            "hats": 0.0
+          },
+          "barMeanAttack": 0.244
+        },
+        {
+          "phase": 6,
+          "ordinal": 11,
+          "timeMs": 135434.667,
+          "subdivision": "quarter",
+          "beatIndex": 218,
+          "bar": 54,
+          "beatInBar": 1,
+          "pattern": "dense",
+          "expectedSubdivisionTimeMs": 135434.667,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 30.6,
+          "measuredAttack": 0.685,
+          "bandAttack": {
+            "kick": 0.328,
+            "body": 1.437,
+            "hats": 0.779
+          },
+          "barMeanAttack": 0.244
+        },
+        {
+          "phase": 6,
+          "ordinal": 12,
+          "timeMs": 136021.333,
+          "subdivision": "quarter",
+          "beatIndex": 219,
+          "bar": 54,
+          "beatInBar": 2,
+          "pattern": "dense",
+          "expectedSubdivisionTimeMs": 136021.333,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -36.46,
+          "measuredAttack": 1.397,
+          "bandAttack": {
+            "kick": 2.397,
+            "body": 0.995,
+            "hats": 0.0
+          },
+          "barMeanAttack": 0.244
+        },
+        {
+          "phase": 6,
+          "ordinal": 13,
+          "timeMs": 136693.333,
+          "subdivision": "quarter",
+          "beatIndex": 220,
+          "bar": 54,
+          "beatInBar": 3,
+          "pattern": "dense",
+          "expectedSubdivisionTimeMs": 136693.333,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 52.519,
+          "measuredAttack": 0.676,
+          "bandAttack": {
+            "kick": 0.526,
+            "body": 1.41,
+            "hats": 0.437
+          },
+          "barMeanAttack": 0.244
+        },
+        {
+          "phase": 6,
+          "ordinal": 14,
+          "timeMs": 137301.333,
+          "subdivision": "quarter",
+          "beatIndex": 221,
+          "bar": 55,
+          "beatInBar": 0,
+          "pattern": "dense",
+          "expectedSubdivisionTimeMs": 137301.333,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -16.733,
+          "measuredAttack": 0.294,
+          "bandAttack": {
+            "kick": 0.093,
+            "body": 0.436,
+            "hats": 0.535
+          },
+          "barMeanAttack": 0.262
+        },
+        {
+          "phase": 6,
+          "ordinal": 15,
+          "timeMs": 137888.0,
+          "subdivision": "quarter",
+          "beatIndex": 222,
+          "bar": 55,
+          "beatInBar": 1,
+          "pattern": "dense",
+          "expectedSubdivisionTimeMs": 137888.0,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -36.393,
+          "measuredAttack": 1.881,
+          "bandAttack": {
+            "kick": 2.939,
+            "body": 1.051,
+            "hats": 0.671
+          },
+          "barMeanAttack": 0.262
+        },
+        {
+          "phase": 6,
+          "ordinal": 16,
+          "timeMs": 138197.333,
+          "subdivision": "eighth",
+          "beatIndex": 222,
+          "bar": 55,
+          "beatInBar": 1.5,
+          "pattern": "dense",
+          "expectedSubdivisionTimeMs": 138208.0,
+          "snapMs": -10.667,
+          "pulseTrackingSnapMs": null,
+          "measuredAttack": 1.908,
+          "bandAttack": {
+            "kick": 1.192,
+            "body": 2.06,
+            "hats": 3.0
+          },
+          "barMeanAttack": 0.262
+        },
+        {
+          "phase": 6,
+          "ordinal": 17,
+          "timeMs": 138528.0,
+          "subdivision": "quarter",
+          "beatIndex": 223,
+          "bar": 55,
+          "beatInBar": 2,
+          "pattern": "dense",
+          "expectedSubdivisionTimeMs": 138528.0,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 20.58,
+          "measuredAttack": 0.878,
+          "bandAttack": {
+            "kick": 1.125,
+            "body": 0.905,
+            "hats": 0.449
+          },
+          "barMeanAttack": 0.262
+        },
+        {
+          "phase": 6,
+          "ordinal": 18,
+          "timeMs": 139136.0,
+          "subdivision": "quarter",
+          "beatIndex": 224,
+          "bar": 55,
+          "beatInBar": 3,
+          "pattern": "dense",
+          "expectedSubdivisionTimeMs": 139136.0,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -13.478,
+          "measuredAttack": 0.584,
+          "bandAttack": {
+            "kick": 0.0,
+            "body": 1.382,
+            "hats": 1.027
+          },
+          "barMeanAttack": 0.262
+        },
+        {
+          "phase": 6,
+          "ordinal": 19,
+          "timeMs": 139434.667,
+          "subdivision": "eighth",
+          "beatIndex": 224,
+          "bar": 55,
+          "beatInBar": 3.5,
+          "pattern": "dense",
+          "expectedSubdivisionTimeMs": 139445.333,
+          "snapMs": -10.667,
+          "pulseTrackingSnapMs": null,
+          "measuredAttack": 1.6,
+          "bandAttack": {
+            "kick": 0.457,
+            "body": 2.359,
+            "hats": 3.0
+          },
+          "barMeanAttack": 0.262
+        },
+        {
+          "phase": 6,
+          "ordinal": 20,
+          "timeMs": 139754.667,
+          "subdivision": "quarter",
+          "beatIndex": 225,
+          "bar": 56,
+          "beatInBar": 0,
+          "pattern": "dense",
+          "expectedSubdivisionTimeMs": 139754.667,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -1.464,
+          "measuredAttack": 0.888,
+          "bandAttack": {
+            "kick": 1.577,
+            "body": 0.495,
+            "hats": 0.0
+          },
+          "barMeanAttack": 0.237
+        },
+        {
+          "phase": 6,
+          "ordinal": 21,
+          "timeMs": 140394.667,
+          "subdivision": "quarter",
+          "beatIndex": 226,
+          "bar": 56,
+          "beatInBar": 1,
+          "pattern": "dense",
+          "expectedSubdivisionTimeMs": 140394.667,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 20.016,
+          "measuredAttack": 0.774,
+          "bandAttack": {
+            "kick": 0.357,
+            "body": 1.32,
+            "hats": 1.105
+          },
+          "barMeanAttack": 0.237
+        },
+        {
+          "phase": 6,
+          "ordinal": 22,
+          "timeMs": 140682.667,
+          "subdivision": "eighth",
+          "beatIndex": 226,
+          "bar": 56,
+          "beatInBar": 1.5,
+          "pattern": "dense",
+          "expectedSubdivisionTimeMs": 140693.333,
+          "snapMs": -10.667,
+          "pulseTrackingSnapMs": null,
+          "measuredAttack": 1.428,
+          "bandAttack": {
+            "kick": 0.489,
+            "body": 1.418,
+            "hats": 3.0
+          },
+          "barMeanAttack": 0.237
+        },
+        {
+          "phase": 6,
+          "ordinal": 23,
+          "timeMs": 140992.0,
+          "subdivision": "quarter",
+          "beatIndex": 227,
+          "bar": 56,
+          "beatInBar": 2,
+          "pattern": "dense",
+          "expectedSubdivisionTimeMs": 140992.0,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -24.652,
+          "measuredAttack": 1.503,
+          "bandAttack": {
+            "kick": 2.508,
+            "body": 0.885,
+            "hats": 0.24
+          },
+          "barMeanAttack": 0.237
+        },
+        {
+          "phase": 6,
+          "ordinal": 24,
+          "timeMs": 141653.333,
+          "subdivision": "quarter",
+          "beatIndex": 228,
+          "bar": 56,
+          "beatInBar": 3,
+          "pattern": "dense",
+          "expectedSubdivisionTimeMs": 141653.333,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 41.813,
+          "measuredAttack": 0.55,
+          "bandAttack": {
+            "kick": 0.382,
+            "body": 1.275,
+            "hats": 0.348
+          },
+          "barMeanAttack": 0.237
+        },
+        {
+          "phase": 6,
+          "ordinal": 25,
+          "timeMs": 142250.667,
+          "subdivision": "quarter",
+          "beatIndex": 229,
+          "bar": 57,
+          "beatInBar": 0,
+          "pattern": "dense",
+          "expectedSubdivisionTimeMs": 142250.667,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -26.368,
+          "measuredAttack": 1.047,
+          "bandAttack": {
+            "kick": 0.798,
+            "body": 1.788,
+            "hats": 0.97
+          },
+          "barMeanAttack": 0.254
+        },
+        {
+          "phase": 6,
+          "ordinal": 26,
+          "timeMs": 142858.667,
+          "subdivision": "quarter",
+          "beatIndex": 230,
+          "bar": 57,
+          "beatInBar": 1,
+          "pattern": "dense",
+          "expectedSubdivisionTimeMs": 142858.667,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -13.065,
+          "measuredAttack": 1.155,
+          "bandAttack": {
+            "kick": 2.168,
+            "body": 0.353,
+            "hats": 0.0
+          },
+          "barMeanAttack": 0.254
+        },
+        {
+          "phase": 6,
+          "ordinal": 27,
+          "timeMs": 143210.667,
+          "subdivision": "eighth",
+          "beatIndex": 230,
+          "bar": 57,
+          "beatInBar": 1.5,
+          "pattern": "dense",
+          "expectedSubdivisionTimeMs": 143189.333,
+          "snapMs": 21.333,
+          "pulseTrackingSnapMs": null,
+          "measuredAttack": 0.394,
+          "bandAttack": {
+            "kick": 0.0,
+            "body": 0.649,
+            "hats": 0.88
+          },
+          "barMeanAttack": 0.254
+        },
+        {
+          "phase": 6,
+          "ordinal": 28,
+          "timeMs": 143520.0,
+          "subdivision": "quarter",
+          "beatIndex": 231,
+          "bar": 57,
+          "beatInBar": 2,
+          "pattern": "dense",
+          "expectedSubdivisionTimeMs": 143520.0,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 41.575,
+          "measuredAttack": 0.537,
+          "bandAttack": {
+            "kick": 0.443,
+            "body": 0.467,
+            "hats": 0.741
+          },
+          "barMeanAttack": 0.254
+        },
+        {
+          "phase": 6,
+          "ordinal": 29,
+          "timeMs": 144138.667,
+          "subdivision": "quarter",
+          "beatIndex": 232,
+          "bar": 57,
+          "beatInBar": 3,
+          "pattern": "dense",
+          "expectedSubdivisionTimeMs": 144138.667,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -5.249,
+          "measuredAttack": 0.489,
+          "bandAttack": {
+            "kick": 0.306,
+            "body": 1.106,
+            "hats": 0.383
+          },
+          "barMeanAttack": 0.254
+        },
+        {
+          "phase": 6,
+          "ordinal": 30,
+          "timeMs": 144714.667,
+          "subdivision": "quarter",
+          "beatIndex": 233,
+          "bar": 58,
+          "beatInBar": 0,
+          "pattern": "dense",
+          "expectedSubdivisionTimeMs": 144714.667,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -47.391,
+          "measuredAttack": 0.983,
+          "bandAttack": {
+            "kick": 1.7,
+            "body": 0.666,
+            "hats": 0.0
+          },
+          "barMeanAttack": 0.251
+        },
+        {
+          "phase": 6,
+          "ordinal": 31,
+          "timeMs": 145386.667,
+          "subdivision": "quarter",
+          "beatIndex": 234,
+          "bar": 58,
+          "beatInBar": 1,
+          "pattern": "dense",
+          "expectedSubdivisionTimeMs": 145386.667,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 53.348,
+          "measuredAttack": 0.43,
+          "bandAttack": {
+            "kick": 0.05,
+            "body": 0.483,
+            "hats": 1.029
+          },
+          "barMeanAttack": 0.251
+        },
+        {
+          "phase": 6,
+          "ordinal": 32,
+          "timeMs": 145952.0,
+          "subdivision": "quarter",
+          "beatIndex": 235,
+          "bar": 58,
+          "beatInBar": 2,
+          "pattern": "dense",
+          "expectedSubdivisionTimeMs": 145952.0,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -58.653,
+          "measuredAttack": 1.455,
+          "bandAttack": {
+            "kick": 2.138,
+            "body": 1.501,
+            "hats": 0.286
+          },
+          "barMeanAttack": 0.251
+        },
+        {
+          "phase": 6,
+          "ordinal": 33,
+          "timeMs": 146613.333,
+          "subdivision": "quarter",
+          "beatIndex": 236,
+          "bar": 58,
+          "beatInBar": 3,
+          "pattern": "dense",
+          "expectedSubdivisionTimeMs": 146613.333,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 43.212,
+          "measuredAttack": 0.404,
+          "bandAttack": {
+            "kick": 0.044,
+            "body": 0.963,
+            "hats": 0.631
+          },
+          "barMeanAttack": 0.251
+        },
+        {
+          "phase": 6,
+          "ordinal": 34,
+          "timeMs": 147221.333,
+          "subdivision": "quarter",
+          "beatIndex": 237,
+          "bar": 59,
+          "beatInBar": 0,
+          "pattern": "dense",
+          "expectedSubdivisionTimeMs": 147221.333,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -14.442,
+          "measuredAttack": 0.89,
+          "bandAttack": {
+            "kick": 1.132,
+            "body": 0.873,
+            "hats": 0.496
+          },
+          "barMeanAttack": 0.264
+        },
+        {
+          "phase": 6,
+          "ordinal": 35,
+          "timeMs": 147808.0,
+          "subdivision": "quarter",
+          "beatIndex": 238,
+          "bar": 59,
+          "beatInBar": 1,
+          "pattern": "dense",
+          "expectedSubdivisionTimeMs": 147808.0,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -34.332,
+          "measuredAttack": 2.071,
+          "bandAttack": {
+            "kick": 2.395,
+            "body": 1.571,
+            "hats": 1.865
+          },
+          "barMeanAttack": 0.264
+        },
+        {
+          "phase": 6,
+          "ordinal": 36,
+          "timeMs": 148138.667,
+          "subdivision": "eighth",
+          "beatIndex": 238,
+          "bar": 59,
+          "beatInBar": 1.5,
+          "pattern": "dense",
+          "expectedSubdivisionTimeMs": 148138.667,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": null,
+          "measuredAttack": 1.733,
+          "bandAttack": {
+            "kick": 1.138,
+            "body": 1.528,
+            "hats": 2.862
+          },
+          "barMeanAttack": 0.264
+        },
+        {
+          "phase": 6,
+          "ordinal": 37,
+          "timeMs": 148469.333,
+          "subdivision": "quarter",
+          "beatIndex": 239,
+          "bar": 59,
+          "beatInBar": 2,
+          "pattern": "dense",
+          "expectedSubdivisionTimeMs": 148469.333,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 43.768,
+          "measuredAttack": 0.651,
+          "bandAttack": {
+            "kick": 0.145,
+            "body": 1.256,
+            "hats": 1.09
+          },
+          "barMeanAttack": 0.264
+        },
+        {
+          "phase": 6,
+          "ordinal": 38,
+          "timeMs": 149056.0,
+          "subdivision": "quarter",
+          "beatIndex": 240,
+          "bar": 59,
+          "beatInBar": 3,
+          "pattern": "dense",
+          "expectedSubdivisionTimeMs": 149056.0,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -35.275,
+          "measuredAttack": 1.204,
+          "bandAttack": {
+            "kick": 1.906,
+            "body": 0.897,
+            "hats": 0.239
+          },
+          "barMeanAttack": 0.264
+        },
+        {
+          "phase": 6,
+          "ordinal": 39,
+          "timeMs": 149365.333,
+          "subdivision": "eighth",
+          "beatIndex": 240,
+          "bar": 59,
+          "beatInBar": 3.5,
+          "pattern": "dense",
+          "expectedSubdivisionTimeMs": 149365.333,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": null,
+          "measuredAttack": 1.279,
+          "bandAttack": {
+            "kick": 0.361,
+            "body": 1.872,
+            "hats": 2.412
+          },
+          "barMeanAttack": 0.264
+        },
+        {
+          "phase": 6,
+          "ordinal": 40,
+          "timeMs": 149674.667,
+          "subdivision": "quarter",
+          "beatIndex": 241,
+          "bar": 60,
+          "beatInBar": 0,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 149674.667,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 0.252,
+          "measuredAttack": 1.063,
+          "bandAttack": {
+            "kick": 1.619,
+            "body": 0.981,
+            "hats": 0.192
+          },
+          "barMeanAttack": 0.21
+        },
+        {
+          "phase": 6,
+          "ordinal": 41,
+          "timeMs": 150293.333,
+          "subdivision": "quarter",
+          "beatIndex": 242,
+          "bar": 60,
+          "beatInBar": 1,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 150293.333,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 0.227,
+          "measuredAttack": 1.366,
+          "bandAttack": {
+            "kick": 2.268,
+            "body": 1.049,
+            "hats": 0.073
+          },
+          "barMeanAttack": 0.21
+        },
+        {
+          "phase": 6,
+          "ordinal": 42,
+          "timeMs": 150613.333,
+          "subdivision": "eighth",
+          "beatIndex": 242,
+          "bar": 60,
+          "beatInBar": 1.5,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 150602.667,
+          "snapMs": 10.667,
+          "pulseTrackingSnapMs": null,
+          "measuredAttack": 1.431,
+          "bandAttack": {
+            "kick": 0.622,
+            "body": 1.515,
+            "hats": 2.725
+          },
+          "barMeanAttack": 0.21
+        },
+        {
+          "phase": 6,
+          "ordinal": 43,
+          "timeMs": 150912.0,
+          "subdivision": "quarter",
+          "beatIndex": 243,
+          "bar": 60,
+          "beatInBar": 2,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 150912.0,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 0.204,
+          "measuredAttack": 1.524,
+          "bandAttack": {
+            "kick": 2.543,
+            "body": 1.264,
+            "hats": 0.0
+          },
+          "barMeanAttack": 0.21
+        },
+        {
+          "phase": 6,
+          "ordinal": 44,
+          "timeMs": 152202.667,
+          "subdivision": "quarter",
+          "beatIndex": 245,
+          "bar": 61,
+          "beatInBar": 0,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 152202.667,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 53.499,
+          "measuredAttack": 0.52,
+          "bandAttack": {
+            "kick": 0.052,
+            "body": 0.281,
+            "hats": 1.461
+          },
+          "barMeanAttack": 0.185
+        },
+        {
+          "phase": 6,
+          "ordinal": 45,
+          "timeMs": 153440.0,
+          "subdivision": "quarter",
+          "beatIndex": 247,
+          "bar": 61,
+          "beatInBar": 2,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 153440.0,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 30.534,
+          "measuredAttack": 0.171,
+          "bandAttack": {
+            "kick": 0.124,
+            "body": 0.495,
+            "hats": 0.034
+          },
+          "barMeanAttack": 0.185
+        },
+        {
+          "phase": 6,
+          "ordinal": 46,
+          "timeMs": 154069.333,
+          "subdivision": "quarter",
+          "beatIndex": 248,
+          "bar": 61,
+          "beatInBar": 3,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 154069.333,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 6.147,
+          "measuredAttack": 0.197,
+          "bandAttack": {
+            "kick": 0.0,
+            "body": 0.657,
+            "hats": 0.219
+          },
+          "barMeanAttack": 0.185
+        },
+        {
+          "phase": 6,
+          "ordinal": 47,
+          "timeMs": 154666.667,
+          "subdivision": "quarter",
+          "beatIndex": 249,
+          "bar": 62,
+          "beatInBar": 0,
+          "pattern": "sparse",
+          "expectedSubdivisionTimeMs": 154666.667,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -26.467,
+          "measuredAttack": 1.601,
+          "bandAttack": {
+            "kick": 3.0,
+            "body": 0.503,
+            "hats": 0.0
+          },
+          "barMeanAttack": 0.146
+        },
+        {
+          "phase": 6,
+          "ordinal": 48,
+          "timeMs": 155893.333,
+          "subdivision": "quarter",
+          "beatIndex": 251,
+          "bar": 62,
+          "beatInBar": 2,
+          "pattern": "sparse",
+          "expectedSubdivisionTimeMs": 155893.333,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -12.905,
+          "measuredAttack": 1.605,
+          "bandAttack": {
+            "kick": 2.527,
+            "body": 1.708,
+            "hats": 0.0
+          },
+          "barMeanAttack": 0.146
+        },
+        {
+          "phase": 6,
+          "ordinal": 49,
+          "timeMs": 157162.667,
+          "subdivision": "quarter",
+          "beatIndex": 253,
+          "bar": 63,
+          "beatInBar": 0,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 157162.667,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -4.053,
+          "measuredAttack": 0.851,
+          "bandAttack": {
+            "kick": 1.099,
+            "body": 1.271,
+            "hats": 0.158
+          },
+          "barMeanAttack": 0.187
+        },
+        {
+          "phase": 6,
+          "ordinal": 50,
+          "timeMs": 158410.667,
+          "subdivision": "quarter",
+          "beatIndex": 255,
+          "bar": 63,
+          "beatInBar": 2,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 158410.667,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 7.384,
+          "measuredAttack": 0.497,
+          "bandAttack": {
+            "kick": 0.457,
+            "body": 0.679,
+            "hats": 0.441
+          },
+          "barMeanAttack": 0.187
+        },
+        {
+          "phase": 6,
+          "ordinal": 51,
+          "timeMs": 159050.667,
+          "subdivision": "quarter",
+          "beatIndex": 256,
+          "bar": 63,
+          "beatInBar": 3,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 159050.667,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 17.312,
+          "measuredAttack": 0.5,
+          "bandAttack": {
+            "kick": 0.445,
+            "body": 1.128,
+            "hats": 0.174
+          },
+          "barMeanAttack": 0.187
+        },
+        {
+          "phase": 6,
+          "ordinal": 52,
+          "timeMs": 159637.333,
+          "subdivision": "quarter",
+          "beatIndex": 257,
+          "bar": 64,
+          "beatInBar": 0,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 159637.333,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -37.753,
+          "measuredAttack": 1.819,
+          "bandAttack": {
+            "kick": 2.851,
+            "body": 1.965,
+            "hats": 0.0
+          },
+          "barMeanAttack": 0.179
+        },
+        {
+          "phase": 6,
+          "ordinal": 53,
+          "timeMs": 160288.0,
+          "subdivision": "quarter",
+          "beatIndex": 258,
+          "bar": 64,
+          "beatInBar": 1,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 160288.0,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 30.023,
+          "measuredAttack": 0.415,
+          "bandAttack": {
+            "kick": 0.0,
+            "body": 1.121,
+            "hats": 0.635
+          },
+          "barMeanAttack": 0.179
+        },
+        {
+          "phase": 6,
+          "ordinal": 54,
+          "timeMs": 160576.0,
+          "subdivision": "eighth",
+          "beatIndex": 258,
+          "bar": 64,
+          "beatInBar": 1.5,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 160586.667,
+          "snapMs": -10.667,
+          "pulseTrackingSnapMs": null,
+          "measuredAttack": 1.178,
+          "bandAttack": {
+            "kick": 0.098,
+            "body": 1.145,
+            "hats": 3.0
+          },
+          "barMeanAttack": 0.179
+        },
+        {
+          "phase": 6,
+          "ordinal": 55,
+          "timeMs": 160885.333,
+          "subdivision": "quarter",
+          "beatIndex": 259,
+          "bar": 64,
+          "beatInBar": 2,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 160885.333,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -26.313,
+          "measuredAttack": 1.512,
+          "bandAttack": {
+            "kick": 2.381,
+            "body": 1.608,
+            "hats": 0.0
+          },
+          "barMeanAttack": 0.179
+        },
+        {
+          "phase": 6,
+          "ordinal": 56,
+          "timeMs": 162133.333,
+          "subdivision": "quarter",
+          "beatIndex": 261,
+          "bar": 65,
+          "beatInBar": 0,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 162133.333,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -3.18,
+          "measuredAttack": 1.615,
+          "bandAttack": {
+            "kick": 2.599,
+            "body": 1.577,
+            "hats": 0.0
+          },
+          "barMeanAttack": 0.176
+        },
+        {
+          "phase": 6,
+          "ordinal": 57,
+          "timeMs": 163413.333,
+          "subdivision": "quarter",
+          "beatIndex": 263,
+          "bar": 65,
+          "beatInBar": 2,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 163413.333,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 28.357,
+          "measuredAttack": 0.219,
+          "bandAttack": {
+            "kick": 0.074,
+            "body": 0.365,
+            "hats": 0.363
+          },
+          "barMeanAttack": 0.176
+        },
+        {
+          "phase": 6,
+          "ordinal": 58,
+          "timeMs": 164021.333,
+          "subdivision": "quarter",
+          "beatIndex": 264,
+          "bar": 65,
+          "beatInBar": 3,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 164021.333,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -17.145,
+          "measuredAttack": 0.427,
+          "bandAttack": {
+            "kick": 0.0,
+            "body": 0.062,
+            "hats": 1.383
+          },
+          "barMeanAttack": 0.176
+        },
+        {
+          "phase": 6,
+          "ordinal": 59,
+          "timeMs": 164320.0,
+          "subdivision": "eighth",
+          "beatIndex": 264,
+          "bar": 65,
+          "beatInBar": 3.5,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 164336.0,
+          "snapMs": -16.0,
+          "pulseTrackingSnapMs": null,
+          "measuredAttack": 1.181,
+          "bandAttack": {
+            "kick": 1.089,
+            "body": 1.327,
+            "hats": 1.239
+          },
+          "barMeanAttack": 0.176
+        },
+        {
+          "phase": 6,
+          "ordinal": 60,
+          "timeMs": 164650.667,
+          "subdivision": "quarter",
+          "beatIndex": 265,
+          "bar": 66,
+          "beatInBar": 0,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 164650.667,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 5.903,
+          "measuredAttack": 1.823,
+          "bandAttack": {
+            "kick": 3.0,
+            "body": 1.045,
+            "hats": 0.381
+          },
+          "barMeanAttack": 0.202
+        },
+        {
+          "phase": 6,
+          "ordinal": 61,
+          "timeMs": 165269.333,
+          "subdivision": "quarter",
+          "beatIndex": 266,
+          "bar": 66,
+          "beatInBar": 1,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 165269.333,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -5.354,
+          "measuredAttack": 1.382,
+          "bandAttack": {
+            "kick": 2.151,
+            "body": 1.138,
+            "hats": 0.262
+          },
+          "barMeanAttack": 0.202
+        },
+        {
+          "phase": 6,
+          "ordinal": 62,
+          "timeMs": 165600.0,
+          "subdivision": "eighth",
+          "beatIndex": 266,
+          "bar": 66,
+          "beatInBar": 1.5,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 165578.667,
+          "snapMs": 21.333,
+          "pulseTrackingSnapMs": null,
+          "measuredAttack": 0.768,
+          "bandAttack": {
+            "kick": 0.298,
+            "body": 0.259,
+            "hats": 1.893
+          },
+          "barMeanAttack": 0.202
+        },
+        {
+          "phase": 6,
+          "ordinal": 63,
+          "timeMs": 165888.0,
+          "subdivision": "quarter",
+          "beatIndex": 267,
+          "bar": 66,
+          "beatInBar": 2,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 165888.0,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -4.819,
+          "measuredAttack": 1.454,
+          "bandAttack": {
+            "kick": 1.965,
+            "body": 1.901,
+            "hats": 0.304
+          },
+          "barMeanAttack": 0.202
+        },
+        {
+          "phase": 6,
+          "ordinal": 64,
+          "timeMs": 167136.0,
+          "subdivision": "quarter",
+          "beatIndex": 269,
+          "bar": 67,
+          "beatInBar": 0,
+          "pattern": "dense",
+          "expectedSubdivisionTimeMs": 167136.0,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -4.97,
+          "measuredAttack": 1.199,
+          "bandAttack": {
+            "kick": 1.55,
+            "body": 1.259,
+            "hats": 0.572
+          },
+          "barMeanAttack": 0.276
+        },
+        {
+          "phase": 6,
+          "ordinal": 65,
+          "timeMs": 167765.333,
+          "subdivision": "quarter",
+          "beatIndex": 270,
+          "bar": 67,
+          "beatInBar": 1,
+          "pattern": "dense",
+          "expectedSubdivisionTimeMs": 167765.333,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 6.194,
+          "measuredAttack": 0.397,
+          "bandAttack": {
+            "kick": 0.222,
+            "body": 0.0,
+            "hats": 0.954
+          },
+          "barMeanAttack": 0.276
+        },
+        {
+          "phase": 6,
+          "ordinal": 66,
+          "timeMs": 168106.667,
+          "subdivision": "eighth",
+          "beatIndex": 270,
+          "bar": 67,
+          "beatInBar": 1.5,
+          "pattern": "dense",
+          "expectedSubdivisionTimeMs": 168101.333,
+          "snapMs": 5.333,
+          "pulseTrackingSnapMs": null,
+          "measuredAttack": 0.511,
+          "bandAttack": {
+            "kick": 0.091,
+            "body": 1.158,
+            "hats": 0.779
+          },
+          "barMeanAttack": 0.276
+        },
+        {
+          "phase": 6,
+          "ordinal": 67,
+          "timeMs": 168437.333,
+          "subdivision": "quarter",
+          "beatIndex": 271,
+          "bar": 67,
+          "beatInBar": 2,
+          "pattern": "dense",
+          "expectedSubdivisionTimeMs": 168437.333,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 48.241,
+          "measuredAttack": 0.796,
+          "bandAttack": {
+            "kick": 0.552,
+            "body": 1.516,
+            "hats": 0.722
+          },
+          "barMeanAttack": 0.276
+        },
+        {
+          "phase": 6,
+          "ordinal": 68,
+          "timeMs": 169077.333,
+          "subdivision": "quarter",
+          "beatIndex": 272,
+          "bar": 67,
+          "beatInBar": 3,
+          "pattern": "dense",
+          "expectedSubdivisionTimeMs": 169077.333,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 11.417,
+          "measuredAttack": 0.538,
+          "bandAttack": {
+            "kick": 0.053,
+            "body": 0.758,
+            "hats": 1.199
+          },
+          "barMeanAttack": 0.276
+        },
+        {
+          "phase": 6,
+          "ordinal": 69,
+          "timeMs": 169674.667,
+          "subdivision": "quarter",
+          "beatIndex": 273,
+          "bar": 68,
+          "beatInBar": 0,
+          "pattern": "dense",
+          "expectedSubdivisionTimeMs": 169674.667,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -32.391,
+          "measuredAttack": 0.579,
+          "bandAttack": {
+            "kick": 1.158,
+            "body": 0.0,
+            "hats": 0.0
+          },
+          "barMeanAttack": 0.258
+        },
+        {
+          "phase": 6,
+          "ordinal": 70,
+          "timeMs": 170325.333,
+          "subdivision": "quarter",
+          "beatIndex": 274,
+          "bar": 68,
+          "beatInBar": 1,
+          "pattern": "dense",
+          "expectedSubdivisionTimeMs": 170325.333,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 24.181,
+          "measuredAttack": 0.395,
+          "bandAttack": {
+            "kick": 0.444,
+            "body": 0.366,
+            "hats": 0.33
+          },
+          "barMeanAttack": 0.258
+        },
+        {
+          "phase": 6,
+          "ordinal": 71,
+          "timeMs": 170901.333,
+          "subdivision": "quarter",
+          "beatIndex": 275,
+          "bar": 68,
+          "beatInBar": 2,
+          "pattern": "dense",
+          "expectedSubdivisionTimeMs": 170901.333,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -52.904,
+          "measuredAttack": 1.188,
+          "bandAttack": {
+            "kick": 1.877,
+            "body": 1.249,
+            "hats": 0.0
+          },
+          "barMeanAttack": 0.258
+        },
+        {
+          "phase": 6,
+          "ordinal": 72,
+          "timeMs": 171552.0,
+          "subdivision": "quarter",
+          "beatIndex": 276,
+          "bar": 68,
+          "beatInBar": 3,
+          "pattern": "dense",
+          "expectedSubdivisionTimeMs": 171552.0,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 27.053,
+          "measuredAttack": 1.738,
+          "bandAttack": {
+            "kick": 2.108,
+            "body": 0.953,
+            "hats": 1.646
+          },
+          "barMeanAttack": 0.258
+        },
+        {
+          "phase": 6,
+          "ordinal": 73,
+          "timeMs": 171850.667,
+          "subdivision": "eighth",
+          "beatIndex": 276,
+          "bar": 68,
+          "beatInBar": 3.5,
+          "pattern": "dense",
+          "expectedSubdivisionTimeMs": 171861.333,
+          "snapMs": -10.667,
+          "pulseTrackingSnapMs": null,
+          "measuredAttack": 1.329,
+          "bandAttack": {
+            "kick": 0.497,
+            "body": 1.314,
+            "hats": 2.725
+          },
+          "barMeanAttack": 0.258
+        },
+        {
+          "phase": 6,
+          "ordinal": 74,
+          "timeMs": 172170.667,
+          "subdivision": "quarter",
+          "beatIndex": 277,
+          "bar": 69,
+          "beatInBar": 0,
+          "pattern": "dense",
+          "expectedSubdivisionTimeMs": 172170.667,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -7.652,
+          "measuredAttack": 0.468,
+          "bandAttack": {
+            "kick": 0.214,
+            "body": 0.0,
+            "hats": 1.205
+          },
+          "barMeanAttack": 0.253
+        },
+        {
+          "phase": 6,
+          "ordinal": 75,
+          "timeMs": 172768.0,
+          "subdivision": "quarter",
+          "beatIndex": 278,
+          "bar": 69,
+          "beatInBar": 1,
+          "pattern": "dense",
+          "expectedSubdivisionTimeMs": 172768.0,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -28.22,
+          "measuredAttack": 1.094,
+          "bandAttack": {
+            "kick": 1.712,
+            "body": 1.187,
+            "hats": 0.0
+          },
+          "barMeanAttack": 0.253
+        },
+        {
+          "phase": 6,
+          "ordinal": 76,
+          "timeMs": 173098.667,
+          "subdivision": "eighth",
+          "beatIndex": 278,
+          "bar": 69,
+          "beatInBar": 1.5,
+          "pattern": "dense",
+          "expectedSubdivisionTimeMs": 173104.0,
+          "snapMs": -5.333,
+          "pulseTrackingSnapMs": null,
+          "measuredAttack": 1.149,
+          "bandAttack": {
+            "kick": 0.66,
+            "body": 1.322,
+            "hats": 1.847
+          },
+          "barMeanAttack": 0.253
+        },
+        {
+          "phase": 6,
+          "ordinal": 77,
+          "timeMs": 173440.0,
+          "subdivision": "quarter",
+          "beatIndex": 279,
+          "bar": 69,
+          "beatInBar": 2,
+          "pattern": "dense",
+          "expectedSubdivisionTimeMs": 173440.0,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 49.269,
+          "measuredAttack": 0.741,
+          "bandAttack": {
+            "kick": 1.177,
+            "body": 0.064,
+            "hats": 0.465
+          },
+          "barMeanAttack": 0.253
+        }
       ]
     },
     {
-      "label": "뒷면 필렛 2 분리",
+      "phase": 7,
+      "label": "뒷면 필렛 썰기",
       "regionSeconds": [
-        94,
-        111
+        176,
+        225
       ],
-      "selectedBeatIndices": [
-        155,
-        156,
-        163,
-        166,
-        171,
-        177
-      ],
-      "measuredAttackStrength": [
-        1.437,
-        1.709,
-        1.71,
-        1.331,
-        1.129,
-        1.37
-      ],
-      "intervalsSeconds": [
-        0.651,
-        4.32,
-        1.877,
-        3.115,
-        3.723
-      ]
-    },
-    {
-      "label": "앞면 필렛 1 썰기",
-      "regionSeconds": [
-        118,
-        138
-      ],
-      "selectedBeatIndices": [
-        193,
-        195,
-        200,
-        203,
-        208,
-        214,
-        217,
-        222
-      ],
-      "measuredAttackStrength": [
-        1.713,
-        1.649,
-        1.112,
-        1.62,
-        0.873,
-        1.191,
-        0.839,
-        1.881
-      ],
-      "intervalsSeconds": [
-        1.237,
-        3.157,
-        1.824,
-        3.125,
-        3.691,
-        1.888,
-        3.104
-      ]
-    },
-    {
-      "label": "앞면 필렛 2 썰기",
-      "regionSeconds": [
-        145,
-        165
-      ],
-      "selectedBeatIndices": [
-        235,
-        238,
-        243,
-        249,
-        251,
-        257,
-        261,
-        265
-      ],
-      "measuredAttackStrength": [
-        1.455,
-        2.071,
-        1.524,
-        1.601,
-        1.605,
-        1.819,
-        1.615,
-        1.823
-      ],
-      "intervalsSeconds": [
-        1.856,
-        3.104,
-        3.755,
-        1.227,
-        3.744,
-        2.496,
-        2.517
-      ]
-    },
-    {
-      "label": "뒷면 필렛 1 썰기",
-      "regionSeconds": [
-        172,
-        192
-      ],
-      "selectedBeatIndices": [
-        278,
-        281,
-        287,
-        289,
-        295,
-        299,
-        305,
-        308
-      ],
-      "measuredAttackStrength": [
-        1.094,
-        0.887,
-        0.512,
-        1.464,
-        1.799,
-        1.704,
-        0.943,
-        0.873
-      ],
-      "intervalsSeconds": [
-        1.867,
-        3.648,
-        1.259,
-        3.52,
-        2.485,
-        3.467,
-        1.888
-      ]
-    },
-    {
-      "label": "뒷면 필렛 2 썰기",
-      "regionSeconds": [
-        201,
-        224
-      ],
-      "selectedBeatIndices": [
-        328,
-        331,
-        335,
-        338,
-        346,
-        349,
-        354,
-        359
-      ],
-      "measuredAttackStrength": [
-        0.572,
-        1.487,
-        2.255,
-        1.785,
-        1.806,
-        1.587,
-        1.484,
-        1.73
-      ],
-      "intervalsSeconds": [
-        1.835,
-        2.528,
-        1.92,
-        5.035,
-        1.899,
-        3.157,
-        3.136
+      "opportunities": 54,
+      "requiredHits": 38,
+      "passRule": "ceil(0.70 * opportunities); all notes remain judgeable",
+      "firstNoteMs": 176416.0,
+      "lastNoteMs": 224853.333,
+      "endTimeMs": 225853.333,
+      "quarterNotes": 50,
+      "eighthNotes": 4,
+      "notes": [
+        {
+          "phase": 7,
+          "ordinal": 0,
+          "timeMs": 176416.0,
+          "subdivision": "quarter",
+          "beatIndex": 284,
+          "bar": 70,
+          "beatInBar": 3,
+          "pattern": "dense",
+          "expectedSubdivisionTimeMs": 176416.0,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -7.37,
+          "measuredAttack": 0.251,
+          "bandAttack": {
+            "kick": 0.34,
+            "body": 0.266,
+            "hats": 0.092
+          },
+          "barMeanAttack": 0.262
+        },
+        {
+          "phase": 7,
+          "ordinal": 1,
+          "timeMs": 176725.333,
+          "subdivision": "eighth",
+          "beatIndex": 284,
+          "bar": 70,
+          "beatInBar": 3.5,
+          "pattern": "dense",
+          "expectedSubdivisionTimeMs": 176720.0,
+          "snapMs": 5.333,
+          "pulseTrackingSnapMs": null,
+          "measuredAttack": 0.55,
+          "bandAttack": {
+            "kick": 0.072,
+            "body": 0.934,
+            "hats": 1.09
+          },
+          "barMeanAttack": 0.262
+        },
+        {
+          "phase": 7,
+          "ordinal": 2,
+          "timeMs": 177024.0,
+          "subdivision": "quarter",
+          "beatIndex": 285,
+          "bar": 71,
+          "beatInBar": 0,
+          "pattern": "dense",
+          "expectedSubdivisionTimeMs": 177024.0,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -6.633,
+          "measuredAttack": 0.154,
+          "bandAttack": {
+            "kick": 0.0,
+            "body": 0.372,
+            "hats": 0.264
+          },
+          "barMeanAttack": 0.26
+        },
+        {
+          "phase": 7,
+          "ordinal": 3,
+          "timeMs": 177664.0,
+          "subdivision": "quarter",
+          "beatIndex": 286,
+          "bar": 71,
+          "beatInBar": 1,
+          "pattern": "dense",
+          "expectedSubdivisionTimeMs": 177664.0,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 26.03,
+          "measuredAttack": 0.548,
+          "bandAttack": {
+            "kick": 0.628,
+            "body": 0.279,
+            "hats": 0.595
+          },
+          "barMeanAttack": 0.26
+        },
+        {
+          "phase": 7,
+          "ordinal": 4,
+          "timeMs": 177952.0,
+          "subdivision": "eighth",
+          "beatIndex": 286,
+          "bar": 71,
+          "beatInBar": 1.5,
+          "pattern": "dense",
+          "expectedSubdivisionTimeMs": 177973.333,
+          "snapMs": -21.333,
+          "pulseTrackingSnapMs": null,
+          "measuredAttack": 0.274,
+          "bandAttack": {
+            "kick": 0.115,
+            "body": 0.51,
+            "hats": 0.382
+          },
+          "barMeanAttack": 0.26
+        },
+        {
+          "phase": 7,
+          "ordinal": 5,
+          "timeMs": 178282.667,
+          "subdivision": "quarter",
+          "beatIndex": 287,
+          "bar": 71,
+          "beatInBar": 2,
+          "pattern": "dense",
+          "expectedSubdivisionTimeMs": 178282.667,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 2.094,
+          "measuredAttack": 0.512,
+          "bandAttack": {
+            "kick": 0.093,
+            "body": 1.306,
+            "hats": 0.68
+          },
+          "barMeanAttack": 0.26
+        },
+        {
+          "phase": 7,
+          "ordinal": 6,
+          "timeMs": 178912.0,
+          "subdivision": "quarter",
+          "beatIndex": 288,
+          "bar": 71,
+          "beatInBar": 3,
+          "pattern": "dense",
+          "expectedSubdivisionTimeMs": 178912.0,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 12.551,
+          "measuredAttack": 0.477,
+          "bandAttack": {
+            "kick": 0.08,
+            "body": 1.182,
+            "hats": 0.669
+          },
+          "barMeanAttack": 0.26
+        },
+        {
+          "phase": 7,
+          "ordinal": 7,
+          "timeMs": 179253.333,
+          "subdivision": "eighth",
+          "beatIndex": 288,
+          "bar": 71,
+          "beatInBar": 3.5,
+          "pattern": "dense",
+          "expectedSubdivisionTimeMs": 179226.667,
+          "snapMs": 26.667,
+          "pulseTrackingSnapMs": null,
+          "measuredAttack": 0.118,
+          "bandAttack": {
+            "kick": 0.079,
+            "body": 0.012,
+            "hats": 0.251
+          },
+          "barMeanAttack": 0.26
+        },
+        {
+          "phase": 7,
+          "ordinal": 8,
+          "timeMs": 179541.333,
+          "subdivision": "quarter",
+          "beatIndex": 289,
+          "bar": 72,
+          "beatInBar": 0,
+          "pattern": "dense",
+          "expectedSubdivisionTimeMs": 179541.333,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 11.296,
+          "measuredAttack": 1.464,
+          "bandAttack": {
+            "kick": 1.754,
+            "body": 0.864,
+            "hats": 1.383
+          },
+          "barMeanAttack": 0.256
+        },
+        {
+          "phase": 7,
+          "ordinal": 9,
+          "timeMs": 180117.333,
+          "subdivision": "quarter",
+          "beatIndex": 290,
+          "bar": 72,
+          "beatInBar": 1,
+          "pattern": "dense",
+          "expectedSubdivisionTimeMs": 180117.333,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -43.167,
+          "measuredAttack": 0.278,
+          "bandAttack": {
+            "kick": 0.426,
+            "body": 0.0,
+            "hats": 0.216
+          },
+          "barMeanAttack": 0.256
+        },
+        {
+          "phase": 7,
+          "ordinal": 10,
+          "timeMs": 180704.0,
+          "subdivision": "quarter",
+          "beatIndex": 291,
+          "bar": 72,
+          "beatInBar": 2,
+          "pattern": "dense",
+          "expectedSubdivisionTimeMs": 180704.0,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -28.184,
+          "measuredAttack": 0.163,
+          "bandAttack": {
+            "kick": 0.033,
+            "body": 0.159,
+            "hats": 0.383
+          },
+          "barMeanAttack": 0.256
+        },
+        {
+          "phase": 7,
+          "ordinal": 11,
+          "timeMs": 181316.032,
+          "subdivision": "quarter",
+          "beatIndex": 292,
+          "bar": 72,
+          "beatInBar": 3,
+          "pattern": "dense",
+          "expectedSubdivisionTimeMs": 181316.032,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 0.0,
+          "measuredAttack": 0.032,
+          "bandAttack": {
+            "kick": 0.029,
+            "body": 0.0,
+            "hats": 0.058
+          },
+          "barMeanAttack": 0.256
+        },
+        {
+          "phase": 7,
+          "ordinal": 12,
+          "timeMs": 181928.064,
+          "subdivision": "quarter",
+          "beatIndex": 293,
+          "bar": 73,
+          "beatInBar": 0,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 181928.064,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 0.0,
+          "measuredAttack": 0.092,
+          "bandAttack": {
+            "kick": 0.013,
+            "body": 0.042,
+            "hats": 0.256
+          },
+          "barMeanAttack": 0.18
+        },
+        {
+          "phase": 7,
+          "ordinal": 13,
+          "timeMs": 183061.333,
+          "subdivision": "quarter",
+          "beatIndex": 295,
+          "bar": 73,
+          "beatInBar": 2,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 183061.333,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -54.022,
+          "measuredAttack": 1.799,
+          "bandAttack": {
+            "kick": 0.947,
+            "body": 2.217,
+            "hats": 2.941
+          },
+          "barMeanAttack": 0.18
+        },
+        {
+          "phase": 7,
+          "ordinal": 14,
+          "timeMs": 183669.333,
+          "subdivision": "quarter",
+          "beatIndex": 296,
+          "bar": 73,
+          "beatInBar": 3,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 183669.333,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 4.713,
+          "measuredAttack": 0.209,
+          "bandAttack": {
+            "kick": 0.363,
+            "body": 0.043,
+            "hats": 0.062
+          },
+          "barMeanAttack": 0.18
+        },
+        {
+          "phase": 7,
+          "ordinal": 15,
+          "timeMs": 184021.333,
+          "subdivision": "eighth",
+          "beatIndex": 296,
+          "bar": 73,
+          "beatInBar": 3.5,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 183989.333,
+          "snapMs": 32.0,
+          "pulseTrackingSnapMs": null,
+          "measuredAttack": 0.231,
+          "bandAttack": {
+            "kick": 0.1,
+            "body": 0.077,
+            "hats": 0.551
+          },
+          "barMeanAttack": 0.18
+        },
+        {
+          "phase": 7,
+          "ordinal": 16,
+          "timeMs": 184309.333,
+          "subdivision": "quarter",
+          "beatIndex": 297,
+          "bar": 74,
+          "beatInBar": 0,
+          "pattern": "sparse",
+          "expectedSubdivisionTimeMs": 184309.333,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 36.242,
+          "measuredAttack": 1.56,
+          "bandAttack": {
+            "kick": 0.89,
+            "body": 1.684,
+            "hats": 2.593
+          },
+          "barMeanAttack": 0.168
+        },
+        {
+          "phase": 7,
+          "ordinal": 17,
+          "timeMs": 185546.667,
+          "subdivision": "quarter",
+          "beatIndex": 299,
+          "bar": 74,
+          "beatInBar": 2,
+          "pattern": "sparse",
+          "expectedSubdivisionTimeMs": 185546.667,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 22.569,
+          "measuredAttack": 1.704,
+          "bandAttack": {
+            "kick": 1.589,
+            "body": 1.662,
+            "hats": 1.925
+          },
+          "barMeanAttack": 0.168
+        },
+        {
+          "phase": 7,
+          "ordinal": 18,
+          "timeMs": 186705.475,
+          "subdivision": "quarter",
+          "beatIndex": 301,
+          "bar": 75,
+          "beatInBar": 0,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 186705.475,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 0.0,
+          "measuredAttack": 0.024,
+          "bandAttack": {
+            "kick": 0.036,
+            "body": 0.013,
+            "hats": 0.011
+          },
+          "barMeanAttack": 0.18
+        },
+        {
+          "phase": 7,
+          "ordinal": 19,
+          "timeMs": 187882.667,
+          "subdivision": "quarter",
+          "beatIndex": 303,
+          "bar": 75,
+          "beatInBar": 2,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 187882.667,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -31.092,
+          "measuredAttack": 0.252,
+          "bandAttack": {
+            "kick": 0.311,
+            "body": 0.103,
+            "hats": 0.252
+          },
+          "barMeanAttack": 0.18
+        },
+        {
+          "phase": 7,
+          "ordinal": 20,
+          "timeMs": 188483.699,
+          "subdivision": "quarter",
+          "beatIndex": 304,
+          "bar": 75,
+          "beatInBar": 3,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 188483.699,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 0.0,
+          "measuredAttack": 0.005,
+          "bandAttack": {
+            "kick": 0.0,
+            "body": 0.025,
+            "hats": 0.0
+          },
+          "barMeanAttack": 0.18
+        },
+        {
+          "phase": 7,
+          "ordinal": 21,
+          "timeMs": 189013.333,
+          "subdivision": "quarter",
+          "beatIndex": 305,
+          "bar": 76,
+          "beatInBar": 0,
+          "pattern": "sparse",
+          "expectedSubdivisionTimeMs": 189013.333,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -71.399,
+          "measuredAttack": 0.943,
+          "bandAttack": {
+            "kick": 1.558,
+            "body": 0.819,
+            "hats": 0.0
+          },
+          "barMeanAttack": 0.105
+        },
+        {
+          "phase": 7,
+          "ordinal": 22,
+          "timeMs": 190219.113,
+          "subdivision": "quarter",
+          "beatIndex": 307,
+          "bar": 76,
+          "beatInBar": 2,
+          "pattern": "sparse",
+          "expectedSubdivisionTimeMs": 190219.113,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 0.0,
+          "measuredAttack": 0.0,
+          "bandAttack": {
+            "kick": 0.0,
+            "body": 0.0,
+            "hats": 0.0
+          },
+          "barMeanAttack": 0.105
+        },
+        {
+          "phase": 7,
+          "ordinal": 23,
+          "timeMs": 191520.0,
+          "subdivision": "quarter",
+          "beatIndex": 309,
+          "bar": 77,
+          "beatInBar": 0,
+          "pattern": "sparse",
+          "expectedSubdivisionTimeMs": 191520.0,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 12.443,
+          "measuredAttack": 0.311,
+          "bandAttack": {
+            "kick": 0.153,
+            "body": 0.925,
+            "hats": 0.166
+          },
+          "barMeanAttack": 0.102
+        },
+        {
+          "phase": 7,
+          "ordinal": 24,
+          "timeMs": 192757.333,
+          "subdivision": "quarter",
+          "beatIndex": 311,
+          "bar": 77,
+          "beatInBar": 2,
+          "pattern": "sparse",
+          "expectedSubdivisionTimeMs": 192757.333,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -25.121,
+          "measuredAttack": 0.301,
+          "bandAttack": {
+            "kick": 0.169,
+            "body": 1.083,
+            "hats": 0.0
+          },
+          "barMeanAttack": 0.102
+        },
+        {
+          "phase": 7,
+          "ordinal": 25,
+          "timeMs": 194026.667,
+          "subdivision": "quarter",
+          "beatIndex": 313,
+          "bar": 78,
+          "beatInBar": 0,
+          "pattern": "sparse",
+          "expectedSubdivisionTimeMs": 194026.667,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 50.782,
+          "measuredAttack": 0.703,
+          "bandAttack": {
+            "kick": 1.165,
+            "body": 0.605,
+            "hats": 0.0
+          },
+          "barMeanAttack": 0.128
+        },
+        {
+          "phase": 7,
+          "ordinal": 26,
+          "timeMs": 195260.118,
+          "subdivision": "quarter",
+          "beatIndex": 315,
+          "bar": 78,
+          "beatInBar": 2,
+          "pattern": "sparse",
+          "expectedSubdivisionTimeMs": 195260.118,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 0.0,
+          "measuredAttack": 0.042,
+          "bandAttack": {
+            "kick": 0.084,
+            "body": 0.0,
+            "hats": 0.0
+          },
+          "barMeanAttack": 0.128
+        },
+        {
+          "phase": 7,
+          "ordinal": 27,
+          "timeMs": 196533.428,
+          "subdivision": "quarter",
+          "beatIndex": 317,
+          "bar": 79,
+          "beatInBar": 0,
+          "pattern": "sparse",
+          "expectedSubdivisionTimeMs": 196533.428,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 0.0,
+          "measuredAttack": 0.01,
+          "bandAttack": {
+            "kick": 0.019,
+            "body": 0.0,
+            "hats": 0.0
+          },
+          "barMeanAttack": 0.091
+        },
+        {
+          "phase": 7,
+          "ordinal": 28,
+          "timeMs": 197782.476,
+          "subdivision": "quarter",
+          "beatIndex": 319,
+          "bar": 79,
+          "beatInBar": 2,
+          "pattern": "sparse",
+          "expectedSubdivisionTimeMs": 197782.476,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 0.0,
+          "measuredAttack": 0.086,
+          "bandAttack": {
+            "kick": 0.0,
+            "body": 0.43,
+            "hats": 0.0
+          },
+          "barMeanAttack": 0.091
+        },
+        {
+          "phase": 7,
+          "ordinal": 29,
+          "timeMs": 199050.667,
+          "subdivision": "quarter",
+          "beatIndex": 321,
+          "bar": 80,
+          "beatInBar": 0,
+          "pattern": "sparse",
+          "expectedSubdivisionTimeMs": 199050.667,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -39.314,
+          "measuredAttack": 0.903,
+          "bandAttack": {
+            "kick": 1.641,
+            "body": 0.396,
+            "hats": 0.013
+          },
+          "barMeanAttack": 0.097
+        },
+        {
+          "phase": 7,
+          "ordinal": 30,
+          "timeMs": 200291.044,
+          "subdivision": "quarter",
+          "beatIndex": 323,
+          "bar": 80,
+          "beatInBar": 2,
+          "pattern": "sparse",
+          "expectedSubdivisionTimeMs": 200291.044,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 0.0,
+          "measuredAttack": 0.0,
+          "bandAttack": {
+            "kick": 0.0,
+            "body": 0.0,
+            "hats": 0.0
+          },
+          "barMeanAttack": 0.097
+        },
+        {
+          "phase": 7,
+          "ordinal": 31,
+          "timeMs": 201516.035,
+          "subdivision": "quarter",
+          "beatIndex": 325,
+          "bar": 81,
+          "beatInBar": 0,
+          "pattern": "sparse",
+          "expectedSubdivisionTimeMs": 201516.035,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 0.0,
+          "measuredAttack": 0.0,
+          "bandAttack": {
+            "kick": 0.0,
+            "body": 0.0,
+            "hats": 0.0
+          },
+          "barMeanAttack": 0.108
+        },
+        {
+          "phase": 7,
+          "ordinal": 32,
+          "timeMs": 202762.667,
+          "subdivision": "quarter",
+          "beatIndex": 327,
+          "bar": 81,
+          "beatInBar": 2,
+          "pattern": "sparse",
+          "expectedSubdivisionTimeMs": 202762.667,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -13.895,
+          "measuredAttack": 0.237,
+          "bandAttack": {
+            "kick": 0.0,
+            "body": 0.0,
+            "hats": 0.791
+          },
+          "barMeanAttack": 0.108
+        },
+        {
+          "phase": 7,
+          "ordinal": 33,
+          "timeMs": 204074.667,
+          "subdivision": "quarter",
+          "beatIndex": 329,
+          "bar": 82,
+          "beatInBar": 0,
+          "pattern": "sparse",
+          "expectedSubdivisionTimeMs": 204074.667,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -9.122,
+          "measuredAttack": 0.974,
+          "bandAttack": {
+            "kick": 1.706,
+            "body": 0.604,
+            "hats": 0.0
+          },
+          "barMeanAttack": 0.114
+        },
+        {
+          "phase": 7,
+          "ordinal": 34,
+          "timeMs": 205290.667,
+          "subdivision": "quarter",
+          "beatIndex": 331,
+          "bar": 82,
+          "beatInBar": 2,
+          "pattern": "sparse",
+          "expectedSubdivisionTimeMs": 205290.667,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -5.255,
+          "measuredAttack": 1.487,
+          "bandAttack": {
+            "kick": 2.705,
+            "body": 0.671,
+            "hats": 0.0
+          },
+          "barMeanAttack": 0.114
+        },
+        {
+          "phase": 7,
+          "ordinal": 35,
+          "timeMs": 206592.0,
+          "subdivision": "quarter",
+          "beatIndex": 333,
+          "bar": 83,
+          "beatInBar": 0,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 206592.0,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 48.01,
+          "measuredAttack": 0.869,
+          "bandAttack": {
+            "kick": 0.726,
+            "body": 0.498,
+            "hats": 1.355
+          },
+          "barMeanAttack": 0.188
+        },
+        {
+          "phase": 7,
+          "ordinal": 36,
+          "timeMs": 207818.667,
+          "subdivision": "quarter",
+          "beatIndex": 335,
+          "bar": 83,
+          "beatInBar": 2,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 207818.667,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 3.688,
+          "measuredAttack": 2.255,
+          "bandAttack": {
+            "kick": 2.94,
+            "body": 2.468,
+            "hats": 0.972
+          },
+          "barMeanAttack": 0.188
+        },
+        {
+          "phase": 7,
+          "ordinal": 37,
+          "timeMs": 208512.0,
+          "subdivision": "quarter",
+          "beatIndex": 336,
+          "bar": 83,
+          "beatInBar": 3,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 208512.0,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 67.319,
+          "measuredAttack": 0.164,
+          "bandAttack": {
+            "kick": 0.085,
+            "body": 0.145,
+            "hats": 0.31
+          },
+          "barMeanAttack": 0.188
+        },
+        {
+          "phase": 7,
+          "ordinal": 38,
+          "timeMs": 209130.667,
+          "subdivision": "quarter",
+          "beatIndex": 337,
+          "bar": 84,
+          "beatInBar": 0,
+          "pattern": "sparse",
+          "expectedSubdivisionTimeMs": 209130.667,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -14.079,
+          "measuredAttack": 0.372,
+          "bandAttack": {
+            "kick": 0.235,
+            "body": 0.717,
+            "hats": 0.371
+          },
+          "barMeanAttack": 0.15
+        },
+        {
+          "phase": 7,
+          "ordinal": 39,
+          "timeMs": 210389.333,
+          "subdivision": "quarter",
+          "beatIndex": 339,
+          "bar": 84,
+          "beatInBar": 2,
+          "pattern": "sparse",
+          "expectedSubdivisionTimeMs": 210389.333,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 21.662,
+          "measuredAttack": 0.176,
+          "bandAttack": {
+            "kick": 0.033,
+            "body": 0.161,
+            "hats": 0.423
+          },
+          "barMeanAttack": 0.15
+        },
+        {
+          "phase": 7,
+          "ordinal": 40,
+          "timeMs": 211648.0,
+          "subdivision": "quarter",
+          "beatIndex": 341,
+          "bar": 85,
+          "beatInBar": 0,
+          "pattern": "sparse",
+          "expectedSubdivisionTimeMs": 211648.0,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 33.547,
+          "measuredAttack": 0.151,
+          "bandAttack": {
+            "kick": 0.069,
+            "body": 0.084,
+            "hats": 0.333
+          },
+          "barMeanAttack": 0.132
+        },
+        {
+          "phase": 7,
+          "ordinal": 41,
+          "timeMs": 212885.333,
+          "subdivision": "quarter",
+          "beatIndex": 343,
+          "bar": 85,
+          "beatInBar": 2,
+          "pattern": "sparse",
+          "expectedSubdivisionTimeMs": 212885.333,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -22.961,
+          "measuredAttack": 1.726,
+          "bandAttack": {
+            "kick": 2.813,
+            "body": 1.601,
+            "hats": 0.0
+          },
+          "barMeanAttack": 0.132
+        },
+        {
+          "phase": 7,
+          "ordinal": 42,
+          "timeMs": 214176.0,
+          "subdivision": "quarter",
+          "beatIndex": 345,
+          "bar": 86,
+          "beatInBar": 0,
+          "pattern": "sparse",
+          "expectedSubdivisionTimeMs": 214176.0,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -2.598,
+          "measuredAttack": 0.282,
+          "bandAttack": {
+            "kick": 0.0,
+            "body": 0.804,
+            "hats": 0.405
+          },
+          "barMeanAttack": 0.155
+        },
+        {
+          "phase": 7,
+          "ordinal": 43,
+          "timeMs": 215434.667,
+          "subdivision": "quarter",
+          "beatIndex": 347,
+          "bar": 86,
+          "beatInBar": 2,
+          "pattern": "sparse",
+          "expectedSubdivisionTimeMs": 215434.667,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 33.096,
+          "measuredAttack": 0.221,
+          "bandAttack": {
+            "kick": 0.078,
+            "body": 0.128,
+            "hats": 0.521
+          },
+          "barMeanAttack": 0.155
+        },
+        {
+          "phase": 7,
+          "ordinal": 44,
+          "timeMs": 216672.0,
+          "subdivision": "quarter",
+          "beatIndex": 349,
+          "bar": 87,
+          "beatInBar": 0,
+          "pattern": "sparse",
+          "expectedSubdivisionTimeMs": 216672.0,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 0.141,
+          "measuredAttack": 1.587,
+          "bandAttack": {
+            "kick": 2.773,
+            "body": 1.005,
+            "hats": 0.0
+          },
+          "barMeanAttack": 0.171
+        },
+        {
+          "phase": 7,
+          "ordinal": 45,
+          "timeMs": 217920.0,
+          "subdivision": "quarter",
+          "beatIndex": 351,
+          "bar": 87,
+          "beatInBar": 2,
+          "pattern": "sparse",
+          "expectedSubdivisionTimeMs": 217920.0,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -34.019,
+          "measuredAttack": 1.747,
+          "bandAttack": {
+            "kick": 2.763,
+            "body": 1.828,
+            "hats": 0.0
+          },
+          "barMeanAttack": 0.171
+        },
+        {
+          "phase": 7,
+          "ordinal": 46,
+          "timeMs": 219232.0,
+          "subdivision": "quarter",
+          "beatIndex": 353,
+          "bar": 88,
+          "beatInBar": 0,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 219232.0,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -15.822,
+          "measuredAttack": 1.03,
+          "bandAttack": {
+            "kick": 1.051,
+            "body": 1.187,
+            "hats": 0.89
+          },
+          "barMeanAttack": 0.18
+        },
+        {
+          "phase": 7,
+          "ordinal": 47,
+          "timeMs": 219829.333,
+          "subdivision": "quarter",
+          "beatIndex": 354,
+          "bar": 88,
+          "beatInBar": 1,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 219829.333,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -35.573,
+          "measuredAttack": 1.484,
+          "bandAttack": {
+            "kick": 2.431,
+            "body": 1.342,
+            "hats": 0.0
+          },
+          "barMeanAttack": 0.18
+        },
+        {
+          "phase": 7,
+          "ordinal": 48,
+          "timeMs": 220458.683,
+          "subdivision": "quarter",
+          "beatIndex": 355,
+          "bar": 88,
+          "beatInBar": 2,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 220458.683,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 0.0,
+          "measuredAttack": 0.0,
+          "bandAttack": {
+            "kick": 0.0,
+            "body": 0.0,
+            "hats": 0.0
+          },
+          "barMeanAttack": 0.18
+        },
+        {
+          "phase": 7,
+          "ordinal": 49,
+          "timeMs": 221717.333,
+          "subdivision": "quarter",
+          "beatIndex": 357,
+          "bar": 89,
+          "beatInBar": 0,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 221717.333,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 11.72,
+          "measuredAttack": 1.192,
+          "bandAttack": {
+            "kick": 2.165,
+            "body": 0.546,
+            "hats": 0.0
+          },
+          "barMeanAttack": 0.198
+        },
+        {
+          "phase": 7,
+          "ordinal": 50,
+          "timeMs": 222965.333,
+          "subdivision": "quarter",
+          "beatIndex": 359,
+          "bar": 89,
+          "beatInBar": 2,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 222965.333,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -45.973,
+          "measuredAttack": 1.73,
+          "bandAttack": {
+            "kick": 2.871,
+            "body": 1.472,
+            "hats": 0.0
+          },
+          "barMeanAttack": 0.198
+        },
+        {
+          "phase": 7,
+          "ordinal": 51,
+          "timeMs": 223626.667,
+          "subdivision": "quarter",
+          "beatIndex": 360,
+          "bar": 89,
+          "beatInBar": 3,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 223626.667,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": 33.291,
+          "measuredAttack": 0.334,
+          "bandAttack": {
+            "kick": 0.005,
+            "body": 0.614,
+            "hats": 0.696
+          },
+          "barMeanAttack": 0.198
+        },
+        {
+          "phase": 7,
+          "ordinal": 52,
+          "timeMs": 224234.667,
+          "subdivision": "quarter",
+          "beatIndex": 361,
+          "bar": 90,
+          "beatInBar": 0,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 224234.667,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -23.372,
+          "measuredAttack": 0.934,
+          "bandAttack": {
+            "kick": 1.771,
+            "body": 0.239,
+            "hats": 0.0
+          },
+          "barMeanAttack": 0.184
+        },
+        {
+          "phase": 7,
+          "ordinal": 53,
+          "timeMs": 224853.333,
+          "subdivision": "quarter",
+          "beatIndex": 362,
+          "bar": 90,
+          "beatInBar": 1,
+          "pattern": "steady",
+          "expectedSubdivisionTimeMs": 224853.333,
+          "snapMs": 0.0,
+          "pulseTrackingSnapMs": -10.368,
+          "measuredAttack": 1.344,
+          "bandAttack": {
+            "kick": 2.303,
+            "body": 0.961,
+            "hats": 0.0
+          },
+          "barMeanAttack": 0.184
+        }
       ]
     }
   ],
-  "changesFromPrior": "Identical fixed slots and +/-120ms all-band snapping replaced with measured accents/coverage. Late160-224s sections are used; original230.92s source and6/8 opportunities,4/6 required hits unchanged."
+  "changesFromPrior": "62 sparse fixed-count events replaced by measured quarter/eighth phrases; every phase judges all notes through its deadline; one scored turnover note; eight phases; two actual fillets, twelve slices each; source and shared Stage1/2 judgement unchanged."
 }

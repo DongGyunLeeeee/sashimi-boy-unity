@@ -25,7 +25,7 @@ namespace SashimiBoy.EditorTools
         {
             public int issue = 87;
             public string algorithm = Algorithm;
-            public string contract = "Six equal longitudinal cuts; immutable original coordinate frame; cut normal -Z; original skin UV/normals retained; continuous 0..1 planar cap UV; opaque cap albedo sampled from the supplied SashimiSlice flesh; source bytes/importers untouched.";
+            public string contract = "Twelve equal longitudinal cuts; immutable original coordinate frame; cut normal -Z; original skin UV/normals retained; continuous 0..1 planar cap UV; opaque cap albedo sampled from the supplied SashimiSlice flesh; source bytes/importers untouched.";
             public FleshReference capFleshReference;
             public Entry[] fillets;
         }
@@ -60,7 +60,7 @@ namespace SashimiBoy.EditorTools
             var entries = new List<Entry>();
             foreach (string role in Roles)
             {
-                string wrapperPath = PresentationRoot + "/Prefabs/PF_" + role + ".prefab";
+                string wrapperPath = PresentationRoot + "/Prefabs/PF_" + role.Replace("Fillet", "WholeFillet") + ".prefab";
                 var wrapper = AssetDatabase.LoadAssetAtPath<GameObject>(wrapperPath);
                 Require(wrapper != null, "Generate the supplied fillet presentation first: " + wrapperPath);
                 var sourceFilter = wrapper.GetComponentInChildren<MeshFilter>(true);
@@ -88,7 +88,7 @@ namespace SashimiBoy.EditorTools
                     role = role, sourceMeshPath = sourcePath, sourceDependencyHash = dependencyBefore,
                     cachePath = CachePath(role), cutsPerFillet = Stage03FilletCutCache.ApprovedCutsPerFillet,
                     sourceVertices = source.vertexCount,
-                    remainingVertices = new int[6], surfaceTriangles = new int[6], capTriangles = new int[6], remainingSizes = new Vector3[6]
+                    remainingVertices = new int[Stage03FilletCutCache.ApprovedCutsPerFillet], surfaceTriangles = new int[Stage03FilletCutCache.ApprovedCutsPerFillet], capTriangles = new int[Stage03FilletCutCache.ApprovedCutsPerFillet], remainingSizes = new Vector3[Stage03FilletCutCache.ApprovedCutsPerFillet]
                 };
                 for (int cuts = 1; cuts <= Stage03FilletCutCache.ApprovedCutsPerFillet; cuts++)
                 {
@@ -118,13 +118,13 @@ namespace SashimiBoy.EditorTools
                 // Timing is logged, not serialized into deterministic generated data.
                 entry.generationMilliseconds = 0;
                 entries.Add(entry);
-                Debug.Log("[Stage03FilletCuts] " + role + " cached five closed residual meshes in " + watch.ElapsedMilliseconds + " ms; gameplay changes only immutable mesh references.");
+                Debug.Log("[Stage03FilletCuts] " + role + " cached eleven closed residual meshes in " + watch.ElapsedMilliseconds + " ms; gameplay changes only immutable mesh references.");
             }
             string reportPath = Root + "/Stage03FilletCutReport.json";
             string report = JsonUtility.ToJson(new Receipt { capFleshReference = flesh, fillets = entries.ToArray() }, true) + "\n";
             if (!File.Exists(reportPath) || File.ReadAllText(reportPath) != report) File.WriteAllText(reportPath, report);
             AssetDatabase.ImportAsset(reportPath, ImportAssetOptions.ForceSynchronousImport);
-            Debug.Log("[Stage03FilletCuts] Six cuts per fillet, four independent fillets; cap and edge appearance still require final Player visual review.");
+            Debug.Log("[Stage03FilletCuts] Twelve cuts per fillet, two independent fillets; cap and edge appearance still require final Player visual review.");
             }
             finally { NormalizeGeneratedText(); }
         }

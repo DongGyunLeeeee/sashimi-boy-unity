@@ -45,7 +45,7 @@ namespace SashimiBoy
             public int spawnedSlices, resultCount, errorLogCount;
             public float clipLengthSeconds, elapsedSeconds, maximumObservedGripError, maximumFrameMs;
             public float maximumRightPalmError, maximumLeftPalmError;
-            public float[] phaseMaximumGripError = new float[9];
+            public float[] phaseMaximumGripError = new float[8];
             public List<HitEvidence> hits = new List<HitEvidence>();
             public List<string> captures = new List<string>();
             public List<string> errorLogs = new List<string>();
@@ -163,14 +163,12 @@ namespace SashimiBoy
             yield return Capture("whole");
 
             float coreDeadline = Time.realtimeSinceStartup + 240f;
-            bool head = false, front = false, turned = false, back = false, slice = false, cap = false, plate = false, countdown=false;
+            bool head = false, frontSkin=false,backSkin=false,front = false, turned = false, back = false, slice = false, cap = false, plate = false, countdown=false;
             while (!controller.ResultShown)
             {
                 Require(Time.realtimeSinceStartup < coreDeadline, "Stage3 real-time playback exceeded 240 seconds.");
                 Require(!controller.Run.Failed, "Stage3 gameplay failed; no automatic cut/reward completion was substituted.");
                 Require(controller.clock.State != AudioClockState.Faulted, "AudioClock fault: " + controller.clock.LastError);
-                if (controller.Run.WaitingForTurn && !controller.assembly.IsTurningOver && !controller.assembly.IsBackFacing)
-                    Require(controller.assembly.TryTurnOver(), "The same turnover call used by E was rejected.");
                 double next = controller.NextNoteMs;
                 double now = controller.clock.SongTimeMs;
                 double first=controller.chart.phases[0].noteTimesMs[0];
@@ -184,10 +182,12 @@ namespace SashimiBoy
                         songMs = now, noteMs = next, offsetMs = now - next, accepted = accepted });
                 }
                 if (!head && controller.assembly.HeadRemoved) { head = true; yield return Capture("head-removed"); }
-                if (!front && controller.assembly.DetachedFilletCount >= 2) { front = true; yield return Capture("front-two"); }
+                if(!frontSkin&&controller.assembly.RemovedSkinCount>=1){frontSkin=true;yield return Capture("front-skin-off");}
+                if(!backSkin&&controller.assembly.RemovedSkinCount>=2){backSkin=true;yield return Capture("back-skin-off");}
+                if (!front && controller.assembly.SeparatedWholeFilletCount >= 1) { front = true; yield return Capture("front-whole-fillet"); }
                 if (!turned && controller.assembly.IsBackFacing) { turned = true; yield return Capture("turned"); }
-                if (!back && controller.assembly.DetachedFilletCount == 4 && !controller.assembly.HasBody)
-                { back = true; yield return Capture("back-four-body-cleared"); }
+                if (!back && controller.assembly.SeparatedWholeFilletCount == 2 && !controller.assembly.HasBody)
+                { back = true; yield return Capture("two-fillets-body-cleared"); }
                 if (!slice && controller.SpawnedSlices >= 1) { slice = true; yield return Capture("slice-one"); }
                 if (!cap && controller.SpawnedSlices >= 3)
                 {
@@ -199,9 +199,9 @@ namespace SashimiBoy
                 yield return null;
             }
             yield return Capture("stage-result");
-            Require(head && front && turned && back && slice && cap && plate, "One or more presentation milestones were not observed.");
+            Require(head && frontSkin && backSkin && front && turned && back && slice && cap && plate, "One or more presentation milestones were not observed.");
             Require(controller.Run.Completed && controller.Run.TotalSlices == 24 && controller.SpawnedSlices == 24,
-                "Result did not contain four actually completed fillets and exactly 24 spawned slices.");
+                "Result did not contain two actually completed fillets and exactly 24 spawned slices.");
             Require(controller.ClearRecorded && SaveManager.Instance.Current.IsStageCleared(SashimiBoyConstants.StageIds.Sole),
                 "Stage3 clear/reward was not recorded.");
             report.coreCompleted = true; report.spawnedSlices = controller.SpawnedSlices; report.resultCount = 1;
@@ -229,11 +229,11 @@ namespace SashimiBoy
         }
         private IEnumerator CapturePartialCutSide()
         {
-            Require(controller != null && !controller.Paused && controller.Run.Phase >= 5 && controller.Run.Phase < 9,
+            Require(controller != null && !controller.Paused && controller.Run.Phase >= 6 && controller.Run.Phase < 8,
                 "The side-view probe requires an active slicing phase.");
             var cooking = controller.cooking;
             var camera = cooking != null ? cooking.gameCamera : null;
-            var surface = controller.fillets[controller.Run.Phase - 5];
+            var surface = controller.fillets[controller.Run.Phase - 6];
             Require(camera != null && surface != null && surface.meshRenderer != null && !surface.IsEmpty,
                 "The remaining fillet and its actual gameplay camera are required for the side view.");
             Vector3 originalPosition = camera.transform.position;
@@ -469,7 +469,7 @@ namespace SashimiBoy
             }
             report.maximumObservedGripError = Mathf.Max(report.maximumObservedGripError, error);
             int phase = controller.Run.Phase;
-            if (phase >= 0 && phase < 9)
+            if (phase >= 0 && phase < 8)
                 report.phaseMaximumGripError[phase] = Mathf.Max(report.phaseMaximumGripError[phase], error);
         }
 

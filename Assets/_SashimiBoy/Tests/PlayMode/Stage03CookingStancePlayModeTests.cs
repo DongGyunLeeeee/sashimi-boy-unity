@@ -20,7 +20,11 @@ namespace SashimiBoy.Tests
         static Component Find(string name) => RuntimeReflection.FindActiveComponent("SashimiBoy." + name);
         object Run => Call(controller, "get_Run");
         object Assembly => Get(controller, "assembly");
-        double[] Notes => (double[])Get(((IList)Get(Get(controller, "chart"), "phases"))[Value<int>(Run, "Phase")], "noteTimesMs");
+        object PhaseChart=>((IList)Get(Get(controller,"chart"),"phases"))[Value<int>(Run,"Phase")];
+        double[] Notes=>(double[])Get(PhaseChart,"noteTimesMs");
+        bool observedCamera;
+        Vector3 cameraPosition;
+        Quaternion cameraRotation;
 
         [UnitySetUp]
         public IEnumerator SetUp()
@@ -41,6 +45,7 @@ namespace SashimiBoy.Tests
             controller = Find("Stage03GameController");
             Assert.That(controller, Is.Not.Null);
             Call(controller,"ResetRun"); // Normal entry autoplays; this fixture drives controlled input timestamps.
+            observedCamera=false;
         }
 
         [TearDown]
@@ -57,7 +62,7 @@ namespace SashimiBoy.Tests
         }
 
         [UnityTest]
-        public IEnumerator All24Cuts_KeepBothActualPalmsInReach_WithoutChangingBodyHeightScaleOrBoneLengths()
+        public IEnumerator All24Cuts_KeepPalmsClearOfBladeAndCameraFixed_WithoutStretchingTheSuppliedBody()
         {
             var cooking = Get(controller, "cooking");
             var body = (Component)Get(cooking, "body");
@@ -75,56 +80,34 @@ namespace SashimiBoy.Tests
             var jointScales = bones.ToDictionary(b => b, b => b.localScale);
             Assert.That(Call(controller, "StartRun"), Is.EqualTo(true));
 
-            // Enter the actual separated-fillets path, including the real turn
-            // gate. Only note timestamps are synthetic; the body, knife, work
-            // transforms, cut caches and support targets are the authored ones.
-            while (Value<int>(Run, "Phase") < 5)
+            // Every note uses the actual input/presentation path. Observe real
+            // rendered frames on each first/quota/final preparation stroke and
+            // all 24 actual slice contacts; remaining beats are advanced through
+            // that same presentation API, without waiting a whole song in tests.
+            for(int phase=0;phase<8;phase++)
             {
-                int phase = Value<int>(Run, "Phase");
-                double[] notes = Notes;
-                for (int i = 0; i < 4; i++)
+                Assert.That(Value<int>(Run,"Phase"),Is.EqualTo(phase));
+                double[] notes=Notes;double deadline=(double)Get(PhaseChart,"endTimeMs");
+                int required=Value<int>(Run,"RequiredHits");
+                for(int i=0;i<notes.Length;i++)
                 {
-                    Assert.That(Call(controller, "SubmitAt", notes[i]), Is.EqualTo(true));
-                    yield return ObserveActualStroke(cooking, body, right, left, rootHeight, bodyScale,
-                        originalLengths, jointPositions, jointScales, "preparation " + phase + ", stroke " + i);
+                    int before=Value<int>(controller,"SpawnedSlices");
+                    Assert.That(Call(controller,"SubmitAt",notes[i]),Is.EqualTo(true));
+                    int wanted=Value<int>(Run,"TotalSlices");
+                    Assert.That(Value<int>(controller,"SpawnedSlices"),Is.EqualTo(before),"Mesh exchange cannot precede contact.");
+                    bool observe=phase<6?(i==0||i==required-1||i==notes.Length-1):wanted>before||i==notes.Length-1;
+                    if(observe)
+                        yield return ObserveActualStroke(cooking,body,right,left,rootHeight,bodyScale,
+                            originalLengths,jointPositions,jointScales,"phase "+phase+", note "+i);
+                    else {Call(controller,"AdvancePresentation",.30f);yield return null;}
+                    Assert.That(Value<int>(controller,"SpawnedSlices"),Is.EqualTo(wanted));
+                    Assert.That(Value<bool>(Get(controller,"clock"),"IsRunning"),Is.True,"Quotas and the turnover never stop the song.");
                 }
-                // The controller owns its motion queue and contact callbacks.
-                // Flush only the remaining detached-part presentation before the phase tick.
-                Call(controller, "AdvancePresentation", 4f);
-                Call(controller, "TickAt", notes.Last() + 1000d);
-                if (phase == 2)
-                {
-                    Assert.That(Value<bool>(Run, "WaitingForTurn"), Is.True);
-                    Assert.That(Call(Assembly, "TryTurnOver"), Is.EqualTo(true));
-                    Call(Assembly, "AdvancePresentation", 1f);
-                }
-                yield return null;
-            }
-
-            for (int fillet = 0; fillet < 4; fillet++)
-            {
-                Assert.That(Value<int>(Run, "Phase"), Is.EqualTo(5 + fillet));
-                double[] notes = Notes;
-                for (int cut = 0; cut < 6; cut++)
-                {
-                    int before = Value<int>(controller, "SpawnedSlices");
-                    Assert.That(Call(controller, "SubmitAt", notes[cut]), Is.EqualTo(true));
-                    Assert.That(Value<int>(controller, "SpawnedSlices"), Is.EqualTo(before),
-                        "Accepting a rhythm hit must not detach a slice before the blade's contact cue.");
-                    yield return ObserveActualStroke(cooking, body, right, left, rootHeight, bodyScale,
-                        originalLengths, jointPositions, jointScales, "fillet " + fillet + ", cut " + cut);
-                    Assert.That(Value<int>(controller, "SpawnedSlices"), Is.EqualTo(before + 1),
-                        "Each completed actual blade motion must produce exactly one slice.");
-                }
-                if (fillet < 3)
-                {
-                    // A next fillet resets the cutting plane across the whole
-                    // work area. The first frame must also keep the palms attached.
-                    Call(controller, "TickAt", notes.Last() + 1000d);
-                    yield return null;
-                    AssertPalm(right, (Vector3)Get(body, "rightTarget"), "next-fillet knife");
-                    AssertPalm(left, (Vector3)Get(body, "leftTarget"), "next-fillet support");
-                }
+                Call(controller,"AdvancePresentation",2f);
+                Assert.That(Value<int>(controller,"PendingVisualCuts"),Is.Zero);
+                Call(controller,"TickAt",deadline+1d);
+                Assert.That(Value<int>(Run,"Phase"),Is.EqualTo(phase+1));
+                if(phase<7)yield return null;
             }
             Assert.That(Value<int>(controller, "SpawnedSlices"), Is.EqualTo(24));
         }
@@ -151,6 +134,14 @@ namespace SashimiBoy.Tests
                 Assert.That(Lower(left), Is.EqualTo(originalLengths[3]).Within(.0001f), context);
                 Assert.That(jointPositions.All(p => p.Key.localPosition == p.Value && p.Key.localScale == jointScales[p.Key]),
                     Is.True, "Only the grounded root may move; joints must not translate or stretch: " + context);
+                var camera=(Camera)Get(cooking,"gameCamera");
+                if(!observedCamera)
+                {observedCamera=true;cameraPosition=camera.transform.position;cameraRotation=camera.transform.rotation;}
+                Assert.That(Vector3.Distance(camera.transform.position,cameraPosition),Is.LessThan(.0001f),"Work points and grip IK cannot move the gameplay camera: "+context);
+                var rotation=camera.transform.rotation;
+                Assert.That(Vector4.Distance(new Vector4(rotation.x,rotation.y,rotation.z,rotation.w),new Vector4(cameraRotation.x,cameraRotation.y,cameraRotation.z,cameraRotation.w)),Is.LessThan(.00001f),"Cut direction cannot rotate the gameplay camera: "+context);
+                Assert.That(Value<float>(cooking,"SupportBladeClearance"),Is.GreaterThanOrEqualTo(.0749f),"Actual posed support-hand and finger joints must remain clear of the swept blade plane: "+context);
+                Assert.That(Vector3.Distance(((Transform)Get(left,"palm")).position,Value<Vector3>(cooking,"SafeSupportTarget")),Is.LessThanOrEqualTo(.015f),context);
                 if (Time.realtimeSinceStartup >= deadline &&
                     (Value<bool>(cooking, "IsStriking") || Value<int>(controller, "PendingVisualCuts") > 0))
                     Assert.Fail("The accepted stroke did not complete its actual presentation: " + context);

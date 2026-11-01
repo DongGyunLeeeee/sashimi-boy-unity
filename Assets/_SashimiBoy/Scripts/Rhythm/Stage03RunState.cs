@@ -1,55 +1,54 @@
 using System;
 namespace SashimiBoy
 {
-    // Stage3's nine phases are separate from the serialized six-phase Stage1/2 contract.
+    // Rhythm resolution never stops at the work quota. Geometry progress is
+    // capped separately; every authored note contributes to score and misses.
     public sealed class Stage03RunState
     {
+        public const int PhaseCount=8, FirstSlicePhase=6, SlicesPerFillet=12;
+        private int[] opportunities={20,20,20,1,20,20,20,20};
         public int Phase {get;private set;}
         public int Hits {get;private set;}
-        public bool WaitingForTurn {get;private set;}
+        public int ResolvedNotes {get;private set;}
+        public bool WaitingForTurn=>false;
         public bool Turned {get;private set;}
         public bool Failed {get;private set;}
-        public bool Completed => Phase==9;
-        public int[] Slices {get;} = new int[4];
-        public int TotalSlices => Slices[0]+Slices[1]+Slices[2]+Slices[3];
-        public int RequiredHits => Phase<5?4:6;
-        public bool PhaseSatisfied => !Completed && Hits>=RequiredHits;
+        public bool Completed=>Phase==PhaseCount;
+        public int[] Slices {get;}=new int[2];
+        public int TotalSlices=>Slices[0]+Slices[1];
+        public int NoteCount=>Completed?0:opportunities[Phase];
+        public int RequiredHits=>Completed?0:(int)Math.Ceiling(NoteCount*.7d);
+        public bool PhaseSatisfied=>!Completed&&Hits>=RequiredHits;
+        public void Configure(int[] counts)
+        {
+            if(counts==null||counts.Length!=PhaseCount||Array.Exists(counts,n=>n<1)||
+               counts[3]!=1||Math.Ceiling(counts[6]*.7d)<12||Math.Ceiling(counts[7]*.7d)<12)
+                throw new ArgumentException("Eight complete rhythm sections, one turnover and two twelve-slice quotas are required.");
+            opportunities=(int[])counts.Clone();Reset();
+        }
         public bool TryHit()
         {
-            if (Failed||Completed||WaitingForTurn||PhaseSatisfied) return false;
-            if (Phase>=3&&!Turned) return false;
-            Hits++;
-            if (Phase>=5) Slices[Phase-5]++;
+            if(Failed||Completed||ResolvedNotes>=NoteCount||(Phase>=4&&!Turned))return false;
+            Hits++;ResolvedNotes++;
+            if(Phase>=FirstSlicePhase)
+                Slices[Phase-FirstSlicePhase]=Math.Min(SlicesPerFillet,Hits*SlicesPerFillet/RequiredHits);
             return true;
+        }
+        public bool TryMiss()
+        {
+            if(Failed||Completed||ResolvedNotes>=NoteCount)return false;
+            ResolvedNotes++;return true;
         }
         public bool TryAdvance()
         {
-            if (Failed||Completed||!PhaseSatisfied||WaitingForTurn) return false;
-            if (Phase==2&&!Turned) {WaitingForTurn=true;return false;}
-            if (Phase==8&&TotalSlices!=24) return false;
-            Phase++;Hits=0;
-            return true;
+            if(Failed||Completed||ResolvedNotes!=NoteCount||!PhaseSatisfied)return false;
+            if(Phase==3)Turned=true;
+            if(Phase==7&&TotalSlices!=24)return false;
+            Phase++;Hits=ResolvedNotes=0;return true;
         }
-        public bool FinishTurn()
-        {
-            if (!WaitingForTurn||Turned||Failed) return false;
-            Turned=true;WaitingForTurn=false;Phase++;Hits=0;return true;
-        }
-        public void Fail() {if(!Completed)Failed=true;}
-        public bool RecoverSatisfiedPreparation()
-        {
-            if(!Failed||Phase>=5||!PhaseSatisfied)return false;
-            Failed=false;return true;
-        }
-        public bool RetryPhase()
-        {
-            if(!Failed||Completed)return false;
-            if(Phase>=5)Slices[Phase-5]=0;
-            Hits=0;Failed=false;return true;
-        }
-        public void Reset()
-        {
-            Phase=Hits=0;WaitingForTurn=Turned=Failed=false;Array.Clear(Slices,0,4);
-        }
+        public void Fail(){if(!Completed)Failed=true;}
+        // Compatibility entry point now restarts the entire stage, never a section.
+        public bool RetryPhase(){if(!Failed)return false;Reset();return true;}
+        public void Reset(){Phase=Hits=ResolvedNotes=0;Turned=Failed=false;Array.Clear(Slices,0,Slices.Length);}
     }
 }

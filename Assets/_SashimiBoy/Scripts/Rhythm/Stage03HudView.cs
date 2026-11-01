@@ -56,7 +56,7 @@ namespace SashimiBoy
             if(label=="놓침")Flash(JudgeGrade.Whack);
         }
         public void ShowFailure(string message)
-        {Set(failureText,message+"\n\n완료한 부위는 유지됩니다");}
+        {Set(failureText,message+"\n\nR · 스테이지 처음부터 재시작");}
         private void Flash(JudgeGrade grade)
         {
             if(shared.screenFlash==null)return;
@@ -80,10 +80,10 @@ namespace SashimiBoy
             Set(shared.fishProgressText,phase.label+"  |  회 "+controller.SpawnedSlices+" / 24");
             Set(shared.scoreText,$"점수  {controller.Score:N0}");
             Set(shared.comboText,$"콤보  {controller.Combo}");
-            Set(shared.phaseQualityText,$"현재 {run.Hits:0.00}점");
+            Set(shared.phaseQualityText,$"성공 {run.Hits} / {phase.noteTimesMs.Length}");
             float threshold=run.RequiredHits/(float)phase.noteTimesMs.Length;
-            Set(shared.phaseRequirementText,$"통과 {run.RequiredHits:0.00} · {threshold*100:0}%");
-            Set(shared.phaseRemainingText,run.PhaseSatisfied?(controller.PendingVisualCuts>0?"칼 동작 마무리":"손질 완료"):"남은 노트 "+Mathf.Max(0,phase.noteTimesMs.Length-controller.NoteCursor));
+            Set(shared.phaseRequirementText,$"통과 {run.RequiredHits}/{phase.noteTimesMs.Length} · 70% 이상");
+            Set(shared.phaseRemainingText,"남은 노트 "+Mathf.Max(0,phase.noteTimesMs.Length-controller.NoteCursor));
             if(shared.phaseQualityFill!=null)
             {
                 shared.phaseQualityFill.fillAmount=run.Hits/(float)phase.noteTimesMs.Length;
@@ -102,12 +102,7 @@ namespace SashimiBoy
                 countdown=Mathf.Clamp(Mathf.CeilToInt((float)((first-now)/beat)),1,4).ToString();
             else if(run.Phase==0&&run.Hits==0&&now>=first&&now<first+320)countdown="SLICE!";
             Set(shared.countdownText,countdown);
-            if(run.WaitingForTurn)
-            {
-                HideCues();Show(spacePrompt,controller.assembly.IsTurningOver?"":"[ E ]",!controller.assembly.IsTurningOver);
-                Set(shared.dialogueText,controller.assembly.IsTurningOver?"생선을 뒤집고 있습니다":"앞면 필렛 분리 완료 · E를 눌러 뒤집기");return;
-            }
-            Set(shared.dialogueText,run.PhaseSatisfied?"이 구간 완료 · 다음 손질을 준비하세요":"예고 노트가 절단선에 올 때 Space");
+            Set(shared.dialogueText,run.Phase==3?"뒤집기 노트 · Space":run.PhaseSatisfied?"통과 기준 달성 · 계속 박자에 맞추세요":"구간 성공률 70% 이상 · Space");
             double next=controller.NextNoteMs;
             bool running=controller.Started&&controller.clock.IsRunning;
             if(!running||next<0){HideCues();return;}
@@ -163,7 +158,7 @@ namespace SashimiBoy
             foreach(var renderer in cueRenderers)Paint(renderer,color);
             for(int i=0;i<ghostLines.Length;i++)
             {
-                bool show=controller.Run.Phase>=5&&controller.Run.Hits+i+1<6;
+                bool show=controller.Run.Phase>=6&&controller.fillets[controller.Run.Phase-6].CutCount+i+1<12;
                 if(ghostLines[i]==null)continue;ghostLines[i].gameObject.SetActive(show);
                 if(show)ghostLines[i].position=CutPoint(i+1);
                 if(show&&i<ghostRenderers.Length)Paint(ghostRenderers[i],new Color(.35f,.92f,1,Mathf.Max(.2f,.62f-i*.14f)));
@@ -171,10 +166,10 @@ namespace SashimiBoy
         }
         private Vector3 CutPoint(int offset)
         {
-            if(controller.Run.Phase<5)return controller.NextWorkContactPoint+Vector3.up*.004f;
-            var surface=controller.fillets[controller.Run.Phase-5];
+            if(controller.Run.Phase<6)return controller.NextWorkContactPoint+Vector3.up*.004f;
+            var surface=controller.fillets[controller.Run.Phase-6];
             var bounds=surface.cutCache.remainingMeshes[0].bounds;
-            float z=surface.cutCache.cutPositions[Mathf.Clamp(controller.Run.Hits+offset,0,5)];
+            float z=surface.cutCache.cutPositions[Mathf.Clamp(surface.CutCount+offset,0,11)];
             return surface.meshFilter.transform.TransformPoint(new Vector3(bounds.center.x,bounds.max.y,z))+Vector3.up*.004f;
         }
         private void PoseBracket(Transform left,Transform right,float approach,float multiplier)

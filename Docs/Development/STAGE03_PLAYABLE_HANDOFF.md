@@ -1,3 +1,20 @@
+# Stage3 continuous-rhythm revision — 2026-11-01
+
+The latest Owner decision is [#87 / 6555351413](https://github.com/DongGyunLeeeee/sashimi-boy-unity/issues/87#issuecomment-6555351413). It supersedes the historical four-fillet, E-turnover, phase-retry descriptions below.
+
+- Eight musical sections: head → front skin → front whole fillet → Space turnover → back skin → back whole fillet → front 12 slices → back 12 slices.
+- Full approved 230.92-second vocal PCM is unchanged. Numerical beat/onset analysis produces 297 notes rather than 62; measured quarter/eighth attacks, 288ms minimum interval, 249 quarter and 48 eighth events. Direct listening and final timing/readability/feel approval remain Owner checks.
+- Every authored note is judged, scored and missed even after the section quota is reached. Each section requires `ceil(noteCount * .70)` hits. Its fixed musical deadline decides pass/fail; failure restarts the entire stage from the head/score zero. There is no E turnover and no automatic audio pause at a work quota or transition.
+- A success advances physical work. The two edible fillets each use twelve offline-clipped states with closed caps. Each next slice appears only at contact of a successful note that crosses its next work boundary. Later notes retain scoring and use a lifted finishing motion, without extra slices or empty-board deep cuts. Neither section transitions nor results fill missing slices.
+- Short, distinct skin draws, fillet draws, neck cuts, clear-knife turnover and slicing fit the dense chart. A fixed work-camera pose never follows each grip or reach-solver movement. The support hand and its actual posed finger joints remain on the safe side of the blade sweep with a skin-width margin.
+- The exact English source folders, raw source bytes, old `.meta` GUIDs, shared Stage1/2 chart/judge/UI, stable save IDs, body replacement, home practice, seating, and Day3 story order remain preserved.
+
+Generation: `SashimiBoy.EditorTools.Stage03PlayableAuthoring.ApplyContinuousRhythmBatch`. It derives two skin-off sides and whole edible fillets from the supplied assets, rebuilds twelve-cut caches, reads the reproducible analysis JSON, updates only the Stage3 scene and shared-style Stage3 cards, and checks Stage1/2 scene byte preservation.
+
+Validation for this new revision is pending until new logs, XML, source integrity, standalone DSP/API capture and independent exact-head review are executed. Earlier a499 PASS counts are historical evidence only. Human visual/audio/physical-input/save verification remains pending. No automatic PR merge or Done transition.
+
+---
+
 # Stage3 / Day3 playable delivery — Issue #87
 
 ## Current development baseline

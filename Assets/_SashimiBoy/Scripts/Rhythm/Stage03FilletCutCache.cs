@@ -7,9 +7,9 @@ namespace SashimiBoy
     [CreateAssetMenu(menuName = "Sashimi Boy/Stage 03/Fillet Cut Cache")]
     public sealed class Stage03FilletCutCache : ScriptableObject
     {
-        public const int ApprovedCutsPerFillet = 6;
+        public const int ApprovedCutsPerFillet = 12;
         public string modelRole;
-        // Index zero references the supplied derived mesh. Index six is empty.
+        // Index zero references the supplied derived mesh. Index twelve is empty.
         public Mesh[] remainingMeshes = Array.Empty<Mesh>();
         public Material surfaceMaterial;
         public Material capMaterial;

@@ -92,11 +92,11 @@ namespace SashimiBoy.EditorTools
 
                 // Additional Stage3 states keep the exact baseline result-card typography,
                 // anchors, image colors and button dimensions, while using Stage3 actions.
-                view.startRoot = Card(shared, "Stage03StartCard", "가자미 손질\n\nSpace · 박자에 맞춰 손질\n앞면 필렛 2개 뒤 E · 뒤집기\n필렛 4개 · 회 24점 완성", "Enter · 손질 시작", controller.StartFromButton, controller.ReturnToShop, out var startText);
+                view.startRoot = Card(shared, "Stage03StartCard", "가자미 손질\n\nSpace · 박자에 맞춰 손질\n앞/뒤 껍질 · 필렛 · 뒤집기 모두 Space\n각 구간 70% · 필렛 2개 · 회 24점", "Enter · 손질 시작", controller.StartFromButton, controller.ReturnToShop, out var startText);
                 view.startText = startText;
                 view.pauseRoot = Card(shared, "Stage03PauseCard", "일시 정지\n\n음악과 손질 진행이 멈췄습니다", "Esc · 계속하기", controller.TogglePause, controller.ReturnToShop, out var pauseText);
                 view.pauseText = pauseText;
-                view.failureRoot = Card(shared, "Stage03FailureCard", "현재 구간을 다시 손질하세요\n\n완료한 부위는 유지됩니다", "R · 구간 재시도", controller.RetryFromButton, controller.ReturnToShop, out var failureText);
+                view.failureRoot = Card(shared, "Stage03FailureCard", "구간 성공률 70% 미만 · 스테이지 실패\n\n처음부터 다시 도전하세요", "R · 스테이지 재시작", controller.RetryFromButton, controller.ReturnToShop, out var failureText);
                 view.failureText = failureText;
                 var resultRetry = RequiredButton(shared.resultRoot, "Stage1Retry");
                 resultRetry.gameObject.SetActive(false);
