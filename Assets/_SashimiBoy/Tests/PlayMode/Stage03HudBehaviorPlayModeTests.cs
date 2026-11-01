@@ -58,6 +58,40 @@ namespace SashimiBoy.Tests
             Call(view,"Refresh");
         }
 
+        void ResolveCurrentNotes()
+        {
+            foreach(double note in Notes)
+            {Assert.That(Call(controller,"SubmitAt",note),Is.EqualTo(true));Call(controller,"AdvancePresentation",.3f);}
+            Call(controller,"AdvancePresentation",60f);Call(Get(controller,"assembly"),"AdvancePresentation",1f);
+        }
+
+        void ReachPhase(int target)
+        {
+            while(Value<int>(Run,"Phase")<target)
+            {
+                ResolveCurrentNotes();double deadline=(double)Get(Phase,"endTimeMs");int previous=Value<int>(Run,"Phase");
+                for(int attempt=0;attempt<4&&Value<int>(Run,"Phase")==previous;attempt++)
+                {
+                    Call(controller,"AdvancePresentation",60f);Call(Get(controller,"assembly"),"AdvancePresentation",1f);
+                    Call(controller,"TickAt",deadline+1d);
+                }
+                Assert.That(Value<int>(Run,"Phase"),Is.EqualTo(previous+1));
+            }
+        }
+
+        void AssertFuturePreview(int current,int future,double next)
+        {
+            Assert.That(Value<int>(Run,"Phase"),Is.EqualTo(current));
+            Assert.That(Value<double>(controller,"NextNoteMs"),Is.LessThan(0d),"Forecasts must not make a future note eligible for judgement.");
+            Assert.That(Value<double>(view,"NextForecastMs"),Is.EqualTo(next));
+            Assert.That(Value<int>(view,"NextForecastPhase"),Is.EqualTo(future));
+            Assert.That(((RectTransform)Get(view,"rhythmLane")).gameObject.activeSelf,Is.True);
+            Assert.That(((Image[])Get(view,"noteDots"))[0].gameObject.activeSelf,Is.True);
+            Assert.That(((Image[])Get(view,"noteDots"))[0].rectTransform.anchoredPosition.x,Is.GreaterThan(0f));
+            Assert.That(((GameObject)Get(view,"worldCue")).activeSelf,Is.False,"A future section may preview only in the top lane.");
+            foreach(Transform ghost in (Transform[])Get(view,"ghostLines"))Assert.That(ghost.gameObject.activeSelf,Is.False);
+        }
+
         [UnityTest]
         public IEnumerator HitGauge_UsesBaselinePointLabelsWithoutChangingSeventyPercentHitGate()
         {
@@ -73,12 +107,14 @@ namespace SashimiBoy.Tests
         }
 
         [UnityTest]
-        public IEnumerator ConsumedFinalNote_KeepsBaselineRestLaneVisibleWhileSectionWaits()
+        public IEnumerator ConsumedLastSongNote_KeepsBaselineRestLaneVisibleWhileFinalSectionWaits()
         {
+            ReachPhase(7);
             double[] notes=Notes;
             foreach(double note in notes)Assert.That(Call(controller,"SubmitAt",note),Is.EqualTo(true));
             SeekAndRefresh(notes[notes.Length-1]+200d);
-            Assert.That(Value<int>(Run,"Phase"),Is.Zero,"HUD refresh cannot advance the musical section.");
+            Assert.That(Value<int>(Run,"Phase"),Is.EqualTo(7),"HUD refresh cannot advance the musical section.");
+            Assert.That(Value<double>(view,"NextForecastMs"),Is.LessThan(0d),"Rest-only requires no remaining song notes.");
             Assert.That(((GameObject)Get(shared,"focusHudRoot")).activeSelf,Is.True);
             Assert.That(((RectTransform)Get(view,"rhythmLane")).gameObject.activeSelf,Is.True);
             Assert.That(((Text)Get(view,"restPrompt")).gameObject.activeSelf,Is.True);
@@ -86,6 +122,42 @@ namespace SashimiBoy.Tests
             Assert.That(((GameObject)Get(view,"worldCue")).activeSelf,Is.False);
             foreach(Image dot in (Image[])Get(view,"noteDots"))Assert.That(dot.gameObject.activeSelf,Is.False);
             yield return null;
+        }
+
+        [UnityTest]
+        public IEnumerator ResolvedSection_BeforeMusicalEnd_AlreadyPreviewsNextGlobalNotes()
+        {
+            ResolveCurrentNotes();Assert.That(Value<bool>(Run,"PhaseSatisfied"),Is.True);
+            double deadline=(double)Get(Phase,"endTimeMs");
+            double next=((double[])Get(((IList)Get(Chart,"phases"))[1],"noteTimesMs"))[0];
+            SeekAndRefresh(deadline-1d);
+            AssertFuturePreview(0,1,next);
+            Assert.That(Value<int>(controller,"PendingVisualCuts"),Is.Zero,"No boundary contact is scheduled before the musical end.");
+            yield return null;
+        }
+
+        [UnityTest]
+        public IEnumerator BoundaryStrokeAndMovingSkin_KeepFutureTopLaneWithoutEnablingFutureInputOrWorldCues()
+        {
+            ReachPhase(4);ResolveCurrentNotes();double deadline=(double)Get(Phase,"endTimeMs");
+            double next=((double[])Get(((IList)Get(Chart,"phases"))[5],"noteTimesMs"))[0];
+            Call(controller,"TickAt",deadline+1d);
+            Assert.That(Value<int>(controller,"PendingVisualCuts"),Is.EqualTo(1));
+            SeekAndRefresh(next-500d);AssertFuturePreview(4,5,next);
+            Assert.That(((Text)Get(view,"restPrompt")).gameObject.activeSelf,Is.False,
+                "Rest follows the global next-note gap, not an empty current section.");
+            Assert.That(Call(controller,"SubmitAt",next),Is.EqualTo(false));
+            double duration=Convert.ToDouble(RuntimeReflection.InvokeStatic("SashimiBoy.Stage03CookingView","DurationForPhase",4));
+            Call(controller,"AdvancePresentation",(float)(duration+.001d));
+            Assert.That(Value<int>(controller,"PendingVisualCuts"),Is.Zero);
+            Assert.That(Call(controller,"PartsAreMoving"),Is.EqualTo(true),"The detached skin still owns its boundary flight.");
+            Call(view,"Refresh");AssertFuturePreview(4,5,next);
+            Assert.That(Call(controller,"SubmitAt",next),Is.EqualTo(false));
+            Call(Get(controller,"assembly"),"AdvancePresentation",1f);
+            Call(controller,"TickAt",next-400d);Call(view,"Refresh");
+            Assert.That(Value<int>(Run,"Phase"),Is.EqualTo(5));
+            Assert.That(Value<double>(controller,"NextNoteMs"),Is.EqualTo(next));
+            Assert.That(Call(controller,"SubmitAt",next),Is.EqualTo(true));yield return null;
         }
 
         [UnityTest]

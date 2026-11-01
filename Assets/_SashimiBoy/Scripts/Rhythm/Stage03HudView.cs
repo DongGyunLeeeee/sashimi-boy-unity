@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -25,6 +26,12 @@ namespace SashimiBoy
         public float wideBracketDistance=.72f,closedBracketDistance=.08f;
         public float laneHorizonBeats=4f,nowDuration=.12f,restThresholdBeats=1.35f;
         [Min(1)] public int tutorialTargetCount=12;
+        // Forecasts are presentation only. The controller's phase-local
+        // NextNoteMs remains the sole input/judgement target.
+        public double NextForecastMs {get;private set;}=-1d;
+        public int NextForecastPhase {get;private set;}=-1;
+        private readonly List<double> upcomingTimes=new List<double>(4);
+        private readonly List<int> upcomingPhases=new List<int>(4);
         private Renderer[] cueRenderers=Array.Empty<Renderer>();
         private Vector3[] ghostBaseScales=Array.Empty<Vector3>();
         private Vector3 guideScale;
@@ -110,11 +117,13 @@ namespace SashimiBoy
             else if(run.Phase==0&&run.Hits==0&&now>=first&&now<first+320)countdown="SLICE!";
             Set(shared.countdownText,countdown);
             Set(shared.dialogueText,"예고 노트가 절단선에 닿을 때 Space");
-            double next=controller.NextNoteMs;
             bool running=controller.Started&&controller.clock.IsRunning;
             if(!running){HideCues();return;}
-            // A consumed final note is a musical rest, not the disappearance
-            // of the HUD. The controller alone decides the section boundary.
+            CollectUpcomingNotes();
+            // The baseline forecasts unresolved notes across the whole song.
+            // A phase boundary or its physical completion never resets the
+            // top lane or hides the approaching first note of the next phase.
+            double next=NextForecastMs;
             if(next<0){ShowRestOnly(now);return;}
             double delta=next-now,horizon=beat*laneHorizonBeats;
             bool resting=delta>beat*restThresholdBeats;
@@ -123,8 +132,7 @@ namespace SashimiBoy
             float travel=Mathf.Max(120,rhythmLane.rect.width*.43f);
             for(int i=0;i<noteDots.Length;i++)
             {
-                int ordinal=controller.NoteCursor+i;
-                double ahead=ordinal<phase.noteTimesMs.Length?phase.noteTimesMs[ordinal]-now:double.MaxValue;
+                double ahead=i<upcomingTimes.Count?upcomingTimes[i]-now:double.MaxValue;
                 bool visible=ahead>=-nowDuration*1000&&ahead<=horizon;
                 var dot=noteDots[i];if(dot==null)continue;dot.gameObject.SetActive(visible);
                 if(!visible)continue;
@@ -142,8 +150,24 @@ namespace SashimiBoy
             int following=controller.NoteCursor+1;
             double followingDelta=following<phase.noteTimesMs.Length?phase.noteTimesMs[following]-now:delta+beat;
             int upcomingCount=Mathf.Min(noteDots.Length,phase.noteTimesMs.Length-controller.NoteCursor);
-            RefreshWorld(!resting&&count>0,Mathf.Clamp01(1-(float)(delta/(beat*2))),
+            // A global UI preview must not point at a not-yet-prepared body or
+            // fillet. Only currently eligible phase-local notes own world cues.
+            bool currentTarget=controller.NextNoteMs>=0&&NextForecastPhase==run.Phase;
+            RefreshWorld(currentTarget&&!resting&&count>0,Mathf.Clamp01(1-(float)(delta/(beat*2))),
                 Mathf.Clamp01(1-(float)(followingDelta/(beat*2))),pulse,upcomingCount);
+        }
+        private void CollectUpcomingNotes()
+        {
+            upcomingTimes.Clear();upcomingPhases.Clear();
+            for(int phase=controller.Run.Phase;phase<controller.chart.phases.Length&&upcomingTimes.Count<noteDots.Length;phase++)
+            {
+                var times=controller.chart.phases[phase].noteTimesMs;
+                int start=phase==controller.Run.Phase?controller.NoteCursor:0;
+                for(int note=start;note<times.Length&&upcomingTimes.Count<noteDots.Length;note++)
+                {upcomingTimes.Add(times[note]);upcomingPhases.Add(phase);}
+            }
+            NextForecastMs=upcomingTimes.Count>0?upcomingTimes[0]:-1d;
+            NextForecastPhase=upcomingPhases.Count>0?upcomingPhases[0]:-1;
         }
         private void RefreshLanePresentation(double now,bool resting)
         {
@@ -173,11 +197,18 @@ namespace SashimiBoy
         private void RefreshWorld(bool visible,float approach,float followingApproach,bool pulse,int upcomingCount)
         {
             if(worldCue==null)return;
-            worldCue.SetActive(visible);if(!visible)return;
+            worldCue.SetActive(visible);
+            if(!visible)
+            {
+                foreach(var ghost in ghostLines)if(ghost!=null)ghost.gameObject.SetActive(false);
+                return;
+            }
             worldCue.transform.position=CutPoint(0);
             float smooth=approach*approach*(3-2*approach);
             PoseBracket(leftBracket,rightBracket,smooth,1);
             float followingSmooth=followingApproach*followingApproach*(3-2*followingApproach);
+            if(forecastLeftBracket!=null)forecastLeftBracket.gameObject.SetActive(upcomingCount>1);
+            if(forecastRightBracket!=null)forecastRightBracket.gameObject.SetActive(upcomingCount>1);
             PoseBracket(forecastLeftBracket,forecastRightBracket,followingSmooth,1.16f);
             if(cutGuide!=null)
             {
@@ -221,6 +252,7 @@ namespace SashimiBoy
         }
         private void HideCues()
         {
+            NextForecastMs=-1d;NextForecastPhase=-1;upcomingTimes.Clear();upcomingPhases.Clear();
             if(worldCue!=null)worldCue.SetActive(false);
             if(rhythmLane!=null)rhythmLane.gameObject.SetActive(false);
             foreach(var dot in noteDots)if(dot!=null)dot.gameObject.SetActive(false);

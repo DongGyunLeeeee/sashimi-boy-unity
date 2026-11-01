@@ -25,7 +25,7 @@ namespace SashimiBoy
         [Serializable] private sealed class Snapshot
         {
             public string label, scene, utc, clockState, bodyState, saveJson;
-            public double songMs;
+            public double songMs,nextInputNoteMs,nextForecastNoteMs;
             public int phase, phaseHits, totalSlices, spawnedSlices, score, combo;
             public int[] filletCuts;
             public bool turned, turning, resultShown, clearRecorded;
@@ -41,8 +41,10 @@ namespace SashimiBoy
         {
             public int phase,quotaHits,quotaSlices,beforeEndSlices,settledSlices;
             public double deadlineMs,quotaSongMs,closestBeforeEndSongMs,settledSongMs,nextFirstNoteMs;
+            public double futurePreviewSongMs,futurePreviewNoteMs,futurePreviewLeadMs;
             public string initialPreparation,quotaPreparation,beforeEndPreparation,settledPreparation;
             public bool quotaObserved,beforeEndObserved,settled,settledBeforeNextNote,quotaCaptured,beforeEndCaptured,settledCaptured;
+            public bool futurePreviewObserved;
         }
         [Serializable] private sealed class Report
         {
@@ -198,7 +200,7 @@ namespace SashimiBoy
                 if(!activeUi&&next>=0d&&next-now>100d&&next-now<60000d/controller.chart.bpm)
                 {activeUi=true;yield return Capture("stage3-gameplay-upcoming-ui");}
                 if(!hitUi&&controller.Combo>0){hitUi=true;yield return Capture("stage3-gameplay-hit-ui");}
-                if(!restUi&&next<0d&&!controller.Run.Completed)
+                if(!restUi&&controller.Run.Phase==7&&next<0d&&!controller.Run.Completed)
                 {restUi=true;yield return Capture("stage3-gameplay-section-rest-ui");}
                 double first=controller.chart.phases[0].noteTimesMs[0];
                 if(!countdown&&controller.Run.Phase==0&&now>=first-60000d/controller.chart.bpm*4&&now<first)
@@ -240,6 +242,8 @@ namespace SashimiBoy
             Require(activeUi&&hitUi&&restUi&&report.phaseBoundaries.Count==8&&
                 report.phaseBoundaries.All(value=>value.quotaObserved&&value.beforeEndObserved&&value.settled),
                 "Actual DSP section-boundary/UI observations were incomplete; inspect phaseBoundaries.");
+            Require(report.phaseBoundaries.Where(value=>value.phase<7).All(value=>value.futurePreviewObserved),
+                "One or more next-section notes were hidden until the physical section transition.");
             report.coreCompleted = true; report.spawnedSlices = controller.SpawnedSlices; report.resultCount = 1;
             if (report.extendedRequested) yield return ExtendedDay3();
             Require(SaveHash(defaultSavePath) == report.defaultSaveHashBefore, "Default user save changed during the probe.");
@@ -328,6 +332,22 @@ namespace SashimiBoy
             {
                 item.quotaObserved=true;item.quotaSongMs=now;item.quotaHits=controller.Run.Hits;
                 item.quotaPreparation=PreparationSignature();item.quotaSlices=controller.SpawnedSlices;
+            }
+            if(current<7&&!item.futurePreviewObserved&&controller.NextNoteMs<0d)
+            {
+                double future=controller.chart.phases[current+1].noteTimesMs[0];
+                double lead=future-now;
+                // Sample inside the horizon, away from its one-frame edge;
+                // this observes the rendered HUD rather than forcing a refresh.
+                if(lead>0d&&lead<=60000d/controller.chart.bpm*controller.hudView.laneHorizonBeats-100d)
+                {
+                    var view=controller.hudView;
+                    Require(Math.Abs(view.NextForecastMs-future)<.1d&&view.rhythmLane.gameObject.activeInHierarchy&&
+                        view.noteDots[0].isActiveAndEnabled,
+                        "The next musical section must remain visible in the lane while its physical input is locked.");
+                    item.futurePreviewObserved=true;item.futurePreviewSongMs=now;
+                    item.futurePreviewNoteMs=future;item.futurePreviewLeadMs=lead;
+                }
             }
             if(now<item.deadlineMs)
             {
@@ -561,6 +581,7 @@ namespace SashimiBoy
                 snapshot.turned = controller.assembly.IsBackFacing; snapshot.turning = controller.assembly.IsTurningOver;
                 snapshot.resultShown = controller.ResultShown; snapshot.clearRecorded = controller.ClearRecorded;
                 var view=controller.hudView;
+                snapshot.nextInputNoteMs=controller.NextNoteMs;snapshot.nextForecastNoteMs=view.NextForecastMs;
                 CaptureUi(snapshot,view.shared,view.rhythmLane,view.restPrompt,view.spacePrompt,view.noteDots);
             }
             else

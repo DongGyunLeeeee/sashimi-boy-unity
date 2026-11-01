@@ -8,6 +8,8 @@ Stage3 knife authoring identifies the actual thin cutting edge instead of treati
 
 The Stage3 adapter follows the existing Stage1/2 active-note lane, narrow beat pulse, twelve-note SPACE tutorial, rest display, forecast brightness and taper, and current/required progress layout. It retains Stage3's approved 70% successful-note rule. Real gameplay screenshots must compare all three stages; idle BossDemo captures alone do not demonstrate presentation parity.
 
+The top lane forecasts the next four unresolved notes across musical sections, including while a passed section's physical operation is still finishing. This presentation forecast is separate from the controller's phase-local input target. Showing a future note never enables its judgement or changes a model early; world cutting cues and ghosts remain bound to the prepared current workpiece. An empty current section is not an empty song: rest-only presentation applies when there are no remaining song notes, while musical gaps use the global next-note distance. Actual Player evidence records a next-section preview while current-phase input remains locked.
+
 Use the targeted knife authoring batch for the pose/anchor correction. New full import/compile, EditMode/PlayMode, source/reference integrity, actual DSP Player capture and independent exact-head review remain pending until executed. Previous a2e12c8 PASS counts do not validate these changes. Owner visual/audio/physical-input/save checks, PR merge and Done remain pending.
 
 ---
