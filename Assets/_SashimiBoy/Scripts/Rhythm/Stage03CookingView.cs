@@ -164,7 +164,7 @@ namespace SashimiBoy
             if(gameCamera!=null)
             {
                 gameCamera.transform.position=body.eyeAnchor!=null?body.eyeAnchor.position:body.transform.position+new Vector3(0,eyeHeight,.27f);
-                Vector3 focus=new Vector3(workPoint.x,workPoint.y-.04f,-.1f);
+                Vector3 focus=workPoint+Vector3.down*.04f;
                 gameCamera.transform.rotation=Quaternion.LookRotation(focus-gameCamera.transform.position,Vector3.up);
             }
         }

@@ -135,7 +135,7 @@ namespace SashimiBoy.EditorTools
                         if(delta>0){cooking.AdvancePresentation(delta);controller.assembly.AdvancePresentation(delta);Invoke(controller,"GroundBody");}
                         Invoke(cooking,"LateUpdate");body.ApplyPose();
                         Vector3 currentWork=(Vector3)cooking.GetType().GetField("workPoint",BindingFlags.Instance|BindingFlags.NonPublic).GetValue(cooking);
-                        Vector3 focus=new Vector3(currentWork.x,currentWork.y-.04f,-.1f);
+                        Vector3 focus=currentWork+Vector3.down*.04f;
                         report.poses.Add(new StrokeCameraPose{phase=phase,ordinal=ordinal,requestedU=u,actualU=cooking.MotionProgress01,
                             striking=cooking.IsStriking,contactDelivered=cooking.ContactDelivered,fieldOfView=cooking.gameCamera.fieldOfView,
                             root=body.transform.position,rootRotation=body.transform.rotation,rootScale=body.transform.lossyScale,
