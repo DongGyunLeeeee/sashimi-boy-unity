@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using UnityEngine;
 namespace SashimiBoy
 {
@@ -32,6 +33,11 @@ namespace SashimiBoy
         private Quaternion fixedCameraRotation;
         public Vector3 SafeSupportTarget {get;private set;}
         public float SupportBladeClearance {get;private set;}
+        public float SupportSurfaceGap {get;private set;}=float.NegativeInfinity;
+        public int SupportMeshVertexCount=>supportSurface==null?0:supportSurface.VertexCount;
+        private SupportSurface supportSurface;
+        private Renderer[] knifeRenderers;
+        private Transform[] supportJoints;
         public void SetWorkPoint(Vector3 value) {workPoint=value;ready=true;}
         public void SetSupportPoint(Vector3 value) {supportPoint=value;hasSupportPoint=true;}
         public void ClearSupportPoint() {hasSupportPoint=false;}
@@ -181,17 +187,25 @@ namespace SashimiBoy
             body.leftRotation=Quaternion.Euler(0,90,0)*body.left.handWorldRest;
             Vector3 preferred=Vector3.Lerp(body.transform.position,stance,1-Mathf.Exp(-12*Time.deltaTime));
             body.ApplyWorkingPoseAtRoot(preferred);
-            // Validate the posed support fingers too, not only their palm target.
-            // Include a skin-width margin around the complete swept blade plane.
-            for(int pass=0;pass<2;pass++)
+            if(supportSurface==null)
             {
-                float clearance=float.PositiveInfinity;
-                foreach(var joint in body.left.hand.GetComponentsInChildren<Transform>())
-                    clearance=Mathf.Min(clearance,Vector3.Dot(joint.position-edgePoint,safeNormal));
-                SupportBladeClearance=clearance;
-                if(clearance>=.075f)break;
-                body.leftTarget+=safeNormal*(.075f-clearance);
+                supportSurface=new SupportSurface(body);
+                supportJoints=body.left.hand.GetComponentsInChildren<Transform>();
+                knifeRenderers=knifeRoot.GetComponentsInChildren<Renderer>(true);
+                if(knifeRenderers.Length==0)throw new InvalidOperationException("Stage3 requires actual provided knife renderer geometry.");
+            }
+            supportSurface.ValidateForPose(body);
+            // Joints alone omit the flesh around curled fingers. Evaluate only
+            // the cached hand-influenced mesh and its incident triangles using
+            // the exact four-weight skin, then re-fit the same grounded rig.
+            MeasureSupport(edgePoint,safeNormal);
+            for(int pass=0;pass<6;pass++)
+            {
+                float correction=Mathf.Max(.075f-SupportBladeClearance,.0205f-SupportSurfaceGap);
+                if(correction<=0f)break;
+                body.leftTarget+=safeNormal*correction;
                 body.ApplyWorkingPoseAtRoot(preferred);
+                MeasureSupport(edgePoint,safeNormal);
             }
             SafeSupportTarget=body.leftTarget;
             if(gameCamera!=null)
@@ -200,11 +214,135 @@ namespace SashimiBoy
                 {
                     // Author one stable view of the complete board. Neither the
                     // grounded reach solver nor per-cut grip rotation owns it.
-                    fixedCameraPosition=new Vector3(0,Mathf.Max(eyeHeight,workPoint.y+.72f),-.74f);
+                    fixedCameraPosition=new Vector3(0,Mathf.Max(eyeHeight,workPoint.y+.72f),-.20f);
                     fixedCameraRotation=Quaternion.LookRotation(new Vector3(0,workPoint.y-.04f,-.07f)-fixedCameraPosition,Vector3.up);
                     cameraPoseSet=true;
                 }
                 gameCamera.transform.SetPositionAndRotation(fixedCameraPosition,fixedCameraRotation);
+            }
+        }
+
+        private void MeasureSupport(Vector3 edgePoint,Vector3 normal)
+        {
+            SupportBladeClearance=float.PositiveInfinity;
+            foreach(var joint in supportJoints)
+                SupportBladeClearance=Mathf.Min(SupportBladeClearance,Vector3.Dot(joint.position-edgePoint,normal));
+            float toolMax=float.NegativeInfinity;
+            Vector3 absolute=new Vector3(Mathf.Abs(normal.x),Mathf.Abs(normal.y),Mathf.Abs(normal.z));
+            foreach(var renderer in knifeRenderers)
+            {
+                if(renderer==null)throw new InvalidOperationException("The cached Stage3 knife renderer changed during play.");
+                Bounds bounds=renderer.bounds;
+                toolMax=Mathf.Max(toolMax,Vector3.Dot(bounds.center,normal)+Vector3.Dot(bounds.extents,absolute));
+            }
+            SupportSurfaceGap=supportSurface.MinimumProjection(body,normal)-toolMax;
+            if(float.IsNaN(SupportSurfaceGap)||float.IsInfinity(SupportSurfaceGap))
+                throw new InvalidOperationException("Stage3 support surface or knife bounds produced a non-finite separation.");
+        }
+
+        private sealed class SupportSurface
+        {
+            // Pinned to the currently provided, source-preserving generated body.
+            // Asset/weight changes must fail visibly until their geometry contract
+            // is independently checked; silently using a partial hand is unsafe.
+            private const int SourceVertices=18976,ExpectedSelectedVertices=1190;
+            private readonly SkinnedMeshRenderer renderer;
+            private readonly Mesh mesh;
+            private readonly Transform hand;
+            private readonly Transform[] bones;
+            private readonly Matrix4x4[] bindposes,matrices;
+            private readonly int[] usedBones;
+            private readonly Vector3[] vertices;
+            private readonly BoneWeight[] weights;
+            public int VertexCount=>vertices.Length;
+
+            public SupportSurface(KevinBodyRig body)
+            {
+                hand=body.left.hand;
+                foreach(var candidate in body.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+                    if(candidate.sharedMesh!=null&&candidate.sharedMesh.name=="MS_RiggedBody_WithoutHead")
+                    {
+                        if(renderer!=null)throw new InvalidOperationException("Multiple supplied Stage3 body surfaces were bound.");
+                        renderer=candidate;
+                    }
+                if(renderer==null||hand==null)throw new InvalidOperationException("The supplied Stage3 body/support hand is missing.");
+                mesh=renderer.sharedMesh;
+                if(!mesh.isReadable||mesh.vertexCount!=SourceVertices)
+                    throw new InvalidOperationException("The supplied Stage3 body geometry changed; expected 18976 readable vertices.");
+                using(var influenceCounts=mesh.GetBonesPerVertex())
+                {
+                    if(influenceCounts.Length!=SourceVertices)throw new InvalidOperationException("Missing exact per-vertex skin influence counts.");
+                    foreach(byte count in influenceCounts)
+                        if(count==0||count>4)throw new InvalidOperationException("Stage3 support clearance requires the preserved one-to-four-weight skin representation.");
+                }
+                bones=renderer.bones;bindposes=mesh.bindposes;
+                if(bones.Length==0||bindposes.Length!=bones.Length)throw new InvalidOperationException("Invalid supplied body bone/bindpose identity.");
+                var allWeights=mesh.boneWeights;var allVertices=mesh.vertices;
+                if(allWeights.Length!=SourceVertices)throw new InvalidOperationException("The supplied Stage3 four-weight vertex array changed.");
+                var selected=new bool[SourceVertices];
+                bool IsHand(int index)=>index>=0&&index<bones.Length&&bones[index]!=null&&(bones[index]==hand||bones[index].IsChildOf(hand));
+                for(int i=0;i<allWeights.Length;i++)
+                {
+                    var w=allWeights[i];
+                    if((IsHand(w.boneIndex0)&&w.weight0>0)||(IsHand(w.boneIndex1)&&w.weight1>0)||
+                        (IsHand(w.boneIndex2)&&w.weight2>0)||(IsHand(w.boneIndex3)&&w.weight3>0))selected[i]=true;
+                }
+                var expanded=(bool[])selected.Clone();var triangles=mesh.triangles;
+                for(int i=0;i<triangles.Length;i+=3)
+                    if(selected[triangles[i]]||selected[triangles[i+1]]||selected[triangles[i+2]])
+                        expanded[triangles[i]]=expanded[triangles[i+1]]=expanded[triangles[i+2]]=true;
+                var points=new List<Vector3>();var influences=new List<BoneWeight>();var needed=new bool[bones.Length];
+                void NeedBone(int index,float weight)
+                {
+                    if(weight<=0)return;
+                    if(index<0||index>=bones.Length||bones[index]==null)throw new InvalidOperationException("Missing nonzero support skin bone binding.");
+                    needed[index]=true;
+                }
+                for(int i=0;i<expanded.Length;i++)if(expanded[i])
+                {
+                    var w=allWeights[i];
+                    float sum=w.weight0+w.weight1+w.weight2+w.weight3;
+                    if(Mathf.Abs(sum-1f)>.0001f)throw new InvalidOperationException("The supplied support skin weights are not normalized.");
+                    NeedBone(w.boneIndex0,w.weight0);NeedBone(w.boneIndex1,w.weight1);NeedBone(w.boneIndex2,w.weight2);NeedBone(w.boneIndex3,w.weight3);
+                    points.Add(allVertices[i]);influences.Add(w);
+                }
+                if(points.Count!=ExpectedSelectedVertices)throw new InvalidOperationException("The exact support-hand plus incident-triangle selection changed; expected 1190 vertices, got "+points.Count+".");
+                vertices=points.ToArray();weights=influences.ToArray();matrices=new Matrix4x4[bones.Length];
+                var used=new List<int>();for(int i=0;i<needed.Length;i++)if(needed[i])used.Add(i);usedBones=used.ToArray();
+                ValidateForPose(body);
+            }
+
+            public void ValidateForPose(KevinBodyRig body)
+            {
+                if(renderer==null||renderer.sharedMesh!=mesh||mesh.vertexCount!=SourceVertices||body.left.hand!=hand)
+                    throw new InvalidOperationException("Stage3 support skin source/hand identity changed during play.");
+                if((renderer.quality!=SkinQuality.Auto&&renderer.quality!=SkinQuality.Bone4)||
+                    (renderer.quality==SkinQuality.Auto&&QualitySettings.skinWeights!=SkinWeights.FourBones&&QualitySettings.skinWeights!=SkinWeights.Unlimited))
+                    throw new InvalidOperationException("Stage3 support clearance requires actual four-weight skin rendering quality.");
+                // bones[] is a serialized reference array; transforms may rotate,
+                // but no referenced skin bone may be removed or substituted.
+                var currentBones=renderer.bones;
+                if(currentBones.Length!=bones.Length)throw new InvalidOperationException("Stage3 support bone array changed during play.");
+                for(int i=0;i<bones.Length;i++)if(currentBones[i]!=bones[i]||bones[i]==null)
+                    throw new InvalidOperationException("Stage3 support bone identity changed during play.");
+            }
+
+            public float MinimumProjection(KevinBodyRig body,Vector3 normal)
+            {
+                if(renderer==null||renderer.sharedMesh!=mesh||mesh.vertexCount!=SourceVertices||body.left.hand!=hand)
+                    throw new InvalidOperationException("Stage3 support skin source/hand identity changed during a pose solve.");
+                foreach(int index in usedBones)matrices[index]=bones[index].localToWorldMatrix*bindposes[index];
+                float minimum=float.PositiveInfinity;
+                for(int i=0;i<vertices.Length;i++)
+                {
+                    Vector3 point=vertices[i];var w=weights[i];Vector3 world=Vector3.zero;
+                    if(w.weight0>0)world+=matrices[w.boneIndex0].MultiplyPoint3x4(point)*w.weight0;
+                    if(w.weight1>0)world+=matrices[w.boneIndex1].MultiplyPoint3x4(point)*w.weight1;
+                    if(w.weight2>0)world+=matrices[w.boneIndex2].MultiplyPoint3x4(point)*w.weight2;
+                    if(w.weight3>0)world+=matrices[w.boneIndex3].MultiplyPoint3x4(point)*w.weight3;
+                    minimum=Mathf.Min(minimum,Vector3.Dot(world,normal));
+                }
+                return minimum;
             }
         }
     }

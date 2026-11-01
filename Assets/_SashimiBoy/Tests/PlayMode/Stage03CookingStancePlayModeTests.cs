@@ -25,6 +25,11 @@ namespace SashimiBoy.Tests
         bool observedCamera;
         Vector3 cameraPosition;
         Quaternion cameraRotation;
+        SkinnedMeshRenderer supportRenderer;
+        int[] supportIndices;
+        Mesh supportBake;
+        readonly List<Vector3> supportBakedVertices=new List<Vector3>();
+        Renderer[] knifeRenderers;
 
         [UnitySetUp]
         public IEnumerator SetUp()
@@ -46,11 +51,14 @@ namespace SashimiBoy.Tests
             Assert.That(controller, Is.Not.Null);
             Call(controller,"ResetRun"); // Normal entry autoplays; this fixture drives controlled input timestamps.
             observedCamera=false;
+            supportRenderer=null;supportIndices=null;knifeRenderers=null;
         }
 
         [TearDown]
         public void TearDown()
         {
+            if(supportBake!=null)UnityEngine.Object.DestroyImmediate(supportBake);
+            supportBake=null;supportBakedVertices.Clear();
             if (controller != null) Call(Get(controller, "clock"), "Stop");
             if (save != null)
             {
@@ -141,12 +149,59 @@ namespace SashimiBoy.Tests
                 var rotation=camera.transform.rotation;
                 Assert.That(Vector4.Distance(new Vector4(rotation.x,rotation.y,rotation.z,rotation.w),new Vector4(cameraRotation.x,cameraRotation.y,cameraRotation.z,cameraRotation.w)),Is.LessThan(.00001f),"Cut direction cannot rotate the gameplay camera: "+context);
                 Assert.That(Value<float>(cooking,"SupportBladeClearance"),Is.GreaterThanOrEqualTo(.0749f),"Actual posed support-hand and finger joints must remain clear of the swept blade plane: "+context);
+                AssertSupportSurface(cooking,body,left,context);
                 Assert.That(Vector3.Distance(((Transform)Get(left,"palm")).position,Value<Vector3>(cooking,"SafeSupportTarget")),Is.LessThanOrEqualTo(.015f),context);
                 if (Time.realtimeSinceStartup >= deadline &&
                     (Value<bool>(cooking, "IsStriking") || Value<int>(controller, "PendingVisualCuts") > 0))
                     Assert.Fail("The accepted stroke did not complete its actual presentation: " + context);
             }
             while (Value<bool>(cooking, "IsStriking") || Value<int>(controller, "PendingVisualCuts") > 0);
+        }
+
+        void AssertSupportSurface(object cooking,Component body,object left,string context)
+        {
+            if(supportRenderer==null)
+            {
+                supportRenderer=body.GetComponentsInChildren<SkinnedMeshRenderer>(true)
+                    .Single(renderer=>renderer.sharedMesh!=null&&renderer.sharedMesh.name=="MS_RiggedBody_WithoutHead");
+                var mesh=supportRenderer.sharedMesh;var weights=mesh.boneWeights;var bones=supportRenderer.bones;
+                var hand=(Transform)Get(left,"hand");var selected=new bool[mesh.vertexCount];
+                bool IsHand(int index)=>index>=0&&index<bones.Length&&bones[index]!=null&&(bones[index]==hand||bones[index].IsChildOf(hand));
+                for(int i=0;i<weights.Length;i++)
+                {
+                    var w=weights[i];
+                    selected[i]=(IsHand(w.boneIndex0)&&w.weight0>0)||(IsHand(w.boneIndex1)&&w.weight1>0)||
+                        (IsHand(w.boneIndex2)&&w.weight2>0)||(IsHand(w.boneIndex3)&&w.weight3>0);
+                }
+                var expanded=(bool[])selected.Clone();var triangles=mesh.triangles;
+                for(int i=0;i<triangles.Length;i+=3)
+                    if(selected[triangles[i]]||selected[triangles[i+1]]||selected[triangles[i+2]])
+                        expanded[triangles[i]]=expanded[triangles[i+1]]=expanded[triangles[i+2]]=true;
+                supportIndices=Enumerable.Range(0,expanded.Length).Where(i=>expanded[i]).ToArray();
+                Assert.That(supportIndices.Length,Is.EqualTo(1190),"Validate the complete provided support hand and its incident triangles.");
+                supportBake=new Mesh{name="Stage03IndependentSupportSkinValidation"};
+                knifeRenderers=((Transform)Get(cooking,"knifeRoot")).GetComponentsInChildren<Renderer>(true);
+            }
+            Transform knife=(Transform)Get(cooking,"knifeRoot");
+            Vector3 axis=Vector3.ProjectOnPlane(knife.forward,Vector3.up).normalized;
+            Vector3 normal=Vector3.Cross(Vector3.up,axis).normalized;
+            if(Vector3.Dot(normal,Vector3.left)<-.01f)normal=-normal;
+            float toolMax=float.NegativeInfinity;
+            Vector3 absolute=new Vector3(Mathf.Abs(normal.x),Mathf.Abs(normal.y),Mathf.Abs(normal.z));
+            foreach(var renderer in knifeRenderers)
+                toolMax=Mathf.Max(toolMax,Vector3.Dot(renderer.bounds.center,normal)+Vector3.Dot(renderer.bounds.extents,absolute));
+            // Independent native skinning: do not reproduce the runtime's
+            // weighted bone/bindpose multiplication in this regression.
+            supportRenderer.BakeMesh(supportBake,false);supportBake.GetVertices(supportBakedVertices);
+            float handMin=float.PositiveInfinity;
+            foreach(int index in supportIndices)
+                handMin=Mathf.Min(handMin,Vector3.Dot(supportRenderer.transform.TransformPoint(supportBakedVertices[index]),normal));
+            float actualGap=handMin-toolMax;
+            Assert.That(actualGap,Is.GreaterThanOrEqualTo(.0199f),"Actual native-baked hand surface must clear the conservative knife bounds by 2cm: "+context);
+            Assert.That(Value<int>(cooking,"SupportMeshVertexCount"),Is.EqualTo(supportIndices.Length));
+            Assert.That(Value<float>(cooking,"SupportSurfaceGap"),Is.GreaterThanOrEqualTo(.0199f),context);
+            Assert.That(Value<float>(cooking,"SupportSurfaceGap"),Is.EqualTo(actualGap).Within(.00005f),
+                "Cached CPU skinning must agree with independent BakeMesh(false) in world space: "+context);
         }
 
         static void AssertPalm(object arm, Vector3 target, string context)
