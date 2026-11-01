@@ -67,6 +67,7 @@ namespace SashimiBoy.EditorTools
             public float requestedU,actualU,fieldOfView,rightError,leftError,cameraBodyForwardDot,authoredSweepDot;
             public bool striking,contactDelivered,supportMeshInspected;
             public int supportMeshVertices;
+            public string supportHandBone;
             public float supportMeshPlaneGap;
             public Vector3 root,eye,camera,cameraForward,focus,workPoint,contact,grip,gripContactOffset;
             public Vector3 authoredBlade,sweepAxis,actualBlade;
@@ -78,6 +79,7 @@ namespace SashimiBoy.EditorTools
         {
             public string evidenceKind="Editor-only ordered actual BeginStroke/AdvancePresentation/LateUpdate samples, visual part transitions and fresh posed Game-camera renders. No DSP, judged gameplay, reward/save, fixed-stance feasibility or Owner PASS is asserted.";
             public string scope;
+            public string supportGeometryScope="Selected first/quota/last strokes at six poses each; all nonzero hand/finger influenced vertices plus their incident-triangle vertices; generated body has the preserved four-weight representation. Positive plane gap proves separation only at the recorded poses, not human approval.";
             public List<StrokeCameraPose> poses=new List<StrokeCameraPose>();
         }
 
@@ -123,7 +125,7 @@ namespace SashimiBoy.EditorTools
                         bool inspectGeometry=ordinal==0||ordinal==count-1||ordinal==controller.Run.RequiredHits-1;
                         var gap=inspectGeometry?InspectSupportMeshPlane(cooking):(vertices:0,gap:0f);
                         report.poses.Add(new StrokeCameraPose{phase=phase,ordinal=ordinal,requestedU=u,actualU=cooking.MotionProgress01,
-                            supportMeshInspected=inspectGeometry,supportMeshVertices=gap.vertices,supportMeshPlaneGap=gap.gap,
+                            supportMeshInspected=inspectGeometry,supportMeshVertices=gap.vertices,supportMeshPlaneGap=gap.gap,supportHandBone=body.left.hand.name,
                             striking=cooking.IsStriking,contactDelivered=cooking.ContactDelivered,fieldOfView=cooking.gameCamera.fieldOfView,
                             root=body.transform.position,rootRotation=body.transform.rotation,rootScale=body.transform.lossyScale,
                             eye=body.eyeAnchor.position,camera=cooking.gameCamera.transform.position,cameraForward=cooking.gameCamera.transform.forward,
@@ -175,16 +177,25 @@ namespace SashimiBoy.EditorTools
             {
                 var mesh=renderer.sharedMesh;if(mesh==null)continue;
                 var weights=mesh.boneWeights;var bones=renderer.bones;
-                var indices=new List<int>();
+                var selected=new bool[mesh.vertexCount];
+                using(var perVertex=mesh.GetBonesPerVertex())
+                    foreach(byte influences in perVertex)if(influences>4)throw new InvalidOperationException("The support inspection requires the exact generated four-weight representation.");
                 bool IsHand(int index)=>index>=0&&index<bones.Length&&bones[index]!=null&&(bones[index]==hand||bones[index].IsChildOf(hand));
                 for(int i=0;i<weights.Length;i++)
                 {
                     var w=weights[i];
                     float influence=(IsHand(w.boneIndex0)?w.weight0:0)+(IsHand(w.boneIndex1)?w.weight1:0)+
                         (IsHand(w.boneIndex2)?w.weight2:0)+(IsHand(w.boneIndex3)?w.weight3:0);
-                    if(influence>.01f)indices.Add(i);
+                    if(influence>0f)selected[i]=true;
                 }
-                if(indices.Count==0)continue;
+                if(!selected.Any(value=>value))continue;
+                // Include whole incident triangles so a low-weight seam vertex
+                // or the transition at the wrist cannot be silently omitted.
+                var expanded=(bool[])selected.Clone();var triangles=mesh.triangles;
+                for(int i=0;i<triangles.Length;i+=3)
+                    if(selected[triangles[i]]||selected[triangles[i+1]]||selected[triangles[i+2]])
+                        expanded[triangles[i]]=expanded[triangles[i+1]]=expanded[triangles[i+2]]=true;
+                var indices=Enumerable.Range(0,expanded.Length).Where(i=>expanded[i]).ToArray();
                 var baked=new Mesh();
                 try
                 {

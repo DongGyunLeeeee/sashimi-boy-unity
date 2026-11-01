@@ -14,19 +14,31 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::SashimiBoy.Stage03FilletCutCache
   modelRole: BackFillet
   remainingMeshes:
-  - {fileID: 4300000, guid: 9ff256f6045436f4ab7da85b07b993f7, type: 2}
+  - {fileID: 4300000, guid: b3b9031203b6716488a1884728240daa, type: 2}
   - {fileID: 4300000, guid: ddda44643f306d3448f45b62bbd61b23, type: 2}
   - {fileID: 4300000, guid: 736930ea369ad8448aeb9143ff2072fb, type: 2}
   - {fileID: 4300000, guid: 82dbeb50bd3e65149b612f86ced866da, type: 2}
   - {fileID: 4300000, guid: f697564db57faac419c12bfa06a10c8d, type: 2}
   - {fileID: 4300000, guid: b5587b8e1d43aa249a661509db25451a, type: 2}
+  - {fileID: 4300000, guid: f6cb3bcc90a815d47887816fc3522e8b, type: 2}
+  - {fileID: 4300000, guid: 9bc529d1fc0c5eb48834656e5afec5bf, type: 2}
+  - {fileID: 4300000, guid: 94483ef266623f241b18843dea2e5688, type: 2}
+  - {fileID: 4300000, guid: 2145016f13b2ea34692780e7ffa01e2a, type: 2}
+  - {fileID: 4300000, guid: c72b149bbc782c34d8cfda44ede05086, type: 2}
+  - {fileID: 4300000, guid: 2f518c69f46bcdd43adf280e2e29b446, type: 2}
   - {fileID: 0}
   surfaceMaterial: {fileID: 2100000, guid: 121ac1931fa65814a9fde6a136b190b3, type: 2}
   capMaterial: {fileID: 2100000, guid: b6b3ca2683b53f94ab70c77cfcd94056, type: 2}
   cutPositions:
+  - -0.28568086
   - -0.22857428
+  - -0.17146769
   - -0.1143611
+  - -0.05725453
   - -0.00014793873
+  - 0.05695863
   - 0.114065245
+  - 0.17117181
   - 0.22827838
+  - 0.28538498
   - 0.34249157
