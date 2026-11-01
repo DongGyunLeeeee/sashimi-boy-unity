@@ -27,7 +27,7 @@ MonoBehaviour:
   - {fileID: 4300000, guid: 33bfcc213e12fe34cabdc4da50ec63d6, type: 2}
   - {fileID: 4300000, guid: 88b30829c4ed8a34191818a9d02a0e8b, type: 2}
   - {fileID: 0}
-  surfaceMaterial: {fileID: 2100000, guid: 12986479d27f46649afdc107e6b74af6, type: 2}
+  surfaceMaterial: {fileID: 2100000, guid: afca25e906ce95e48acf255c2e081913, type: 2}
   capMaterial: {fileID: 2100000, guid: 136d45b9b201d9a4abf65047a8f70366, type: 2}
   cutPositions:
   - -0.2853954

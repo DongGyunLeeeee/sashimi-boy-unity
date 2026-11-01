@@ -22,23 +22,23 @@
         {
             "role": "FrontFillet",
             "sourceMeshPath": "Assets/_SashimiBoy/Art/Generated/Stage03Flounder/Meshes/MS_FrontWholeFillet.asset",
-            "sourceDependencyHash": "7d72c95618ececb01ac5a56a1770b2f6",
+            "sourceDependencyHash": "e9c7868bc79590e5d5f1c506fdd1827c",
             "cachePath": "Assets/_SashimiBoy/Art/Generated/Stage03FilletCuts/FrontFilletCache.asset",
             "cutsPerFillet": 12,
-            "sourceVertices": 184316,
+            "sourceVertices": 247680,
             "remainingVertices": [
-                184316,
-                125666,
-                122845,
-                118566,
-                110870,
-                100635,
-                88241,
-                75022,
-                62816,
-                51418,
-                36683,
-                22100
+                247680,
+                127002,
+                124141,
+                119814,
+                112094,
+                101814,
+                89376,
+                76091,
+                63807,
+                52345,
+                37498,
+                22726
             ],
             "surfaceTriangles": [
                 171275,
@@ -176,9 +176,9 @@
                 81038,
                 72198,
                 62262,
-                51728,
+                51725,
                 40882,
-                30521,
+                30525,
                 19415
             ],
             "surfaceTriangles": [
@@ -204,9 +204,9 @@
                 494,
                 579,
                 549,
-                571,
+                570,
                 636,
-                580,
+                582,
                 584
             ],
             "sectionIntersectionSplits": [
