@@ -154,6 +154,9 @@ namespace SashimiBoy
             PoseKnife(MotionProgress01);
             var stance=standingPosition;stance.x=Mathf.Clamp(workPoint.x-.14f,-.65f,.55f);
             body.working=true;
+            // Bend at the waist so the supplied shorter arms can work with
+            // the grounded feet farther back, keeping the eyes behind the cut.
+            body.workingLeanDegrees=40f;
             body.rightTarget=grip.position;
             body.rightRotation=knifeRoot.rotation*Quaternion.Euler(0,180,0)*body.right.handWorldRest;
             body.leftTarget=hasSupportPoint?supportPoint:workPoint+new Vector3(-.13f,.012f,-.035f);
