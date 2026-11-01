@@ -58,9 +58,9 @@ namespace SashimiBoy.EditorTools
             var backFlesh = new FleshUvField(back, 1f);
             Mesh frontWhole = BuildWholeFillet(front, true, frontFlesh);
             Mesh backWhole = BuildWholeFillet(back, false, backFlesh);
-            SaveDerived("FrontWholeFillet", "FrontFillet", frontWhole, new[] { SourceMaterial("FrontFillet") },
+            frontWhole = SaveDerived("FrontWholeFillet", "FrontFillet", frontWhole, new[] { SourceMaterial("FrontFillet") },
                 "Rigid longitudinal 180-degree rotation; existing source geometry and aspect ratio retained. All UVs sampled from the supplied flesh side, including the former skin underside.", "FrontFillet", 0, reports);
-            SaveDerived("BackWholeFillet", "BackFillet", backWhole, new[] { SourceMaterial("BackFillet") },
+            backWhole = SaveDerived("BackWholeFillet", "BackFillet", backWhole, new[] { SourceMaterial("BackFillet") },
                 "Existing single flesh fillet, source aspect ratio and surface retained; no duplicate/composite or negative scale.", "BackFillet", 0, reports);
 
             Mesh frontBody = SourceMesh("HeadRemovedFish"), backBody = SourceMesh("FilletRemoved2");
@@ -287,7 +287,7 @@ namespace SashimiBoy.EditorTools
             mesh.RecalculateBounds(); mesh.RecalculateTangents();
             return mesh;
         }
-        private static void SaveDerived(string role, string sourceRole, Mesh mesh, Material[] materials,
+        private static Mesh SaveDerived(string role, string sourceRole, Mesh mesh, Material[] materials,
             string operation, string fleshRole, int selected, List<PhysicalSideGeometry> reports)
         {
             mesh.name = "MS_" + role;
@@ -330,6 +330,7 @@ namespace SashimiBoy.EditorTools
                 rotationEuler = role == "FrontWholeFillet" ? new Vector3(0, 0, 180) : Vector3.zero,
                 sourceUnchanged = false
             });
+            return stored;
         }
 
         private static void BindAssembly()
