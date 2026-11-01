@@ -279,7 +279,7 @@ namespace SashimiBoy
                         next.songTimeSeconds-now>0.1d&&next.songTimeSeconds-now<timing.BeatLengthSeconds)
                     {active=true;yield return Capture("reference-"+name+"-gameplay-upcoming");}
                     next=timing.activeNoteTracker.NextActiveNote;now=timing.SongTimeSeconds;
-                    if(next!=null&&Math.Abs(now-next.songTimeSeconds)<=.020d)
+                    if(timing.CurrentSection==Stage01SalmonSection.Gameplay&&next!=null&&Math.Abs(now-next.songTimeSeconds)<=.020d)
                     {
                         timing.SendMessage("ResolveGameplayInput",now,SendMessageOptions.RequireReceiver);
                         if(!hit){hit=true;yield return Capture("reference-"+name+"-gameplay-hit");}

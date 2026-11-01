@@ -43,8 +43,21 @@ namespace SashimiBoy.Tests
             Assert.That(contact.localPosition.y, Is.EqualTo(edgeY).Within(.001f), "Contact must be on the thin bevel, not merely an arbitrary low point.");
             Assert.That(Vector3.Dot(knife.up, Vector3.down), Is.GreaterThan(.999f), "The mesh's sharp +Y edge must face the fish.");
             Vector3 spineWorld = knife.TransformPoint(new Vector3(contact.localPosition.x, min, contact.localPosition.z));
-            Assert.That(spineWorld.y - contact.position.y, Is.GreaterThan(.15f), "The dull spine stays above the actual cutting edge.");
-            Assert.That(grip.position.y - contact.position.y, Is.GreaterThan(.07f), "The hilt remains above the cut surface.");
+            // These are real mesh/anchor distances in the knife frame. The
+            // scene wrapper scales them (currently 0.27); local model metres
+            // must not be compared with an unscaled world-space threshold.
+            float localSpineGap = contact.localPosition.y - min;
+            Assert.That(localSpineGap, Is.GreaterThan(0f));
+            Vector3 expectedSpineOffset = knife.TransformVector(Vector3.down * localSpineGap);
+            Vector3 actualSpineOffset = spineWorld - contact.position;
+            Assert.That(Vector3.Dot(actualSpineOffset.normalized, Vector3.up), Is.GreaterThan(.999f),
+                "The real dull spine stays above the cutting edge after the positive rotation and scene scale.");
+            Assert.That(Vector3.Distance(actualSpineOffset, expectedSpineOffset), Is.LessThan(.000001f));
+            Assert.That(contact.localPosition.y - grip.localPosition.y, Is.GreaterThan(0f));
+            Vector3 expectedGripOffset = knife.TransformVector(grip.localPosition - contact.localPosition);
+            Assert.That(expectedGripOffset.y, Is.GreaterThan(0f), "The supplied hilt must be above the real edge after rotation.");
+            Assert.That(grip.position.y - contact.position.y, Is.EqualTo(expectedGripOffset.y).Within(.000001f),
+                "The hilt's world clearance follows the actual source anchor and positive wrapper scale.");
             foreach (var node in knife.GetComponentsInChildren<Transform>(true))
                 Assert.That(node.localScale.x > 0 && node.localScale.y > 0 && node.localScale.z > 0, Is.True);
         }
