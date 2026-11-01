@@ -30,6 +30,19 @@ namespace SashimiBoy
             public int[] filletCuts;
             public bool turned, turning, resultShown, clearRecorded;
             public float maximumObservedGripError;
+            public bool baselineGameplay;
+            public string baselineSection;
+            public int baselinePhase,baselineScore,baselineCombo,baselineUnresolvedNotes;
+            public string qualityLabel,requirementLabel,remainingLabel,instructionLabel;
+            public bool noteLaneVisible,restPromptVisible,spacePromptVisible;
+            public int visibleUpcomingNotes;
+        }
+        [Serializable] private sealed class PhaseBoundaryEvidence
+        {
+            public int phase,quotaHits,quotaSlices,beforeEndSlices,settledSlices;
+            public double deadlineMs,quotaSongMs,closestBeforeEndSongMs,settledSongMs,nextFirstNoteMs;
+            public string initialPreparation,quotaPreparation,beforeEndPreparation,settledPreparation;
+            public bool quotaObserved,beforeEndObserved,settled,settledBeforeNextNote,quotaCaptured,beforeEndCaptured,settledCaptured;
         }
         [Serializable] private sealed class Report
         {
@@ -49,6 +62,8 @@ namespace SashimiBoy
             public List<HitEvidence> hits = new List<HitEvidence>();
             public List<string> captures = new List<string>();
             public List<string> errorLogs = new List<string>();
+            public List<PhaseBoundaryEvidence> phaseBoundaries = new List<PhaseBoundaryEvidence>();
+            public string baselineInputMethod = "Development-only synthetic SendMessage to the unchanged Stage1/2 ResolveGameplayInput path, at actual DSP song time. This is not physical input verification.";
         }
 
         private static bool initialized;
@@ -164,6 +179,7 @@ namespace SashimiBoy
 
             float coreDeadline = Time.realtimeSinceStartup + 240f;
             bool head = false, frontSkin=false,backSkin=false,front = false, turned = false, back = false, slice = false, cap = false, plate = false, countdown=false;
+            bool activeUi=false,hitUi=false,restUi=false;
             while (!controller.ResultShown)
             {
                 Require(Time.realtimeSinceStartup < coreDeadline, "Stage3 real-time playback exceeded 240 seconds.");
@@ -171,9 +187,25 @@ namespace SashimiBoy
                 Require(controller.clock.State != AudioClockState.Faulted, "AudioClock fault: " + controller.clock.LastError);
                 double next = controller.NextNoteMs;
                 double now = controller.clock.SongTimeMs;
+                ObservePhaseBoundaries(now);
+                foreach(var settled in report.phaseBoundaries.Where(value=>value.settled&&!value.settledCaptured).ToArray())
+                {settled.settledCaptured=true;yield return Capture("phase-"+settled.phase+"-after-boundary-settled");}
+                var boundary=report.phaseBoundaries.LastOrDefault(value=>value.phase==controller.Run.Phase);
+                if(boundary!=null&&boundary.quotaObserved&&!boundary.quotaCaptured)
+                {boundary.quotaCaptured=true;yield return Capture("phase-"+boundary.phase+"-quota-held");}
+                if(boundary!=null&&!boundary.beforeEndCaptured&&now>=boundary.deadlineMs-180d&&now<boundary.deadlineMs)
+                {boundary.beforeEndCaptured=true;yield return Capture("phase-"+boundary.phase+"-before-musical-end");}
+                if(!activeUi&&next>=0d&&next-now>100d&&next-now<60000d/controller.chart.bpm)
+                {activeUi=true;yield return Capture("stage3-gameplay-upcoming-ui");}
+                if(!hitUi&&controller.Combo>0){hitUi=true;yield return Capture("stage3-gameplay-hit-ui");}
+                if(!restUi&&next<0d&&!controller.Run.Completed)
+                {restUi=true;yield return Capture("stage3-gameplay-section-rest-ui");}
                 double first=controller.chart.phases[0].noteTimesMs[0];
                 if(!countdown&&controller.Run.Phase==0&&now>=first-60000d/controller.chart.bpm*4&&now<first)
                 {countdown=true;yield return Capture("countdown");}
+                // Capturing yields frames. Always sample DSP again instead of
+                // judging with a timestamp cached before one or more PNGs.
+                next=controller.NextNoteMs;now=controller.clock.SongTimeMs;
                 if (next >= 0d && Math.Abs(now - next) <= 20d)
                 {
                     int phase = controller.Run.Phase, ordinal = controller.Run.Hits;
@@ -198,12 +230,16 @@ namespace SashimiBoy
                 if (!plate && controller.SpawnedSlices == 24) { plate = true; yield return Capture("slice-twenty-four"); }
                 yield return null;
             }
+            ObservePhaseBoundaries(controller.clock.SongTimeMs);
             yield return Capture("stage-result");
             Require(head && frontSkin && backSkin && front && turned && back && slice && cap && plate, "One or more presentation milestones were not observed.");
             Require(controller.Run.Completed && controller.Run.TotalSlices == 24 && controller.SpawnedSlices == 24,
                 "Result did not contain two actually completed fillets and exactly 24 spawned slices.");
             Require(controller.ClearRecorded && SaveManager.Instance.Current.IsStageCleared(SashimiBoyConstants.StageIds.Sole),
                 "Stage3 clear/reward was not recorded.");
+            Require(activeUi&&hitUi&&restUi&&report.phaseBoundaries.Count==8&&
+                report.phaseBoundaries.All(value=>value.quotaObserved&&value.beforeEndObserved&&value.settled),
+                "Actual DSP section-boundary/UI observations were incomplete; inspect phaseBoundaries.");
             report.coreCompleted = true; report.spawnedSlices = controller.SpawnedSlices; report.resultCount = 1;
             if (report.extendedRequested) yield return ExtendedDay3();
             Require(SaveHash(defaultSavePath) == report.defaultSaveHashBefore, "Default user save changed during the probe.");
@@ -221,10 +257,87 @@ namespace SashimiBoy
                 yield return WaitScene(name);
                 yield return new WaitForSecondsRealtime(.5f);
                 var baseline=FindAnyObjectByType<Stage01SalmonHUD>();
-                Require(baseline!=null&&baseline.ownerJudgementVisuals!=null,"The baseline HUD reference is incomplete.");
-                baseline.ShowReadableJudgement("NASTY  0ms",new Color(.45f,1f,.73f));
-                yield return Capture("reference-"+name+"-hud");
-                var clock=FindAnyObjectByType<AudioClock>();if(clock!=null)clock.Stop();
+                var timing=FindAnyObjectByType<Stage01SalmonTimingScaffold>();
+                Require(baseline!=null&&baseline.ownerJudgementVisuals!=null&&timing!=null&&timing.activeNoteTracker!=null,
+                    "The baseline gameplay HUD reference is incomplete.");
+                Require(timing.RetryStage()&&timing.StartStagePlayback(),"Baseline stage transport did not initialize.");
+                var first=timing.activeNoteTracker.NextActiveNote;
+                Require(first!=null,"The baseline has no actual gameplay notes.");
+                // Only skip the demonstration. The unchanged gameplay updater,
+                // chart, judgement and presentation then run at real DSP time.
+                Require(timing.audioClock.PlayFromMilliseconds(Math.Max(0d,(first.songTimeSeconds-timing.BeatLengthSeconds*2d)*1000d)),
+                    "Could not seek to the baseline gameplay pre-roll.");
+                bool active=false,hit=false,quota=false,rest=false;
+                var cue=FindAnyObjectByType<SliceCuePresenter>();
+                float deadline=Time.realtimeSinceStartup+60f;
+                while(timing.PhasePerformance.PhaseIndex==0)
+                {
+                    Require(Time.realtimeSinceStartup<deadline&&!timing.PhasePerformance.Failed,
+                        "Baseline first musical section did not complete normally.");
+                    var next=timing.activeNoteTracker.NextActiveNote;double now=timing.SongTimeSeconds;
+                    if(!active&&timing.CurrentSection==Stage01SalmonSection.Gameplay&&next!=null&&
+                        next.songTimeSeconds-now>0.1d&&next.songTimeSeconds-now<timing.BeatLengthSeconds)
+                    {active=true;yield return Capture("reference-"+name+"-gameplay-upcoming");}
+                    next=timing.activeNoteTracker.NextActiveNote;now=timing.SongTimeSeconds;
+                    if(next!=null&&Math.Abs(now-next.songTimeSeconds)<=.020d)
+                    {
+                        timing.SendMessage("ResolveGameplayInput",now,SendMessageOptions.RequireReceiver);
+                        if(!hit){hit=true;yield return Capture("reference-"+name+"-gameplay-hit");}
+                    }
+                    var gate=timing.semanticBeatmap.chart.phases[0];
+                    double required=gate.metric==Semantics.GateMetric.Ratio?gate.requiredQuality*gate.expectedNoteCount:gate.requiredQuality;
+                    if(!quota&&timing.PhasePerformance.PhaseIndex==0&&timing.PhasePerformance.PhasePoints>=required)
+                    {quota=true;yield return Capture("reference-"+name+"-quota-waits-for-end");}
+                    if(!rest&&cue!=null&&cue.IsResting)
+                    {rest=true;yield return Capture("reference-"+name+"-gameplay-rest");}
+                    yield return null;
+                }
+                Require(active&&hit&&quota&&timing.CurrentSection==Stage01SalmonSection.Gameplay,
+                    "Baseline captures did not observe actual gameplay with a successful first section.");
+                yield return Capture("reference-"+name+"-section-boundary");
+                timing.audioClock.Stop();
+            }
+        }
+
+        private string PreparationSignature()=>controller.assembly.BodyState+"|head="+controller.assembly.HeadRemoved+
+            "|skins="+controller.assembly.RemovedSkinCount+"|fillets="+controller.assembly.SeparatedWholeFilletCount+
+            "|back="+controller.assembly.IsBackFacing;
+
+        private void ObservePhaseBoundaries(double now)
+        {
+            int current=controller.Run.Phase;
+            foreach(var previous in report.phaseBoundaries.Where(value=>!value.settled&&(controller.Run.Completed||value.phase<current)))
+            {
+                previous.settled=true;previous.settledSongMs=now;previous.settledPreparation=PreparationSignature();
+                previous.settledSlices=controller.SpawnedSlices;
+                Require(now>=previous.deadlineMs,"A preparation section advanced before its musical end.");
+                previous.nextFirstNoteMs=previous.phase<7?controller.chart.phases[previous.phase+1].noteTimesMs[0]:-1d;
+                previous.settledBeforeNextNote=previous.phase==7||now<previous.nextFirstNoteMs;
+                Require(previous.settledBeforeNextNote,"Boundary presentation blocked the next section's first note.");
+                Require(previous.phase<6?previous.settledPreparation!=previous.initialPreparation:
+                    previous.settledSlices==(previous.phase-5)*12,"A passed section did not finish its physical work at the boundary.");
+            }
+            if(controller.Run.Completed)return;
+            var item=report.phaseBoundaries.LastOrDefault(value=>value.phase==current);
+            if(item==null)
+            {
+                item=new PhaseBoundaryEvidence{phase=current,deadlineMs=controller.chart.phases[current].endTimeMs,
+                    initialPreparation=PreparationSignature()};report.phaseBoundaries.Add(item);
+            }
+            if(controller.Run.PhaseSatisfied&&!item.quotaObserved)
+            {
+                item.quotaObserved=true;item.quotaSongMs=now;item.quotaHits=controller.Run.Hits;
+                item.quotaPreparation=PreparationSignature();item.quotaSlices=controller.SpawnedSlices;
+            }
+            if(now<item.deadlineMs)
+            {
+                // Store the closest real frame before the deadline. Do not
+                // mislabel a frame-quantized sample as an exact end-minus-1ms.
+                item.beforeEndObserved=true;item.closestBeforeEndSongMs=now;
+                item.beforeEndPreparation=PreparationSignature();item.beforeEndSlices=controller.SpawnedSlices;
+                Require(current<6?item.beforeEndPreparation==item.initialPreparation:
+                    item.beforeEndSlices<=(current-6)*12+11,
+                    "A model/last slice completed before the musical section ended.");
             }
         }
         private IEnumerator CapturePartialCutSide()
@@ -447,12 +560,41 @@ namespace SashimiBoy
                 snapshot.filletCuts = controller.fillets.Select(surface => surface.CutCount).ToArray();
                 snapshot.turned = controller.assembly.IsBackFacing; snapshot.turning = controller.assembly.IsTurningOver;
                 snapshot.resultShown = controller.ResultShown; snapshot.clearRecorded = controller.ClearRecorded;
+                var view=controller.hudView;
+                CaptureUi(snapshot,view.shared,view.rhythmLane,view.restPrompt,view.spacePrompt,view.noteDots);
+            }
+            else
+            {
+                var timing=FindAnyObjectByType<Stage01SalmonTimingScaffold>();
+                var hud=FindAnyObjectByType<Stage01SalmonHUD>();var cue=FindAnyObjectByType<SliceCuePresenter>();
+                if(timing!=null)
+                {
+                    snapshot.baselineSection=timing.CurrentSection.ToString();
+                    snapshot.baselineGameplay=timing.CurrentSection==Stage01SalmonSection.Gameplay;
+                    snapshot.songMs=timing.SongTimeSeconds*1000d;snapshot.clockState=timing.audioClock.State.ToString();
+                    snapshot.baselinePhase=timing.PhasePerformance.PhaseIndex;snapshot.baselineScore=timing.Score;
+                    snapshot.baselineCombo=timing.Combo;snapshot.baselineUnresolvedNotes=timing.activeNoteTracker.UnresolvedCount;
+                    if(hud!=null&&cue!=null)CaptureUi(snapshot,hud,cue.rhythmLane,cue.restPromptText,cue.spacePromptText,cue.upcomingNoteDots);
+                }
             }
             File.WriteAllText(Path.Combine(outputDirectory, prefix + ".json"), JsonUtility.ToJson(snapshot, true));
             ScreenCapture.CaptureScreenshot(png);
             yield return WaitFor(() => File.Exists(png) && new FileInfo(png).Length > 0, 10f, "Player PNG " + label);
             report.captures.Add(png);
             Debug.Log("[Stage3Evidence] Captured " + label + ": " + png);
+        }
+
+        private static void CaptureUi(Snapshot snapshot,Stage01SalmonHUD hud,RectTransform lane,
+            UnityEngine.UI.Text rest,UnityEngine.UI.Text space,UnityEngine.UI.Image[] dots)
+        {
+            snapshot.qualityLabel=hud.phaseQualityText!=null?hud.phaseQualityText.text:"";
+            snapshot.requirementLabel=hud.phaseRequirementText!=null?hud.phaseRequirementText.text:"";
+            snapshot.remainingLabel=hud.phaseRemainingText!=null?hud.phaseRemainingText.text:"";
+            snapshot.instructionLabel=hud.dialogueText!=null?hud.dialogueText.text:"";
+            snapshot.noteLaneVisible=lane!=null&&lane.gameObject.activeInHierarchy;
+            snapshot.restPromptVisible=rest!=null&&rest.isActiveAndEnabled;
+            snapshot.spacePromptVisible=space!=null&&space.isActiveAndEnabled;
+            snapshot.visibleUpcomingNotes=dots.Count(dot=>dot!=null&&dot.isActiveAndEnabled);
         }
 
         private void LateUpdate()

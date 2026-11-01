@@ -97,9 +97,16 @@ namespace SashimiBoy.Tests
             Call(Assembly,"AdvancePresentation",1f);
         }
 
+        string PreparationState()=>Call(Assembly,"get_BodyState")+"/"+
+            Value<int>(Assembly,"RemovedSkinCount")+"/"+Value<int>(Assembly,"SeparatedWholeFilletCount")+"/"+
+            Value<bool>(Assembly,"IsBackFacing")+"/"+Value<bool>(Assembly,"IsTurningOver");
+
         IEnumerator AdvanceCurrentPhase()
         {
             int previous=Value<int>(Run,"Phase");double deadline=Deadline;
+            FinishVisuals();Call(controller,"TickAt",deadline+1d);
+            Assert.That(Value<int>(Run,"Phase"),Is.EqualTo(previous),"The passed boundary must complete its physical contact before advancing.");
+            Assert.That(Value<int>(controller,"PendingVisualCuts"),Is.EqualTo(1));
             FinishVisuals();Call(controller,"TickAt",deadline+1d);
             Assert.That(Value<int>(Run,"Phase"),Is.EqualTo(previous+1));
             Assert.That(Value<bool>(Run,"WaitingForTurn"),Is.False);
@@ -172,17 +179,52 @@ namespace SashimiBoy.Tests
         [UnityTest]
         public IEnumerator QuotaReachedEarly_AllLaterNotesStillScoreAndMiss_WithoutWaitingOrPausing()
         {
-            StartRun();int required=Value<int>(Run,"RequiredHits");double[] notes=Notes;double deadline=Deadline;
+            StartRun();int required=Value<int>(Run,"RequiredHits");double[] notes=Notes;
             HitOnlyQuota();Assert.That(Value<bool>(Run,"PhaseSatisfied"),Is.True);
             Assert.That(Value<int>(Run,"Phase"),Is.Zero);
+            Assert.That(Value<bool>(Assembly,"HeadRemoved"),Is.False,"Meeting the quota must not remove the head before the musical section ends.");
             Assert.That(Value<double>(controller,"NextNoteMs"),Is.EqualTo(notes[required]));
             int score=Value<int>(controller,"Score");
             Assert.That(Call(controller,"SubmitAt",notes[required]),Is.EqualTo(true));
             Assert.That(Value<int>(controller,"Score"),Is.GreaterThan(score));
-            FinishVisuals();Call(controller,"TickAt",deadline+1d);
+            FinishVisuals();Assert.That(Value<bool>(Assembly,"HeadRemoved"),Is.False);
+            yield return AdvanceCurrentPhase();
             Assert.That(Value<int>(Run,"Phase"),Is.EqualTo(1));
             Assert.That(Value<int>(controller,"MissCount"),Is.EqualTo(notes.Length-required-1));
             Assert.That(Value<bool>(Clock,"IsRunning"),Is.True);yield return null;
+        }
+
+        [UnityTest]
+        public IEnumerator EveryPreparationCompletion_WaitsForTheSectionEnd_ThenCommitsExactlyOnceAtContact()
+        {
+            StartRun();
+            for(int phase=0;phase<6;phase++)
+            {
+                Assert.That(Value<int>(Run,"Phase"),Is.EqualTo(phase));
+                string before=PreparationState();double deadline=Deadline;
+                HitOnlyQuota();
+                Assert.That(PreparationState(),Is.EqualTo(before),"Early quota cannot change a preparation model: phase "+phase);
+                Call(controller,"TickAt",deadline-1d);
+                Assert.That(PreparationState(),Is.EqualTo(before));
+                Assert.That(Value<int>(controller,"PendingVisualCuts"),Is.Zero);
+                Call(controller,"TickAt",deadline+1d);
+                Assert.That(Value<int>(Run,"Phase"),Is.EqualTo(phase));
+                Assert.That(Value<int>(controller,"PendingVisualCuts"),Is.EqualTo(1));
+                Call(controller,"TickAt",deadline+2d);
+                Assert.That(Value<int>(controller,"PendingVisualCuts"),Is.EqualTo(1),"Repeated boundary ticks cannot queue another completion.");
+                float duration=(float)RuntimeReflection.InvokeStatic("SashimiBoy.Stage03CookingView","DurationForPhase",phase);
+                Call(controller,"AdvancePresentation",duration*.44f);
+                Assert.That(PreparationState(),Is.EqualTo(before),"The boundary result must wait for actual tool contact.");
+                Call(controller,"AdvancePresentation",duration*.02f);
+                Assert.That(PreparationState(),Is.Not.EqualTo(before),"The passed section must complete its physical operation at contact.");
+                FinishVisuals();Call(controller,"TickAt",deadline+3d);
+                Assert.That(Value<int>(Run,"Phase"),Is.EqualTo(phase+1));
+                Assert.That(Value<int>(controller,"PendingVisualCuts"),Is.Zero);
+                Assert.That(Value<bool>(Clock,"IsRunning"),Is.True);
+            }
+            Assert.That(Value<int>(Assembly,"RemovedSkinCount"),Is.EqualTo(2));
+            Assert.That(Value<int>(Assembly,"SeparatedWholeFilletCount"),Is.EqualTo(2));
+            Assert.That(Value<bool>(Assembly,"HasBody"),Is.False);yield return null;
         }
 
         [UnityTest]
@@ -200,12 +242,56 @@ namespace SashimiBoy.Tests
         }
 
         [UnityTest]
+        public IEnumerator BelowSkinQuotaAtSectionEnd_FailsWithoutRemovingSkinOrSeparatingTheFillet()
+        {
+            StartRun();yield return ReachPhase(1);string before=PreparationState();
+            double[] notes=Notes;int required=Value<int>(Run,"RequiredHits");
+            for(int i=0;i<required-1;i++)
+            {Assert.That(Call(controller,"SubmitAt",notes[i]),Is.EqualTo(true));Call(controller,"AdvancePresentation",.30f);}
+            FinishVisuals();Call(controller,"TickAt",Deadline+1d);
+            Assert.That(Value<bool>(Run,"Failed"),Is.True);
+            Assert.That(PreparationState(),Is.EqualTo(before));
+            Assert.That(Value<int>(controller,"PendingVisualCuts"),Is.Zero);
+            Assert.That(Value<int>(Assembly,"RemovedSkinCount"),Is.Zero);
+            Assert.That(Value<int>(Assembly,"SeparatedWholeFilletCount"),Is.Zero);
+            Assert.That(((IList)Get(Current,"clearedStageIds")).Count,Is.Zero);yield return null;
+        }
+
+        [UnityTest]
+        public IEnumerator BoundaryCompletion_RespectsPause_AndRetryCancelsItsStaleContact()
+        {
+            StartRun();HitOnlyQuota();double deadline=Deadline;
+            Call(controller,"TickAt",deadline+1d);var cooking=Get(controller,"cooking");
+            var pausedContact=(Action)Get(cooking,"contactAction");
+            Assert.That(pausedContact,Is.Not.Null);Call(controller,"TogglePause");
+            pausedContact();Call(controller,"AdvancePresentation",5f);Call(controller,"TickAt",deadline+2d);
+            Assert.That(Value<bool>(Assembly,"HeadRemoved"),Is.False);
+            Assert.That(Value<int>(Run,"Phase"),Is.Zero);Assert.That(Value<int>(controller,"PendingVisualCuts"),Is.EqualTo(1));
+            Call(controller,"TogglePause");FinishVisuals();Call(controller,"TickAt",deadline+3d);
+            Assert.That(Value<int>(Run,"Phase"),Is.EqualTo(1));Assert.That(Value<bool>(Assembly,"HeadRemoved"),Is.True);
+            HitOnlyQuota();Call(controller,"TickAt",Deadline+1d);var staleContact=(Action)Get(cooking,"contactAction");
+            Assert.That(staleContact,Is.Not.Null);
+            Call(controller,"Fail","fixture interrupted boundary completion");
+            Assert.That(Call(controller,"RetryPhase"),Is.EqualTo(true));staleContact();Call(controller,"AdvancePresentation",5f);
+            Assert.That(Value<int>(Run,"Phase"),Is.Zero);Assert.That(Value<int>(Run,"Hits"),Is.Zero);
+            Assert.That(Call(Assembly,"get_BodyState").ToString(),Is.EqualTo("WholeFish"));
+            Assert.That(Value<int>(Assembly,"RemovedSkinCount"),Is.Zero);
+            Assert.That(Value<int>(controller,"PendingVisualCuts"),Is.Zero);Assert.That(Value<int>(controller,"SpawnedSlices"),Is.Zero);
+            yield return null;
+        }
+
+        [UnityTest]
         public IEnumerator TurnoverNote_KeepsTheSongRunning_AndBackWorkLockedUntilThePhysicalFlip()
         {
             StartRun();yield return ReachPhase(3);double deadline=Deadline;
             Assert.That(Call(Assembly,"TryRemoveSkin",1),Is.EqualTo(false));
             Assert.That(Call(controller,"SubmitAt",Notes[0]),Is.EqualTo(true));
             Assert.That(Value<bool>(Clock,"IsRunning"),Is.True);Call(controller,"AdvancePresentation",.30f);
+            Assert.That(Value<bool>(Assembly,"IsTurningOver"),Is.False,"The earned flip waits for the end of its musical section.");
+            Assert.That(Value<bool>(Assembly,"IsBackFacing"),Is.False);
+            Call(controller,"TickAt",deadline-1d);Assert.That(Value<int>(controller,"PendingVisualCuts"),Is.Zero);
+            Call(controller,"TickAt",deadline+1d);Assert.That(Value<int>(Run,"Phase"),Is.EqualTo(3));
+            Call(controller,"AdvancePresentation",.15f);
             Assert.That(Value<bool>(Assembly,"IsTurningOver"),Is.True);
             Assert.That(Call(Assembly,"TryRemoveSkin",1),Is.EqualTo(false));
             Assert.That(Value<bool>(Clock,"IsRunning"),Is.True);
@@ -258,7 +344,8 @@ namespace SashimiBoy.Tests
         [UnityTest]
         public IEnumerator FaultAfterHeadSeparated_RetryRestoresWholeFishAndZeroScore()
         {
-            StartRun();HitCurrentPhase();Assert.That(Call(Assembly,"get_BodyState").ToString(),Is.EqualTo("HeadRemovedFish"));
+            StartRun();HitCurrentPhase();yield return AdvanceCurrentPhase();
+            Assert.That(Call(Assembly,"get_BodyState").ToString(),Is.EqualTo("HeadRemovedFish"));
             Assert.That(Value<int>(controller,"Score"),Is.GreaterThan(0));Call(controller,"Fail","fixture audio failure");
             Assert.That(Call(controller,"RetryPhase"),Is.EqualTo(true));Assert.That(Value<int>(controller,"Score"),Is.Zero);
             Assert.That(Value<int>(Run,"Phase"),Is.Zero);Assert.That(Value<bool>(Run,"PhaseSatisfied"),Is.False);
@@ -270,10 +357,12 @@ namespace SashimiBoy.Tests
         public IEnumerator BelowQuotaOnSecondFillet_FailsAndRetryRemovesEveryPriorSliceAndReward()
         {
             StartRun();yield return ReachPhase(7);Assert.That(Value<int>(controller,"SpawnedSlices"),Is.EqualTo(12));
-            double[] notes=Notes;int partial=Value<int>(Run,"RequiredHits")/3;
+            double[] notes=Notes;int partial=Value<int>(Run,"RequiredHits")-1;
             for(int i=0;i<partial;i++){Assert.That(Call(controller,"SubmitAt",notes[i]),Is.EqualTo(true));Call(controller,"AdvancePresentation",.30f);}
-            FinishVisuals();Assert.That(Value<int>(controller,"SpawnedSlices"),Is.InRange(13,23));
+            FinishVisuals();Assert.That(Value<int>(controller,"SpawnedSlices"),Is.EqualTo(23));
+            Assert.That(Value<bool>(Surfaces[1],"IsEmpty"),Is.False);
             Call(controller,"TickAt",Deadline+1d);Assert.That(Value<bool>(Run,"Failed"),Is.True);
+            Assert.That(Value<int>(controller,"SpawnedSlices"),Is.EqualTo(23),"A failed section cannot supply the reserved final piece.");
             Assert.That(Value<bool>(controller,"ResultShown"),Is.False);Assert.That(Call(controller,"RetryPhase"),Is.EqualTo(true));
             yield return null;Assert.That(Value<int>(Run,"Phase"),Is.Zero);
             Assert.That(Value<int>(controller,"SpawnedSlices"),Is.Zero);Assert.That(Value<int[]>(Run,"Slices"),Is.EqualTo(new[]{0,0}));
@@ -298,6 +387,9 @@ namespace SashimiBoy.Tests
             Assert.That(Call(controller,"SubmitAt",finalNotes[required-1]),Is.EqualTo(false));
             Call(controller,"TickAt",deadline+1d);Assert.That(Value<bool>(Run,"Completed"),Is.False,"The last accepted work hit cannot complete a plate before its contact.");
             Assert.That(Value<int>(controller,"SpawnedSlices"),Is.EqualTo(23));
+            FinishVisuals();Call(controller,"TickAt",deadline+1d);
+            Assert.That(Value<int>(controller,"SpawnedSlices"),Is.EqualTo(23),"The last slice is reserved for the successful section-end contact.");
+            Assert.That(Value<int>(controller,"PendingVisualCuts"),Is.EqualTo(1));
             FinishVisuals();Call(controller,"TickAt",deadline+1d);
             Assert.That(Value<int>(controller,"SpawnedSlices"),Is.EqualTo(24));Assert.That(Value<int>(Run,"TotalSlices"),Is.EqualTo(24));
             foreach(var surface in Surfaces)Assert.That(Value<bool>(surface,"IsEmpty"),Is.True);
@@ -327,20 +419,22 @@ namespace SashimiBoy.Tests
             StartRun();yield return ReachPhase(6);int previousScore=Value<int>(controller,"Score"),count=Notes.Length;
             HitCurrentPhase();Assert.That(Value<int>(Run,"Hits"),Is.EqualTo(count));
             Assert.That(Value<int>(controller,"Score"),Is.EqualTo(previousScore+count*1000));
-            Assert.That(Value<int>(Surfaces[0],"CutCount"),Is.EqualTo(12));Assert.That(Value<int>(controller,"SpawnedSlices"),Is.EqualTo(12));
+            Assert.That(Value<int>(Surfaces[0],"CutCount"),Is.EqualTo(11));Assert.That(Value<int>(controller,"SpawnedSlices"),Is.EqualTo(11));
+            Assert.That(Value<bool>(Surfaces[0],"IsEmpty"),Is.False,"Extra early notes cannot finish the fillet before its musical section ends.");
             Assert.That(Value<bool>(Clock,"IsRunning"),Is.True);Assert.That(Value<int>(Run,"Phase"),Is.EqualTo(6));
             yield return AdvanceCurrentPhase();Assert.That(Value<int>(controller,"SpawnedSlices"),Is.EqualTo(12));
         }
 
         [UnityTest]
-        public IEnumerator BackCarcassHiddenEarly_RemainingNotesAndHudRetainTheRealWorkFrame()
+        public IEnumerator BackCarcassRemainsUntilSectionEnd_WhileRemainingNotesAndHudUseTheRealWorkFrame()
         {
             StartRun();yield return ReachPhase(5);double[] notes=Notes;
             int required=Value<int>(Run,"RequiredHits");
             for(int i=0;i<required;i++)
             {Assert.That(Call(controller,"SubmitAt",notes[i]),Is.EqualTo(true));Call(controller,"AdvancePresentation",.30f);}
             Call(controller,"AdvancePresentation",2f);
-            Assert.That(Value<bool>(Assembly,"HasBody"),Is.False);
+            Assert.That(Value<bool>(Assembly,"HasBody"),Is.True);
+            int separated=Value<int>(Assembly,"SeparatedWholeFilletCount");
             Assert.That(Value<int>(Run,"Phase"),Is.EqualTo(5));
             int score=Value<int>(controller,"Score");
             for(int i=required;i<notes.Length;i++)
@@ -348,9 +442,12 @@ namespace SashimiBoy.Tests
                 Assert.That(Call(controller,"SubmitAt",notes[i]),Is.EqualTo(true));
                 Call(Get(controller,"hudView"),"Refresh");Call(controller,"AdvancePresentation",.30f);
                 Assert.That(Value<Vector3>(controller,"NextWorkContactPoint").sqrMagnitude,Is.GreaterThan(0f));
+                Assert.That(Value<bool>(Assembly,"HasBody"),Is.True);
+                Assert.That(Value<int>(Assembly,"SeparatedWholeFilletCount"),Is.EqualTo(separated));
             }
             Assert.That(Value<int>(controller,"Score"),Is.GreaterThan(score));
             Assert.That(Value<bool>(Run,"Failed"),Is.False);yield return AdvanceCurrentPhase();
+            Assert.That(Value<bool>(Assembly,"HasBody"),Is.False);
         }
 
         [UnityTest]
@@ -376,6 +473,8 @@ namespace SashimiBoy.Tests
             float duration=(float)RuntimeReflection.InvokeStatic("SashimiBoy.Stage03CookingView","DurationForPhase",6);
             Call(controller,"AdvancePresentation",duration*((firstBoundary-1)+.45f)+.001f);
             Assert.That(Value<int>(surface,"CutCount"),Is.EqualTo(1));Assert.That(Value<int>(controller,"SpawnedSlices"),Is.EqualTo(1));
+            FinishVisuals();Assert.That(Value<int>(surface,"CutCount"),Is.EqualTo(11));Assert.That(Value<int>(controller,"SpawnedSlices"),Is.EqualTo(11));
+            Call(controller,"TickAt",Deadline+1d);Assert.That(Value<int>(controller,"PendingVisualCuts"),Is.EqualTo(1));
             FinishVisuals();Assert.That(Value<int>(surface,"CutCount"),Is.EqualTo(12));Assert.That(Value<int>(controller,"SpawnedSlices"),Is.EqualTo(12));
             Call(controller,"AdvancePresentation",5f);Assert.That(Value<int>(controller,"SpawnedSlices"),Is.EqualTo(12));
         }

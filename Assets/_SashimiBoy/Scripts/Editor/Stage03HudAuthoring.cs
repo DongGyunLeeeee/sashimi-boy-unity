@@ -89,6 +89,7 @@ namespace SashimiBoy.EditorTools
                 view.laneHorizonBeats = cue.laneHorizonBeats;
                 view.nowDuration = cue.nowDuration;
                 view.restThresholdBeats = cue.restThresholdBeats;
+                view.tutorialTargetCount = cue.tutorialTargetCount;
 
                 // Additional Stage3 states keep the exact baseline result-card typography,
                 // anchors, image colors and button dimensions, while using Stage3 actions.

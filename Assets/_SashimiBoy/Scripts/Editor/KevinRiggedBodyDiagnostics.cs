@@ -63,9 +63,11 @@ namespace SashimiBoy.EditorTools
         }
         [Serializable] private sealed class StrokeCameraPose
         {
-            public int phase,ordinal;
+            public int phase,ordinal,motionPhase;
             public float requestedU,actualU,fieldOfView,rightError,leftError,cameraBodyForwardDot,authoredSweepDot;
-            public bool striking,contactDelivered,supportMeshInspected;
+            public bool striking,contactDelivered,supportMeshInspected,completionStroke;
+            public float sharpEdgeDownDot,contactTargetDistance;
+            public Vector3 sharpEdgeDirection;
             public int supportMeshVertices;
             public string supportHandBone;
             public float supportMeshPlaneGap,supportRuntimeGap,supportBoneGap,supportHandProjection,supportKnifeProjection,supportCachedKnifeProjection,supportCpuHandProjection,supportCpuBakeMaxError,supportBakeScalePathMaxError;
@@ -80,7 +82,7 @@ namespace SashimiBoy.EditorTools
         {
             public string evidenceKind="Editor-only ordered actual BeginStroke/AdvancePresentation/LateUpdate samples, visual part transitions and fresh posed Game-camera renders. No DSP, judged gameplay, reward/save, fixed-stance feasibility or Owner PASS is asserted.";
             public string scope;
-            public string supportGeometryScope="Selected first/quota/last strokes at six poses each; all nonzero hand/finger influenced vertices plus their incident-triangle vertices; generated body has the preserved four-weight representation. Unity6000.4 BakeMesh(true)+fullTRS is cross-checked against false+TR(noScale) and per-vertex CPU world skin. Positive plane gap proves separation only at the recorded poses, not human approval.";
+            public string supportGeometryScope="Selected first/quota/last note strokes and every section-end completion stroke at six poses each; all nonzero hand/finger influenced vertices plus their incident-triangle vertices; generated body has the preserved four-weight representation. Unity6000.4 BakeMesh(true)+fullTRS is cross-checked against false+TR(noScale) and per-vertex CPU world skin. Positive plane gap proves separation only at the recorded poses, not human approval. The pinned knife's actual thin +Y edge must point down on every recorded pose.";
             public List<StrokeCameraPose> poses=new List<StrokeCameraPose>();
         }
 
@@ -104,7 +106,7 @@ namespace SashimiBoy.EditorTools
             if(!controller.StartRun())throw new InvalidOperationException("Diagnostic AudioClock did not start.");
             Vector3 authored=Vector3.ProjectOnPlane(cooking.knifeRoot.forward,Vector3.up).normalized;
             bool all=Environment.GetEnvironmentVariable("SASHIMI_STROKE_ALL_PHASES")=="1";
-            var report=new StrokeCameraReport{scope=all?"Eight sections, every authored note through actual public controller APIs; selected first/quota/last strokes rendered.":"First section through actual public controller APIs."};
+            var report=new StrokeCameraReport{scope=all?"Eight sections, every authored note and eight section-end completion strokes through actual public controller APIs; selected first/quota/last note strokes and all completion strokes rendered.":"First section and its section-end completion through actual public controller APIs."};
             float[] samples={0f,.2f,.45f,.65f,.85f,1f};
             for(int phase=0;phase<(all?8:1);phase++)
             {
@@ -115,17 +117,39 @@ namespace SashimiBoy.EditorTools
                 {
                     Vector3 direction=(Vector3)controller.GetType().GetMethod("CutDirection",BindingFlags.Instance|BindingFlags.NonPublic).Invoke(controller,new object[]{phase});
                     if(!controller.SubmitAt(notes[ordinal]))throw new InvalidOperationException("Diagnostic actual controller hit rejected: "+phase+"/"+ordinal);
-                    float duration=cooking.RemainingStrokeSeconds,previous=0;
-                    foreach(float u in samples)
-                    {
+                    RecordStroke(phase,ordinal,direction,false,ordinal==0||ordinal==count-1||ordinal==controller.Run.RequiredHits-1);
+                }
+                controller.AdvancePresentation(2f);
+                double end=controller.chart.phases[phase].endTimeMs+1;
+                controller.TickAt(end);
+                if(controller.Run.Failed||controller.Run.Phase!=phase||controller.PendingVisualCuts!=1)
+                    throw new InvalidOperationException("Diagnostic section completion was not queued: "+phase);
+                Vector3 completionDirection=(Vector3)controller.GetType().GetMethod("CutDirection",BindingFlags.Instance|BindingFlags.NonPublic).Invoke(controller,new object[]{phase});
+                RecordStroke(phase,count,completionDirection,true,true);
+                controller.AdvancePresentation(2f);
+                controller.TickAt(end);
+                if(controller.Run.Failed||controller.Run.Phase!=phase+1)throw new InvalidOperationException("Diagnostic section deadline failed: "+phase);
+            }
+            controller.clock.Stop();
+            File.WriteAllText(Path.Combine(KevinRiggedBodyAuthoring.EvidenceDirectory,"stage03-stroke-camera-evidence.json"),JsonUtility.ToJson(report,true));
+            EditorSceneManager.NewScene(NewSceneSetup.EmptyScene,NewSceneMode.Single);
+            Debug.Log("[OwnerFeedback87StrokeCamera] Editor stroke poses/rendering recorded, not runtime PASS: "+KevinRiggedBodyAuthoring.EvidenceDirectory);
+
+            void RecordStroke(int phase,int ordinal,Vector3 direction,bool completion,bool inspectGeometry)
+            {
+                float duration=cooking.RemainingStrokeSeconds,previous=0;
+                foreach(float u in samples)
+                {
                         float delta=u==1f?cooking.RemainingStrokeSeconds:(u-previous)*duration;previous=u;
                         if(delta>0)controller.AdvancePresentation(delta);
                         Invoke(cooking,"LateUpdate");body.ApplyPose();if(controller.hudView!=null)controller.hudView.Refresh();
                         Vector3 currentWork=(Vector3)cooking.GetType().GetField("workPoint",BindingFlags.Instance|BindingFlags.NonPublic).GetValue(cooking);
                         Vector3 focus=currentWork+Vector3.down*.04f;
-                        bool inspectGeometry=ordinal==0||ordinal==count-1||ordinal==controller.Run.RequiredHits-1;
                         var gap=inspectGeometry?InspectSupportMeshPlane(cooking):new SupportInspection();
-                        report.poses.Add(new StrokeCameraPose{phase=phase,ordinal=ordinal,requestedU=u,actualU=cooking.MotionProgress01,
+                        float edgeDown=Vector3.Dot(cooking.knifeRoot.up,Vector3.down);
+                        if(edgeDown<.95f)throw new InvalidOperationException("Actual supplied sharpened bevel faces away from the fish: "+phase+"/"+ordinal+"/"+u);
+                        report.poses.Add(new StrokeCameraPose{phase=phase,ordinal=ordinal,motionPhase=cooking.MotionPhase,completionStroke=completion,requestedU=u,actualU=cooking.MotionProgress01,
+                            sharpEdgeDirection=cooking.knifeRoot.up,sharpEdgeDownDot=edgeDown,contactTargetDistance=Vector3.Distance(cooking.contact.position,cooking.CurrentContactPoint),
                             supportMeshInspected=inspectGeometry,supportMeshVertices=gap.vertices,supportMeshPlaneGap=gap.gap,supportHandBone=body.left.hand.name,supportRuntimeGap=cooking.SupportSurfaceGap,supportBoneGap=cooking.SupportBladeClearance,
                             supportHandProjection=gap.handMin,supportKnifeProjection=gap.toolMax,supportCachedKnifeProjection=gap.cachedToolMax,supportCpuHandProjection=gap.cpuHandMin,supportCpuBakeMaxError=gap.cpuBakeMaxError,supportBakeScalePathMaxError=gap.bakeScalePathMaxError,supportRendererScale=gap.rendererScale,
                             striking=cooking.IsStriking,contactDelivered=cooking.ContactDelivered,fieldOfView=cooking.gameCamera.fieldOfView,
@@ -141,19 +165,10 @@ namespace SashimiBoy.EditorTools
                             rightWristTarget=body.rightTarget-body.rightRotation*Vector3.Scale(body.right.palm.localPosition,body.right.hand.lossyScale),
                             leftWristTarget=body.leftTarget-body.leftRotation*Vector3.Scale(body.left.palm.localPosition,body.left.hand.lossyScale),
                             rightError=Vector3.Distance(body.right.palm.position,body.rightTarget),leftError=Vector3.Distance(body.left.palm.position,body.leftTarget)});
-                        if(ordinal==0||ordinal==count-1||ordinal==controller.Run.RequiredHits-1)
-                            CaptureStrokeGameCamera(cooking,"stroke-phase-"+phase+"-ordinal-"+ordinal+"-u"+Mathf.RoundToInt(u*100).ToString("000")+".png");
-
-                    }
+                        if(inspectGeometry)
+                            CaptureStrokeGameCamera(cooking,"stroke-phase-"+phase+"-"+(completion?"completion":"ordinal-"+ordinal)+"-u"+Mathf.RoundToInt(u*100).ToString("000")+".png");
                 }
-                controller.AdvancePresentation(2f);
-                controller.TickAt(controller.chart.phases[phase].endTimeMs+1);
-                if(controller.Run.Failed||controller.Run.Phase!=phase+1)throw new InvalidOperationException("Diagnostic section deadline failed: "+phase);
             }
-            controller.clock.Stop();
-            File.WriteAllText(Path.Combine(KevinRiggedBodyAuthoring.EvidenceDirectory,"stage03-stroke-camera-evidence.json"),JsonUtility.ToJson(report,true));
-            EditorSceneManager.NewScene(NewSceneSetup.EmptyScene,NewSceneMode.Single);
-            Debug.Log("[OwnerFeedback87StrokeCamera] Editor stroke poses/rendering recorded, not runtime PASS: "+KevinRiggedBodyAuthoring.EvidenceDirectory);
         }
 
         // A positive separating-plane gap is a conservative actual-geometry

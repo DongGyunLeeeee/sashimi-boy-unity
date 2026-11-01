@@ -24,7 +24,9 @@ namespace SashimiBoy
         public Renderer[] ghostRenderers=Array.Empty<Renderer>();
         public float wideBracketDistance=.72f,closedBracketDistance=.08f;
         public float laneHorizonBeats=4f,nowDuration=.12f,restThresholdBeats=1.35f;
+        [Min(1)] public int tutorialTargetCount=12;
         private Renderer[] cueRenderers=Array.Empty<Renderer>();
+        private Vector3[] ghostBaseScales=Array.Empty<Vector3>();
         private Vector3 guideScale;
         private MaterialPropertyBlock colors;
         private float flashUntil;
@@ -34,6 +36,9 @@ namespace SashimiBoy
             colors=new MaterialPropertyBlock();
             if(worldCue!=null)cueRenderers=worldCue.GetComponentsInChildren<Renderer>(true);
             if(cutGuide!=null)guideScale=cutGuide.transform.localScale;
+            ghostBaseScales=new Vector3[ghostLines.Length];
+            for(int i=0;i<ghostLines.Length;i++)
+                if(ghostLines[i]!=null)ghostBaseScales[i]=ghostLines[i].localScale;
         }
         private void LateUpdate()=>Refresh();
         public void ResetForRetry()
@@ -80,9 +85,11 @@ namespace SashimiBoy
             Set(shared.fishProgressText,phase.label+"  |  회 "+controller.SpawnedSlices+" / 24");
             Set(shared.scoreText,$"점수  {controller.Score:N0}");
             Set(shared.comboText,$"콤보  {controller.Combo}");
-            Set(shared.phaseQualityText,$"성공 {run.Hits} / {phase.noteTimesMs.Length}");
+            // Stage3 retains its approved successful-note gate: one hit is one
+            // progress point. Only the presentation uses the Stage1/2 wording.
+            Set(shared.phaseQualityText,$"현재 {run.Hits:0.00}점");
             float threshold=run.RequiredHits/(float)phase.noteTimesMs.Length;
-            Set(shared.phaseRequirementText,$"통과 {run.RequiredHits}/{phase.noteTimesMs.Length} · 70% 이상");
+            Set(shared.phaseRequirementText,$"통과 {run.RequiredHits:0.00} · 70%");
             Set(shared.phaseRemainingText,"남은 노트 "+Mathf.Max(0,phase.noteTimesMs.Length-controller.NoteCursor));
             if(shared.phaseQualityFill!=null)
             {
@@ -102,10 +109,13 @@ namespace SashimiBoy
                 countdown=Mathf.Clamp(Mathf.CeilToInt((float)((first-now)/beat)),1,4).ToString();
             else if(run.Phase==0&&run.Hits==0&&now>=first&&now<first+320)countdown="SLICE!";
             Set(shared.countdownText,countdown);
-            Set(shared.dialogueText,run.Phase==3?"뒤집기 노트 · Space":run.PhaseSatisfied?"통과 기준 달성 · 계속 박자에 맞추세요":"구간 성공률 70% 이상 · Space");
+            Set(shared.dialogueText,"예고 노트가 절단선에 닿을 때 Space");
             double next=controller.NextNoteMs;
             bool running=controller.Started&&controller.clock.IsRunning;
-            if(!running||next<0){HideCues();return;}
+            if(!running){HideCues();return;}
+            // A consumed final note is a musical rest, not the disappearance
+            // of the HUD. The controller alone decides the section boundary.
+            if(next<0){ShowRestOnly(now);return;}
             double delta=next-now,horizon=beat*laneHorizonBeats;
             bool resting=delta>beat*restThresholdBeats;
             rhythmLane.gameObject.SetActive(true);
@@ -123,8 +133,24 @@ namespace SashimiBoy
                 float alpha=(i==0?1:Mathf.Max(.2f,.62f-i*.14f))*(resting ? .58f : 1);
                 dot.color=i==0?new Color(1,.82f,.24f,alpha):new Color(.36f,.92f,1,alpha);count++;
             }
+            RefreshLanePresentation(now,resting);
+            bool pulse=delta<=0&&delta>=-nowDuration*1000;
+            int songOrdinal=controller.NoteCursor;
+            for(int i=0;i<run.Phase;i++)songOrdinal+=controller.chart.phases[i].noteTimesMs.Length;
+            Show(spacePrompt,"[ SPACE ]",!resting&&songOrdinal<tutorialTargetCount);
+            Show(nowPrompt,"지금!",!resting&&pulse);Show(restPrompt,"휴식",resting);
+            int following=controller.NoteCursor+1;
+            double followingDelta=following<phase.noteTimesMs.Length?phase.noteTimesMs[following]-now:delta+beat;
+            int upcomingCount=Mathf.Min(noteDots.Length,phase.noteTimesMs.Length-controller.NoteCursor);
+            RefreshWorld(!resting&&count>0,Mathf.Clamp01(1-(float)(delta/(beat*2))),
+                Mathf.Clamp01(1-(float)(followingDelta/(beat*2))),pulse,upcomingCount);
+        }
+        private void RefreshLanePresentation(double now,bool resting)
+        {
+            // Match SliceCuePresenter's nearest-beat pulse: the cursor settles
+            // between beats instead of continuously swelling across the bar.
             float beatPhase=controller.chart.BeatPhase01(now);
-            float beatPulse=Mathf.Pow(1-Mathf.Clamp01(Mathf.Min(beatPhase,1-beatPhase)*2),3);
+            float beatPulse=1-Mathf.Clamp01(Mathf.Min(beatPhase,1-beatPhase)/.18f);
             if(hitCursor!=null)
             {
                 hitCursor.color=resting?new Color(.35f,.82f,.92f,Mathf.Lerp(.2f,.5f,beatPulse)):
@@ -133,14 +159,18 @@ namespace SashimiBoy
             }
             var background=rhythmLane.GetComponent<Image>();
             if(background!=null)background.color=resting?new Color(.025f,.04f,.05f,.62f):new Color(.035f,.055f,.065f,.92f);
-            bool pulse=delta<=0&&delta>=-nowDuration*1000;
-            Show(spacePrompt,"[ SPACE ]",!resting);Show(nowPrompt,"지금!",!resting&&pulse);Show(restPrompt,"휴식",resting);
-            int following=controller.NoteCursor+1;
-            double followingDelta=following<phase.noteTimesMs.Length?phase.noteTimesMs[following]-now:delta+beat;
-            RefreshWorld(!resting&&count>0,Mathf.Clamp01(1-(float)(delta/(beat*2))),
-                Mathf.Clamp01(1-(float)(followingDelta/(beat*2))),pulse);
         }
-        private void RefreshWorld(bool visible,float approach,float followingApproach,bool pulse)
+        private void ShowRestOnly(double now)
+        {
+            if(worldCue!=null)worldCue.SetActive(false);
+            if(cutGuide!=null)cutGuide.transform.localScale=guideScale;
+            foreach(var ghost in ghostLines)if(ghost!=null)ghost.gameObject.SetActive(false);
+            foreach(var dot in noteDots)if(dot!=null)dot.gameObject.SetActive(false);
+            if(rhythmLane!=null)rhythmLane.gameObject.SetActive(true);
+            RefreshLanePresentation(now,true);
+            Show(spacePrompt,"",false);Show(nowPrompt,"",false);Show(restPrompt,"휴식",true);
+        }
+        private void RefreshWorld(bool visible,float approach,float followingApproach,bool pulse,int upcomingCount)
         {
             if(worldCue==null)return;
             worldCue.SetActive(visible);if(!visible)return;
@@ -155,13 +185,18 @@ namespace SashimiBoy
                 cutGuide.transform.localScale=new Vector3(guideScale.x*emphasis,guideScale.y*emphasis,guideScale.z);
             }
             Color color=pulse?new Color(1,.95f,.48f):new Color(.35f,.92f,1);
-            foreach(var renderer in cueRenderers)Paint(renderer,color);
+            foreach(var renderer in cueRenderers)
+                if(Array.IndexOf(ghostRenderers,renderer)<0)Paint(renderer,color);
             for(int i=0;i<ghostLines.Length;i++)
             {
-                bool show=controller.Run.Phase>=6&&controller.fillets[controller.Run.Phase-6].CutCount+i+1<12;
+                bool show=i<upcomingCount-1&&controller.Run.Phase>=6&&
+                    controller.fillets[controller.Run.Phase-6].CutCount+i+1<12;
                 if(ghostLines[i]==null)continue;ghostLines[i].gameObject.SetActive(show);
                 if(show)ghostLines[i].position=CutPoint(i+1);
-                if(show&&i<ghostRenderers.Length)Paint(ghostRenderers[i],new Color(.35f,.92f,1,Mathf.Max(.2f,.62f-i*.14f)));
+                float distance=i/(float)Mathf.Max(1,ghostLines.Length-1);
+                if(show&&i<ghostBaseScales.Length)ghostLines[i].localScale=ghostBaseScales[i]*Mathf.Lerp(.92f,.66f,distance);
+                float brightness=Mathf.Lerp(.78f,.32f,distance);
+                if(show&&i<ghostRenderers.Length)Paint(ghostRenderers[i],new Color(.35f*brightness,.92f*brightness,brightness,1));
             }
         }
         private Vector3 CutPoint(int offset)
@@ -181,6 +216,7 @@ namespace SashimiBoy
         private void Paint(Renderer renderer,Color value)
         {
             if(renderer==null)return;
+            renderer.GetPropertyBlock(colors);
             colors.SetColor("_Color",value);colors.SetColor("_BaseColor",value);renderer.SetPropertyBlock(colors);
         }
         private void HideCues()
@@ -191,6 +227,7 @@ namespace SashimiBoy
             Show(spacePrompt,"",false);Show(nowPrompt,"",false);Show(restPrompt,"",false);
         }
         private static void Set(Text text,string value){if(text!=null)text.text=value;}
-        private static void Show(Text text,string value,bool visible){if(text!=null){text.text=value;text.enabled=visible;}}
+        private static void Show(Text text,string value,bool visible)
+        {if(text!=null){text.text=value;text.enabled=true;text.gameObject.SetActive(visible);}}
     }
 }

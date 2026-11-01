@@ -1,11 +1,25 @@
-# Stage3 continuous-rhythm revision — 2026-11-01
+# Stage3 section-end, knife and shared-UI correction — 2026-11-01
 
-The latest Owner decision is [#87 / 6555351413](https://github.com/DongGyunLeeeee/sashimi-boy-unity/issues/87#issuecomment-6555351413). It supersedes the historical four-fillet, E-turnover, phase-retry descriptions below.
+The latest [Owner Decision](https://github.com/DongGyunLeeeee/sashimi-boy-unity/issues/87#issuecomment-6557996349) requires physical completion to wait for the end of each musical section. Reaching the 70% quota early earns the final operation but never removes the head/skin/fillet, turns the fish, exhausts the current fillet or advances the section early. At the authored deadline, a passing section queues one final contact, then waits for its motion and separated parts to settle. Audio continues throughout. A failed section receives no completion contact and fails the whole stage.
+
+Successful slicing notes physically produce up to eleven pieces during each section. The twelfth slice, earned by the same successful-note quota, stays pending until the passing section-end contact. There are still two fillets, twelve slices each and 24 total; a failed section is never topped up. Reset/return/disable invalidate all pending callbacks. Stage1/2 judgement and chart contracts are unchanged.
+
+Stage3 knife authoring identifies the actual thin cutting edge instead of treating the lowest point of the old pose as the blade. It aligns that edge toward the fish, updates BladeContact on the edge and normalizes an explicit rotation without accumulating rolls. The source FBX, positive scales, Stage1/2 knife objects and original hand skeleton are preserved. Actual contact, grip and support-hand clearance require fresh posed-mesh checks.
+
+The Stage3 adapter follows the existing Stage1/2 active-note lane, narrow beat pulse, twelve-note SPACE tutorial, rest display, forecast brightness and taper, and current/required progress layout. It retains Stage3's approved 70% successful-note rule. Real gameplay screenshots must compare all three stages; idle BossDemo captures alone do not demonstrate presentation parity.
+
+Use the targeted knife authoring batch for the pose/anchor correction. New full import/compile, EditMode/PlayMode, source/reference integrity, actual DSP Player capture and independent exact-head review remain pending until executed. Previous a2e12c8 PASS counts do not validate these changes. Owner visual/audio/physical-input/save checks, PR merge and Done remain pending.
+
+---
+
+## Previous continuous-rhythm implementation notes
+
+The preceding Owner decision is [#87 / 6555351413](https://github.com/DongGyunLeeeee/sashimi-boy-unity/issues/87#issuecomment-6555351413). Its timing and two-fillet requirements remain, with the section-end physical completion correction above. It supersedes the historical four-fillet, E-turnover, phase-retry descriptions below.
 
 - Eight musical sections: head → front skin → front whole fillet → Space turnover → back skin → back whole fillet → front 12 slices → back 12 slices.
 - Full approved 230.92-second vocal PCM is unchanged. Numerical beat/onset analysis produces 297 notes rather than 62; measured quarter/eighth attacks, 288ms minimum interval, 249 quarter and 48 eighth events. Direct listening and final timing/readability/feel approval remain Owner checks.
 - Every authored note is judged, scored and missed even after the section quota is reached. Each section requires `ceil(noteCount * .70)` hits. Its fixed musical deadline decides pass/fail; failure restarts the entire stage from the head/score zero. There is no E turnover and no automatic audio pause at a work quota or transition.
-- A success advances physical work. The two edible fillets each use twelve offline-clipped states with closed caps. Each next slice appears only at contact of a successful note that crosses its next work boundary. Later notes retain scoring and use a lifted finishing motion, without extra slices or empty-board deep cuts. Neither section transitions nor results fill missing slices.
+- A success advances physical work. The two edible fillets each use twelve offline-clipped states with closed caps. Intermediate slices appear at successful-note contact; the earned final slice waits for the section-end completion contact. Later notes retain scoring without extra pieces. Results never fill missing slices, and failed sections receive no final cut.
 - Short, distinct skin draws, fillet draws, neck cuts, clear-knife turnover and slicing fit the dense chart. A fixed work-camera pose never follows each grip or reach-solver movement. The support hand and its actual posed finger joints remain on the safe side of the blade sweep with a skin-width margin.
 - The exact English source folders, raw source bytes, old `.meta` GUIDs, shared Stage1/2 chart/judge/UI, stable save IDs, body replacement, home practice, seating, and Day3 story order remain preserved.
 
@@ -19,7 +33,7 @@ Validation for this new revision is pending until new logs, XML, source integrit
 
 ---
 
-# Stage3 / Day3 playable delivery — Issue #87
+# Historical first prototype — superseded where noted above
 
 ## Current development baseline
 

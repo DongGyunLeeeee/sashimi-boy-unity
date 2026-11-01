@@ -204,7 +204,10 @@ namespace SashimiBoy
             // the grounded feet farther back, keeping the eyes behind the cut.
             body.workingLeanDegrees=40f;
             body.rightTarget=grip.position;
-            body.rightRotation=knifeRoot.rotation*Quaternion.Euler(0,180,0)*body.right.handWorldRest;
+            // The supplied blade needs a half-turn about its long axis to put
+            // the sharp bevel down. That asset roll must not twist Kevin's
+            // wrist upside down: the symmetric hilt grip follows yaw/pitch.
+            body.rightRotation=Quaternion.LookRotation(knifeRoot.forward,Vector3.up)*Quaternion.Euler(0,180,0)*body.right.handWorldRest;
             Vector3 requested=hasSupportPoint?supportPoint:workPoint+new Vector3(-.14f,.012f,0);
             Vector3 edgeDirection=Vector3.ProjectOnPlane(knifeRoot.forward,Vector3.up).normalized;
             Vector3 safeNormal=Vector3.Cross(Vector3.up,edgeDirection).normalized;

@@ -45,13 +45,14 @@ namespace SashimiBoy
         private sealed class VisualCut
         {
             public int generation,phase,ordinal,sliceTarget;
-            public bool changesPreparation,finishing;
+            public bool changesPreparation,finishing,completesPhase;
             public Vector3 point,direction;
             public bool committed;
         }
         private readonly Queue<VisualCut> visualCuts=new Queue<VisualCut>();
         private VisualCut activeVisualCut;
         private int presentationGeneration;
+        private bool phaseCompletionQueued,phaseCompletionCommitted;
         private Vector3 fishLongAxisLocal=Vector3.right;
         private Bounds lastPreparationBounds;
         private bool hasPreparationBounds;
@@ -105,6 +106,7 @@ namespace SashimiBoy
             CancelPendingCuts();
             cooking.ResetPresentation();
             clock.Stop();Run.Reset();Score=Combo=MaxCombo=NoteCursor=phaseBaseScore=MissCount=hitAttempts=0;
+            phaseCompletionQueued=phaseCompletionCommitted=false;
             Started=Paused=ResultShown=ClearRecorded=returning=clearApplied=false;resultDelay=-1;preparedFillet=-1;
             for(int i=0;i<fillets.Length;i++){fillets[i].ResetCuts();fillets[i].SetCuttingEnabled(false);}
             assembly.BeginTwoFilletPreparation();hasPreparationBounds=false;
@@ -130,11 +132,24 @@ namespace SashimiBoy
             }
             if(nowMs<phase.endTimeMs+Offset)return;
             if(!Run.PhaseSatisfied){Fail("구간 성공률이 70% 미만입니다. R로 스테이지 전체를 다시 시작하세요.");return;}
-            // The chart supplies an authored transition beat. Audio never pauses
-            // for quotas, detached pieces, turnover or animation queues.
             if(PendingVisualCuts>0||PartsAreMoving())return;
+            // A quota earns completion; it never changes the fish before the
+            // musical section ends. Use the authored transition gap for the
+            // final contact, keeping audio and the remaining notes continuous.
+            if(!phaseCompletionQueued)
+            {
+                phaseCompletionQueued=true;
+                var completion=new VisualCut{generation=presentationGeneration,phase=Run.Phase,
+                    ordinal=Mathf.Max(0,Run.Hits-1),sliceTarget=Run.Phase>=6?Run.Slices[Run.Phase-6]:0,
+                    changesPreparation=Run.Phase<6,finishing=false,
+                    point=CutContactPoint(Run.Phase,Mathf.Max(0,Run.Hits-1)),direction=CutDirection(Run.Phase)};
+                completion.completesPhase=true;
+                visualCuts.Enqueue(completion);StartNextStroke();return;
+            }
+            if(!phaseCompletionCommitted){Fail("구간 완료 동작을 확인해 주세요.");return;}
             if(Run.Phase==3&&!assembly.IsBackFacing){Fail("뒤집기 노트를 성공해야 합니다.");return;}
             if(!Run.TryAdvance()){Fail("손질 구간의 노트 처리를 확인해 주세요.");return;}
+            phaseCompletionQueued=phaseCompletionCommitted=false;
             NoteCursor=0;phaseBaseScore=Score;
             if(Run.Completed)
             {
@@ -155,11 +170,13 @@ namespace SashimiBoy
             var judged=RhythmJudge.Judge(chart.bpm,inputMs,NextNoteMs,Offset,RhythmDifficulty.Casual);
             if(!judged.IsHit)return false;
             int phase=Run.Phase,ordinal=Run.Hits;
-            bool finishing=Run.PhaseSatisfied;
+            bool finishing=phase>=6&&Run.PhaseSatisfied;
             if(!Run.TryHit())throw new InvalidOperationException("Stage3 state rejected a validated rhythm note.");
             var cut=new VisualCut{generation=presentationGeneration,phase=phase,ordinal=ordinal,
-                sliceTarget=phase>=6?Run.Slices[phase-6]:0,
-                changesPreparation=phase<6&&Run.Hits==Run.RequiredHits,finishing=finishing,
+                // Reserve the final physical slice until the section passes.
+                // Its work credit still comes exclusively from successful notes.
+                sliceTarget=phase>=6?Mathf.Min(11,Run.Slices[phase-6]):0,
+                changesPreparation=false,finishing=finishing,
                 point=CutContactPoint(phase,ordinal),direction=CutDirection(phase)};
             NoteCursor++;Combo++;MaxCombo=Mathf.Max(MaxCombo,Combo);hitAttempts++;Score+=(int)(1000*judged.ScoreCoefficient);
             if(hudView!=null)hudView.ShowJudgement(judged.grade,adjusted);
@@ -217,6 +234,7 @@ namespace SashimiBoy
                     cut.phase==3?assembly.TryTurnOver():cut.phase==4?assembly.TryRemoveSkin(1):assembly.TrySeparateWholeFillet(1);
                 if(!changed)Fail("생선 손질 순서를 확인해 주세요.");
             }
+            if(cut.completesPhase&&!Run.Failed)phaseCompletionCommitted=true;
         }
         private void FinishVisualCut(VisualCut cut)
         {
@@ -262,9 +280,8 @@ namespace SashimiBoy
         }
         private Bounds PreparationBodyBounds(int phase)
         {
-            // The last back-side quota removes the carcass before its musical
-            // section ends. Finishing notes and HUD cues retain the last real
-            // work bounds instead of dereferencing a hidden body.
+            // Keep the final work frame while the boundary completion removes
+            // the carcass, until the next fillet section has been prepared.
             if(assembly.ActiveBodyObject==null)
             {
                 if(!hasPreparationBounds)throw new InvalidOperationException("No preparation work frame has been captured.");

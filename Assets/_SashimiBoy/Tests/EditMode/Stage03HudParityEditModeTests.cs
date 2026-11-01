@@ -139,7 +139,7 @@ namespace SashimiBoy.Tests
                 Assert.That(copy.transform.localScale, Is.EqualTo(renderer.transform.localScale), path);
                 Assert.That(copy.GetComponent<MeshFilter>().sharedMesh, Is.SameAs(renderer.GetComponent<MeshFilter>().sharedMesh), path);
             }
-            foreach (string field in new[] { "wideBracketDistance", "closedBracketDistance", "laneHorizonBeats", "nowDuration", "restThresholdBeats" })
+            foreach (string field in new[] { "wideBracketDistance", "closedBracketDistance", "laneHorizonBeats", "nowDuration", "restThresholdBeats", "tutorialTargetCount" })
                 Assert.That(RuntimeReflection.GetField(view, field), Is.EqualTo(RuntimeReflection.GetField(sourceCue, field)), field);
             foreach (string field in new[] { "leftBracket", "rightBracket", "forecastLeftBracket", "forecastRightBracket" })
             {

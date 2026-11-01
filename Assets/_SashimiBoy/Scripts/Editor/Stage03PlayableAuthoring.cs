@@ -40,6 +40,7 @@ namespace SashimiBoy.EditorTools
             var controller=Find<Stage03GameController>(scene);
             if(controller==null)throw new InvalidOperationException("Existing Stage3 scene is required.");
             PlaceAssembly(controller,scene);BindTwoSurfaces(controller);
+            Stage03KnifeAuthoring.Bind(controller.cooking);
             controller.chart=AssetDatabase.LoadAssetAtPath<Stage03Chart>(ChartPath);
             controller.clock.audioSource.clip=controller.chart.music;
             Stage03HudAuthoring.Apply(scene,controller);
@@ -102,6 +103,7 @@ namespace SashimiBoy.EditorTools
             if(controller==null)controller=BuildScene(scene);
             CleanupLegacyDemo(scene);
             PlaceAssembly(controller,scene);
+            Stage03KnifeAuthoring.Bind(controller.cooking);
             Stage03HudAuthoring.Apply(scene,controller);
             controller.chart=AssetDatabase.LoadAssetAtPath<Stage03Chart>(ChartPath);
             controller.clock.audioSource.clip=controller.chart.music;

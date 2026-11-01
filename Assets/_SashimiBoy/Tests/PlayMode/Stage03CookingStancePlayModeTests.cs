@@ -128,7 +128,8 @@ namespace SashimiBoy.Tests
                 {
                     int before=Value<int>(controller,"SpawnedSlices");
                     Assert.That(Call(controller,"SubmitAt",notes[i]),Is.EqualTo(true));
-                    int wanted=Value<int>(Run,"TotalSlices");
+                    int wanted=phase<6?0:phase==6?Mathf.Min(11,Value<int>(Run,"TotalSlices")):
+                        12+Mathf.Min(11,Value<int[]>(Run,"Slices")[1]);
                     Assert.That(Value<int>(controller,"SpawnedSlices"),Is.EqualTo(before),"Mesh exchange cannot precede contact.");
                     bool observe=phase<6?(i==0||i==required-1||i==notes.Length-1):wanted>before||i==notes.Length-1;
                     if(observe)
@@ -140,6 +141,12 @@ namespace SashimiBoy.Tests
                 }
                 Call(controller,"AdvancePresentation",2f);
                 Assert.That(Value<int>(controller,"PendingVisualCuts"),Is.Zero);
+                Call(controller,"TickAt",deadline+1d);
+                Assert.That(Value<int>(Run,"Phase"),Is.EqualTo(phase));
+                Assert.That(Value<int>(controller,"PendingVisualCuts"),Is.EqualTo(1));
+                yield return ObserveActualStroke(cooking,body,right,left,rootHeight,bodyScale,
+                    originalLengths,jointPositions,jointScales,"phase "+phase+", passed section-end contact");
+                Call(controller,"AdvancePresentation",2f);
                 Call(controller,"TickAt",deadline+1d);
                 Assert.That(Value<int>(Run,"Phase"),Is.EqualTo(phase+1));
                 if(phase<7)yield return null;
@@ -173,6 +180,8 @@ namespace SashimiBoy.Tests
                 var rotation=camera.transform.rotation;
                 Assert.That(Vector4.Distance(new Vector4(rotation.x,rotation.y,rotation.z,rotation.w),new Vector4(cameraRotation.x,cameraRotation.y,cameraRotation.z,cameraRotation.w)),Is.LessThan(.00001f),"Cut direction cannot rotate the gameplay camera: "+context);
                 Assert.That(Value<float>(cooking,"SupportBladeClearance"),Is.GreaterThanOrEqualTo(.0749f),"Actual posed support-hand and finger joints must remain clear of the swept blade plane: "+context);
+                Assert.That(Vector3.Dot(((Transform)Get(cooking,"knifeRoot")).up,Vector3.down),Is.GreaterThan(.95f),
+                    "The provided knife's actual sharp +Y edge must face the fish throughout the real motion: "+context);
                 AssertSupportSurface(cooking,body,left,context);
                 Assert.That(Vector3.Distance(((Transform)Get(left,"palm")).position,Value<Vector3>(cooking,"SafeSupportTarget")),Is.LessThanOrEqualTo(.015f),context);
             };
