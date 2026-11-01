@@ -1,12 +1,15 @@
 {
     "issue": 87,
     "algorithm": "Stage03FilletClip-3",
+    "sourceFingerprint": "SHA-256 of exact serialized asset and .meta file bytes; independent of the workspace Library import-artifact cache.",
     "contract": "Twelve equal longitudinal cuts; immutable original coordinate frame; cut normal -Z; original skin UV/normals retained; actual 2D intersection edges split before planar face tracing; double-precision ear clipping with conserved contour area; continuous 0..1 planar cap UV; opaque cap albedo sampled from the supplied SashimiSlice flesh; source bytes/importers untouched.",
     "capFleshReference": {
         "materialPath": "Assets/_SashimiBoy/Art/Generated/Stage03Flounder/Materials/MAT_SashimiSlice.mat",
+        "materialSha256": "7c33ecbdb9a94b6fc6a50eb898bea8176fdf7da177318cdaef6277020fbc8ce2",
+        "materialMetaSha256": "bc8c3266a0347890759d3b9ef5a7a2311c75982a4f98c42554feab01217fe17c",
         "texturePath": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/SashimiSlice/raw_chicken_breast_3d_model_basecolor.JPEG",
         "textureSha256": "cb0e8d98cb31855429385fcc5c4907e630be2bcaec70de214fd2f8e2b733aa69",
-        "materialDependencyHash": "bbf1766b5b1bd5f4cd62f7ab939e6128",
+        "textureMetaSha256": "b6d212dcdfb39991e2ccecc6c1acc6fcd64a9a7454d4f8c2b561eb038324155e",
         "colorSpace": "Gamma",
         "sampling": "256x256 sRGB readback of the supplied SashimiSlice albedo; component medians of bright warm-flesh pixels; reject dark/neutral atlas regions; no source importer setting changes or invented fallback.",
         "inspectedPixels": 65536,
@@ -22,7 +25,8 @@
         {
             "role": "FrontFillet",
             "sourceMeshPath": "Assets/_SashimiBoy/Art/Generated/Stage03Flounder/Meshes/MS_FrontWholeFillet.asset",
-            "sourceDependencyHash": "e9c7868bc79590e5d5f1c506fdd1827c",
+            "sourceMeshSha256": "2641e705952035d35ab426b7e6ed5aec942a45d16997833e12cbd66587dd75e3",
+            "sourceMeshMetaSha256": "4ccc13d2668d520e713701c4dff58ba1301000a78ac338f38905eebf4f1e7a1f",
             "cachePath": "Assets/_SashimiBoy/Art/Generated/Stage03FilletCuts/FrontFilletCache.asset",
             "cutsPerFillet": 12,
             "sourceVertices": 247680,
@@ -163,7 +167,8 @@
         {
             "role": "BackFillet",
             "sourceMeshPath": "Assets/_SashimiBoy/Art/Generated/Stage03Flounder/Meshes/MS_BackWholeFillet.asset",
-            "sourceDependencyHash": "a8efc3610ec9b41c70da96ef8998eb6c",
+            "sourceMeshSha256": "4dd22fbb25cdd307a4af343054e7c7164bf6a6ba814509d2a00b2c2d25c6561c",
+            "sourceMeshMetaSha256": "bb69e5c98bde3aebd86abbf577044fb959dd6762781973786b9ae447c8ac905e",
             "cachePath": "Assets/_SashimiBoy/Art/Generated/Stage03FilletCuts/BackFilletCache.asset",
             "cutsPerFillet": 12,
             "sourceVertices": 165427,
