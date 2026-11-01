@@ -47,6 +47,9 @@ namespace SashimiBoy.Tests
             var whole=((GameObject[])RuntimeReflection.GetField(assembly,"bodyStates"))[0];
             var renderers=whole.GetComponentsInChildren<Renderer>(true);
             Bounds bounds=renderers[0].bounds;foreach(var renderer in renderers)bounds.Encapsulate(renderer.bounds);
+            // An EditMode scene load does not execute Assembly.Awake/StartRun.
+            // Initialize the real preparation state before requesting its cue.
+            RuntimeReflection.Invoke(assembly,"BeginTwoFilletPreparation");
             var cue=(Vector3)RuntimeReflection.Invoke(controller,"PreparationWorkPoint",0);
             Assert.That(cue.x,Is.InRange(bounds.min.x-.0001f,bounds.max.x+.0001f));
             Assert.That(cue.z,Is.InRange(bounds.min.z-.0001f,bounds.max.z+.0001f));

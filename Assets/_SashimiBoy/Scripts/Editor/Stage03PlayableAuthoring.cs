@@ -43,6 +43,7 @@ namespace SashimiBoy.EditorTools
             controller.chart=AssetDatabase.LoadAssetAtPath<Stage03Chart>(ChartPath);
             controller.clock.audioSource.clip=controller.chart.music;
             Stage03HudAuthoring.Apply(scene,controller);
+            Stage03FirstPersonAuthoring.Bind(controller);
             EditorUtility.SetDirty(controller);Scan(scene);
             EditorSceneManager.MarkSceneDirty(scene);
             if(!EditorSceneManager.SaveScene(scene))throw new InvalidOperationException("Stage3 scene save failed.");
@@ -106,6 +107,7 @@ namespace SashimiBoy.EditorTools
             controller.clock.audioSource.clip=controller.chart.music;
             controller.clock.playOnStart=false;
             BindTwoSurfaces(controller);
+            Stage03FirstPersonAuthoring.Bind(controller);
             EditorUtility.SetDirty(controller);
             var data=AssetDatabase.LoadAssetAtPath<StageDefinition>("Assets/_SashimiBoy/Data/Generated/Stage_03_Sole.asset");
             if(data==null)throw new InvalidOperationException("Existing Stage3 stable-ID definition missing.");

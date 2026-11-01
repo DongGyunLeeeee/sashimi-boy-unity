@@ -73,6 +73,26 @@ namespace SashimiBoy.Tests
         }
 
         [UnityTest]
+        public IEnumerator FirstPersonSurfacesShareTheActualRig_AndRestoreFullBodyRenderingWhenDisabled()
+        {
+            var cooking=(Behaviour)Get(controller,"cooking");
+            var main=(SkinnedMeshRenderer)Get(cooking,"firstPersonBody");
+            var arms=(SkinnedMeshRenderer)Get(cooking,"firstPersonArms");
+            Assert.That(main,Is.Not.Null);Assert.That(arms,Is.Not.Null);
+            Assert.That(main,Is.Not.SameAs(arms));Assert.That(main.sharedMesh.name,Is.EqualTo("MS_RiggedBody_WithoutHead"));
+            Assert.That(arms.sharedMesh.name,Is.EqualTo("MS_Stage03_FirstPersonArms"));
+            Assert.That(arms.bones,Is.EqualTo(main.bones));Assert.That(arms.rootBone,Is.SameAs(main.rootBone));
+            Assert.That(main.shadowCastingMode,Is.EqualTo(UnityEngine.Rendering.ShadowCastingMode.ShadowsOnly));
+            Assert.That(arms.enabled,Is.True);
+            cooking.enabled=false;yield return null;
+            Assert.That(main.shadowCastingMode,Is.EqualTo(UnityEngine.Rendering.ShadowCastingMode.On));
+            Assert.That(arms.enabled,Is.False);
+            cooking.enabled=true;yield return null;
+            Assert.That(main.shadowCastingMode,Is.EqualTo(UnityEngine.Rendering.ShadowCastingMode.ShadowsOnly));
+            Assert.That(arms.enabled,Is.True);Assert.That(arms.bones,Is.EqualTo(main.bones));
+        }
+
+        [UnityTest]
         public IEnumerator All24Cuts_KeepPalmsClearOfBladeAndCameraFixed_WithoutStretchingTheSuppliedBody()
         {
             var cooking = Get(controller, "cooking");
@@ -165,8 +185,10 @@ namespace SashimiBoy.Tests
         {
             if(supportRenderer==null)
             {
-                supportRenderer=body.GetComponentsInChildren<SkinnedMeshRenderer>(true)
-                    .Single(renderer=>renderer.sharedMesh!=null&&renderer.sharedMesh.name=="MS_RiggedBody_WithoutHead");
+                supportRenderer=(SkinnedMeshRenderer)Get(cooking,"firstPersonArms");
+                Assert.That(supportRenderer,Is.Not.Null,"Validate the actual rendered first-person hand surface.");
+                Assert.That(supportRenderer.enabled,Is.True);
+                Assert.That(supportRenderer.shadowCastingMode,Is.Not.EqualTo(UnityEngine.Rendering.ShadowCastingMode.ShadowsOnly));
                 var mesh=supportRenderer.sharedMesh;var weights=mesh.boneWeights;var bones=supportRenderer.bones;
                 var hand=(Transform)Get(left,"hand");var selected=new bool[mesh.vertexCount];
                 bool IsHand(int index)=>index>=0&&index<bones.Length&&bones[index]!=null&&(bones[index]==hand||bones[index].IsChildOf(hand));

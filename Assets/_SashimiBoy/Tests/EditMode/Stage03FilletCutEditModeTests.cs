@@ -213,14 +213,41 @@ namespace SashimiBoy.Tests
 
         [Serializable] private sealed class CapReceiptProbe
         {
-            public string algorithm;
+            public string algorithm, sourceFingerprint;
             public FleshProbe capFleshReference;
+            public FilletReceiptProbe[] fillets;
         }
         [Serializable] private sealed class FleshProbe
         {
-            public string materialPath, texturePath, textureSha256, sampling;
+            public string materialPath, materialSha256, materialMetaSha256, texturePath, textureSha256, textureMetaSha256, sampling;
             public int inspectedPixels, acceptedFleshPixels;
             public Color capColor;
+        }
+        [Serializable] private sealed class FilletReceiptProbe
+        {
+            public string role, sourceMeshPath, sourceMeshSha256, sourceMeshMetaSha256;
+        }
+
+        [Test]
+        public void ReceiptIdentifiesPortableSourceBytesAndImportSettings_WithoutLibraryArtifactHashes()
+        {
+            string json = File.ReadAllText(Root + "/Stage03FilletCutReport.json");
+            var receipt = JsonUtility.FromJson<CapReceiptProbe>(json);
+            Assert.That(receipt.sourceFingerprint, Does.StartWith("SHA-256"));
+            Assert.That(json, Does.Not.Contain("sourceDependencyHash"));
+            Assert.That(json, Does.Not.Contain("materialDependencyHash"));
+            Assert.That(receipt.fillets.Select(entry => entry.role),
+                Is.EqualTo(new[] { "FrontFillet", "BackFillet" }));
+            foreach (FilletReceiptProbe entry in receipt.fillets)
+            {
+                Assert.That(entry.sourceMeshSha256, Is.EqualTo(HexSha256(entry.sourceMeshPath)), entry.role);
+                Assert.That(entry.sourceMeshMetaSha256, Is.EqualTo(HexSha256(entry.sourceMeshPath + ".meta")), entry.role);
+            }
+            FleshProbe flesh = receipt.capFleshReference;
+            Assert.That(flesh.materialSha256, Is.EqualTo(HexSha256(flesh.materialPath)));
+            Assert.That(flesh.materialMetaSha256, Is.EqualTo(HexSha256(flesh.materialPath + ".meta")));
+            Assert.That(flesh.textureSha256, Is.EqualTo(HexSha256(flesh.texturePath)));
+            Assert.That(flesh.textureMetaSha256, Is.EqualTo(HexSha256(flesh.texturePath + ".meta")));
         }
 
         [Test]
@@ -297,6 +324,8 @@ namespace SashimiBoy.Tests
         private static T Property<T>(object target, string name) => (T)target.GetType().GetProperty(name).GetValue(target);
         private static string Hash(string path)
         { using (var sha = SHA256.Create()) return Convert.ToBase64String(sha.ComputeHash(File.ReadAllBytes(path))); }
+        private static string HexSha256(string path)
+        { using (var sha = SHA256.Create()) return BitConverter.ToString(sha.ComputeHash(File.ReadAllBytes(path))).Replace("-", "").ToLowerInvariant(); }
         private static Mesh ConcavePrism()
         {
             var contour = new[] { new Vector2(0, 0), new Vector2(2, 0), new Vector2(2, 1),

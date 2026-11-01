@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Rendering;
 namespace SashimiBoy
 {
     [DefaultExecutionOrder(350)]
@@ -8,6 +9,10 @@ namespace SashimiBoy
     {
         public KevinBodyRig body;
         public Camera gameCamera;
+        public SkinnedMeshRenderer firstPersonBody,firstPersonArms;
+        private bool renderPolicyCaptured;
+        private ShadowCastingMode originalBodyShadows;
+        private bool originalArmsEnabled;
         public Transform knifeRoot,grip,contact;
         public Vector3 standingPosition;
         public float eyeHeight=1.64f,cookingPitch=48f;
@@ -147,7 +152,35 @@ namespace SashimiBoy
             if(gameCamera!=null)gameCamera.fieldOfView=originalFieldOfView;
             presentingPlate=false;
         }
-        private void Awake() {if(body!=null)body.SetHeadHidden(true);if(knifeRoot!=null)knifeRotation=knifeRoot.rotation;strokeRotation=knifeRotation;}
+        private void Awake()
+        {
+            if(body!=null)body.SetHeadHidden(true);
+            if(knifeRoot!=null)knifeRotation=knifeRoot.rotation;strokeRotation=knifeRotation;
+            ApplyFirstPersonRendering();
+        }
+        private void OnEnable()=>ApplyFirstPersonRendering();
+        private void OnDisable()
+        {
+            if(!renderPolicyCaptured)return;
+            if(firstPersonBody!=null)firstPersonBody.shadowCastingMode=originalBodyShadows;
+            if(firstPersonArms!=null)firstPersonArms.enabled=originalArmsEnabled;
+        }
+        private void ApplyFirstPersonRendering()
+        {
+            // A first-person camera must never see the interior of its own
+            // clothing. The view mesh uses the very same provided arm vertices,
+            // weights and live bones; the complete body still casts shadows.
+            if(firstPersonBody==null&&firstPersonArms==null)return;
+            if(firstPersonBody==null||firstPersonArms==null||firstPersonBody==firstPersonArms)
+                throw new InvalidOperationException("Stage3 first-person body and arm surfaces are incompletely bound.");
+            if(!renderPolicyCaptured)
+            {
+                originalBodyShadows=firstPersonBody.shadowCastingMode;
+                originalArmsEnabled=firstPersonArms.enabled;renderPolicyCaptured=true;
+            }
+            firstPersonBody.shadowCastingMode=ShadowCastingMode.ShadowsOnly;
+            firstPersonArms.enabled=true;
+        }
         private void LateUpdate()
         {
             if(presentingPlate)
@@ -270,12 +303,11 @@ namespace SashimiBoy
                 mesh=renderer.sharedMesh;
                 if(!mesh.isReadable||mesh.vertexCount!=SourceVertices)
                     throw new InvalidOperationException("The supplied Stage3 body geometry changed; expected 18976 readable vertices.");
-                using(var influenceCounts=mesh.GetBonesPerVertex())
-                {
-                    if(influenceCounts.Length!=SourceVertices)throw new InvalidOperationException("Missing exact per-vertex skin influence counts.");
-                    foreach(byte count in influenceCounts)
-                        if(count==0||count>4)throw new InvalidOperationException("Stage3 support clearance requires the preserved one-to-four-weight skin representation.");
-                }
+                // Borrowed Mesh memory; Unity owns this NativeArray view.
+                var influenceCounts=mesh.GetBonesPerVertex();
+                if(influenceCounts.Length!=SourceVertices)throw new InvalidOperationException("Missing exact per-vertex skin influence counts.");
+                foreach(byte count in influenceCounts)
+                    if(count==0||count>4)throw new InvalidOperationException("Stage3 support clearance requires the preserved one-to-four-weight skin representation.");
                 bones=renderer.bones;bindposes=mesh.bindposes;
                 if(bones.Length==0||bindposes.Length!=bones.Length)throw new InvalidOperationException("Invalid supplied body bone/bindpose identity.");
                 var allWeights=mesh.boneWeights;var allVertices=mesh.vertices;

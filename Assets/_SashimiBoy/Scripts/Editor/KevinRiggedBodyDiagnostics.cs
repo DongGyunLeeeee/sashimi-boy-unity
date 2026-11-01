@@ -179,11 +179,12 @@ namespace SashimiBoy.EditorTools
             Transform hand=cooking.body.left.hand;
             foreach(var renderer in cooking.body.GetComponentsInChildren<SkinnedMeshRenderer>(true))
             {
+                if(!renderer.enabled||renderer.shadowCastingMode==ShadowCastingMode.ShadowsOnly)continue;
                 var mesh=renderer.sharedMesh;if(mesh==null)continue;
                 var weights=mesh.boneWeights;var bones=renderer.bones;
                 var selected=new bool[mesh.vertexCount];
-                using(var perVertex=mesh.GetBonesPerVertex())
-                    foreach(byte influences in perVertex)if(influences>4)throw new InvalidOperationException("The support inspection requires the exact generated four-weight representation.");
+                var perVertex=mesh.GetBonesPerVertex(); // Borrowed view owned by Mesh.
+                foreach(byte influences in perVertex)if(influences>4)throw new InvalidOperationException("The support inspection requires the exact generated four-weight representation.");
                 bool IsHand(int index)=>index>=0&&index<bones.Length&&bones[index]!=null&&(bones[index]==hand||bones[index].IsChildOf(hand));
                 for(int i=0;i<weights.Length;i++)
                 {

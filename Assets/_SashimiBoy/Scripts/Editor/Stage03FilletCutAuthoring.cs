@@ -25,20 +25,21 @@ namespace SashimiBoy.EditorTools
         {
             public int issue = 87;
             public string algorithm = Algorithm;
+            public string sourceFingerprint = "SHA-256 of exact serialized asset and .meta file bytes; independent of the workspace Library import-artifact cache.";
             public string contract = "Twelve equal longitudinal cuts; immutable original coordinate frame; cut normal -Z; original skin UV/normals retained; actual 2D intersection edges split before planar face tracing; double-precision ear clipping with conserved contour area; continuous 0..1 planar cap UV; opaque cap albedo sampled from the supplied SashimiSlice flesh; source bytes/importers untouched.";
             public FleshReference capFleshReference;
             public Entry[] fillets;
         }
         [Serializable] private sealed class FleshReference
         {
-            public string materialPath, texturePath, textureSha256, materialDependencyHash, colorSpace;
+            public string materialPath, materialSha256, materialMetaSha256, texturePath, textureSha256, textureMetaSha256, colorSpace;
             public string sampling = "256x256 sRGB readback of the supplied SashimiSlice albedo; component medians of bright warm-flesh pixels; reject dark/neutral atlas regions; no source importer setting changes or invented fallback.";
             public int inspectedPixels, acceptedFleshPixels;
             public Color capColor;
         }
         [Serializable] private sealed class Entry
         {
-            public string role, sourceMeshPath, sourceDependencyHash, cachePath;
+            public string role, sourceMeshPath, sourceMeshSha256, sourceMeshMetaSha256, cachePath;
             public int cutsPerFillet, sourceVertices;
             public int[] remainingVertices, surfaceTriangles, capTriangles;
             public int[] sectionIntersectionSplits;
@@ -71,6 +72,8 @@ namespace SashimiBoy.EditorTools
                 Mesh source = sourceFilter.sharedMesh;
                 string sourcePath = AssetDatabase.GetAssetPath(source);
                 string dependencyBefore = AssetDatabase.GetAssetDependencyHash(sourcePath).ToString();
+                string sourceBytesBefore = FileSha256(sourcePath);
+                string sourceMetaBefore = FileSha256(sourcePath + ".meta");
                 var watch = System.Diagnostics.Stopwatch.StartNew();
                 var cache = AssetDatabase.LoadAssetAtPath<Stage03FilletCutCache>(CachePath(role));
                 if (cache == null)
@@ -86,7 +89,8 @@ namespace SashimiBoy.EditorTools
                 cache.cutPositions = new float[Stage03FilletCutCache.ApprovedCutsPerFillet];
                 var entry = new Entry
                 {
-                    role = role, sourceMeshPath = sourcePath, sourceDependencyHash = dependencyBefore,
+                    role = role, sourceMeshPath = sourcePath, sourceMeshSha256 = sourceBytesBefore,
+                    sourceMeshMetaSha256 = sourceMetaBefore,
                     cachePath = CachePath(role), cutsPerFillet = Stage03FilletCutCache.ApprovedCutsPerFillet,
                     sourceVertices = source.vertexCount,
                     remainingVertices = new int[Stage03FilletCutCache.ApprovedCutsPerFillet], surfaceTriangles = new int[Stage03FilletCutCache.ApprovedCutsPerFillet], capTriangles = new int[Stage03FilletCutCache.ApprovedCutsPerFillet], remainingSizes = new Vector3[Stage03FilletCutCache.ApprovedCutsPerFillet], sectionIntersectionSplits = new int[Stage03FilletCutCache.ApprovedCutsPerFillet]
@@ -115,6 +119,8 @@ namespace SashimiBoy.EditorTools
                 Require(cache.IsValid, "Incomplete generated fillet cache: " + role);
                 Require(dependencyBefore == AssetDatabase.GetAssetDependencyHash(sourcePath).ToString(),
                     "Generating cut states changed the presentation mesh: " + role);
+                Require(sourceBytesBefore == FileSha256(sourcePath) && sourceMetaBefore == FileSha256(sourcePath + ".meta"),
+                    "Generating cut states changed the serialized presentation mesh or its GUID/import settings: " + role);
                 EditorUtility.SetDirty(cache);
                 AssetDatabase.SaveAssetIfDirty(cache);
                 entry.cutPositions = (float[])cache.cutPositions.Clone();
@@ -151,12 +157,11 @@ namespace SashimiBoy.EditorTools
             Require(SystemInfo.graphicsDeviceType != GraphicsDeviceType.Null, "Flesh-reference sampling requires the approved graphics-enabled Editor mode.");
             var reference = new FleshReference
             {
-                materialPath = materialPath, texturePath = texturePath,
-                materialDependencyHash = AssetDatabase.GetAssetDependencyHash(materialPath).ToString(),
+                materialPath = materialPath, materialSha256 = FileSha256(materialPath),
+                materialMetaSha256 = FileSha256(materialPath + ".meta"), texturePath = texturePath,
+                textureSha256 = FileSha256(texturePath), textureMetaSha256 = FileSha256(texturePath + ".meta"),
                 colorSpace = QualitySettings.activeColorSpace.ToString()
             };
-            using (var sha = SHA256.Create())
-                reference.textureSha256 = BitConverter.ToString(sha.ComputeHash(File.ReadAllBytes(ProjectFile(texturePath)))).Replace("-", "").ToLowerInvariant();
             var previousTarget = RenderTexture.active;
             bool previousSrgbWrite = GL.sRGBWrite;
             RenderTexture target = null;
@@ -198,6 +203,17 @@ namespace SashimiBoy.EditorTools
                 if (readback != null) Object.DestroyImmediate(readback);
                 if (target != null) RenderTexture.ReleaseTemporary(target);
             }
+        }
+
+        private static string FileSha256(string assetPath)
+        {
+            // AssetDatabase dependency hashes include imported artifacts whose
+            // identity may change after a cold import in another workspace.
+            // A checked-in generation receipt instead identifies the exact
+            // portable source bytes (and separately their GUID/import settings).
+            using (var sha = SHA256.Create())
+            using (var stream = File.OpenRead(ProjectFile(assetPath)))
+                return BitConverter.ToString(sha.ComputeHash(stream)).Replace("-", "").ToLowerInvariant();
         }
 
         private static Material SaveCapMaterial(Color flesh, string role)
