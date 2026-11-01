@@ -87,6 +87,10 @@ namespace SashimiBoy.EditorTools
             EditorSceneManager.OpenScene("Assets/_SashimiBoy/Scenes/Stage03_Flounder.unity",OpenSceneMode.Single);
             var controller=Object.FindFirstObjectByType<Stage03GameController>();
             if(controller==null||controller.cooking==null)throw new InvalidOperationException("Stage3 authored controller/view missing.");
+            // Runtime detachment reparents parts. Unpack only the temporary
+            // loaded scene instance; never save this diagnostic scene/asset.
+            var assemblyInstance=PrefabUtility.GetOutermostPrefabInstanceRoot(controller.assembly.gameObject);
+            if(assemblyInstance!=null)PrefabUtility.UnpackPrefabInstance(assemblyInstance,PrefabUnpackMode.Completely,InteractionMode.AutomatedAction);
             var cooking=controller.cooking;var body=cooking.body;
             foreach(var surface in controller.fillets)Invoke(surface,"Awake");
             Invoke(cooking,"Awake");controller.autoStart=false;Invoke(controller,"Start");cooking.gameCamera.aspect=16f/9f;
