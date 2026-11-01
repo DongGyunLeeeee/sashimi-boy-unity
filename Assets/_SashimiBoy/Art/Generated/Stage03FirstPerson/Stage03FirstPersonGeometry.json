@@ -1,5 +1,5 @@
 {
-    "algorithm": "Stage03FirstPerson-1",
+    "algorithm": "Stage03FirstPerson-2",
     "sourceMeshPath": "Assets/_SashimiBoy/Art/Generated/Stage01Playable/Kevin/MS_RiggedBody_WithoutHead.asset",
     "sourceMeshGuid": "6863f0f2eb51bdd42b96c18eea65d5ee",
     "sourceMeshSha256": "dacea5973661cf2d526fb06342082f93f1fcd04f4d682dba21ac40b6b6733665",
@@ -14,15 +14,15 @@
     "generatedMeshGuid": "a26df5c91346ec146bcd5c6a7cfeff17",
     "sourceVertices": 18976,
     "sourceTriangles": 18196,
-    "keptTriangles": 4688,
-    "removedTriangles": 13508,
-    "leftArmTriangles": 2224,
-    "rightArmTriangles": 2464,
+    "keptTriangles": 2890,
+    "removedTriangles": 15306,
+    "leftArmTriangles": 1336,
+    "rightArmTriangles": 1554,
     "leftHandIncidentVertices": 1190,
     "rightHandIncidentVertices": 1129,
     "minimumArmWeight": 0.5,
     "vertexStreamsPreserved": true,
     "weightsPreserved": true,
     "bindposesPreserved": true,
-    "filterContract": "Keep a source triangle only if every corner has total weight >=0.5 in the same actual left.upper or right.upper descendant chain. Preserve all source vertices/channels/skin data and original retained indices; do not construct new anatomy or a second skeleton. Every nonzero hand-influenced triangle and its incident vertices must remain represented."
+    "filterContract": "Keep a source triangle only if every corner has total weight >=0.5 in the same actual left.lower or right.lower descendant chain. This first-person forearm/hand surface excludes upper-arm/shoulder clothing at its original skin-weight boundary. Preserve all source vertices/channels/skin data and original retained indices; do not construct new anatomy or a second skeleton. Every nonzero hand-influenced triangle and its incident vertices must remain represented."
 }
