@@ -12,7 +12,7 @@ namespace SashimiBoy.EditorTools
 {
     public static class KevinEmbodimentAuthoring
     {
-        public const string BodyPath = "Assets/_SashimiBoy/Art/Source/Characters/Kevin/Body/Quaternius/Casual2.fbx";
+        public const string BodyPath = KevinRiggedBodyAuthoring.BodyPath;
         public const string FaceVariantId = "CuteFace";
         public const string FacePath = "Assets/_SashimiBoy/Art/Generated/Prefabs/Characters/PF_Character_Kevin_CuteFace.prefab";
         public const string Output = "Assets/_SashimiBoy/Art/Generated/Stage01Playable/Kevin";
@@ -20,51 +20,14 @@ namespace SashimiBoy.EditorTools
 
         public static void BuildBody()
         {
-            Directory.CreateDirectory(Output); AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport);
-            var root = new GameObject("PF_Kevin_Complete");
-            try
-            {
-                var model = (GameObject)PrefabUtility.InstantiatePrefab(AssetDatabase.LoadAssetAtPath<GameObject>(BodyPath), root.transform);
-                model.transform.localScale = Vector3.one * .96f;
-                var animator = model.GetComponent<Animator>();
-                if (animator == null || !animator.isHuman) throw new InvalidOperationException("Kevin body needs the imported Humanoid skeleton.");
-                animator.enabled = false;
-                var rig = root.AddComponent<KevinBodyRig>();
-                Transform Bone(string name) => model.GetComponentsInChildren<Transform>(true).Single(t => t.name == name);
-                foreach (var renderer in model.GetComponentsInChildren<SkinnedMeshRenderer>())
-                {
-                    renderer.updateWhenOffscreen = true;
-                    if (renderer.name.EndsWith("_Head")) { renderer.gameObject.SetActive(false); continue; }
-                    renderer.sharedMaterials = renderer.sharedMaterials.Select(source =>
-                    {
-                        Color color = source.name.Contains("Skin") ? new Color(.58f, .405f, .285f)
-                            : renderer.name.EndsWith("_Body") ? new Color(.085f,.10f,.115f)
-                            : renderer.name.EndsWith("_Legs") ? new Color(.19f,.24f,.18f) : new Color(.055f,.063f,.058f);
-                        return SaveMaterial("Body_" + source.name, color);
-                    }).ToArray();
-                }
-                ConfigureArm(rig.right, Bone, ".R"); ConfigureArm(rig.left, Bone, ".L");
-                var fingers = model.GetComponentsInChildren<Transform>().Where(t =>
-                    new[] { "Index", "Middle", "Ring", "Pinky", "Thumb" }.Any(n => t.name.StartsWith(n)) && !t.name.EndsWith("_end")).ToArray();
-                rig.fingerBones = fingers; rig.fingerRest = fingers.Select(t => t.localRotation).ToArray();
-                rig.fingerAxes = fingers.Select(t => t.InverseTransformDirection(Vector3.forward)).ToArray();
-                rig.fingerAngles = fingers.Select(t => (t.name.EndsWith(".R") ? -1f : 1f) *
-                    (t.name.StartsWith("Thumb") ? 25f : t.name.Contains("2.") ? 48f : 62f) * (t.name.EndsWith(".L") ? .27f : 1f)).ToArray();
-                rig.head = Bone("Head");
-                rig.cookingSpine = Bone("Abdomen"); rig.spineRest = rig.cookingSpine.localRotation;
-                var face = BuildOwnerHead(rig.head, Bone("Neck"), Bone("Chest"));
-                rig.headRenderers = face.GetComponentsInChildren<Renderer>();
-                rig.eyeAnchor = new GameObject("KevinEyes").transform; rig.eyeAnchor.SetParent(rig.head, false);
-                rig.eyeAnchor.position = new Vector3(0f,1.645f,.06f);
-                rig.ApplyPose();
-                PrefabUtility.SaveAsPrefabAsset(root, PrefabPath);
-                RenderModel(root, "Logs/Stage1Embodiment/Kevin-combined.png");
-            }
-            finally { Object.DestroyImmediate(root); }
+            KevinRiggedBodyAuthoring.BuildBodyPrefab();
             ReapplyCatalog();
             KevinCustomizationAuthoring.BuildFaces();
+            Directory.CreateDirectory(KevinRiggedBodyAuthoring.EvidenceDirectory);
+            var preview = Object.Instantiate(AssetDatabase.LoadAssetAtPath<GameObject>(PrefabPath));
+            try { RenderModel(preview, Path.Combine(KevinRiggedBodyAuthoring.EvidenceDirectory, "Kevin-combined.png")); }
+            finally { Object.DestroyImmediate(preview); }
         }
-
         public static void ReapplyCatalog()
         {
             var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(PrefabPath);
@@ -80,19 +43,10 @@ namespace SashimiBoy.EditorTools
                 entry.heightMeters = 1.78f; entry.defaultScale = 1f; entry.isHumanoid = true;
                 entry.hasAnimationClips = false; entry.idleClip = entry.walkClip = null;
                 entry.notes = (id == FaceVariantId ? "" : "Legacy Scene default alias of CuteFace. ") +
-                    "Owner CuteFace with a continuous skinned neck and CC0 Quaternius body; connected arm/finger cooking IK is retained.";
+                    "Owner CuteFace with a continuous skinned neck and the supplied RiggedBody; connected arm/finger cooking IK is retained.";
             }
             catalog.provisionalDefaultVariantId = FaceVariantId;
             EditorUtility.SetDirty(catalog); AssetDatabase.SaveAssetIfDirty(catalog);
-        }
-
-        private static void ConfigureArm(KevinBodyRig.Arm arm, Func<string, Transform> bone, string suffix)
-        {
-            arm.upper = bone("UpperArm" + suffix); arm.lower = bone("LowerArm" + suffix); arm.hand = bone("Hand" + suffix);
-            arm.upperRest = arm.upper.localRotation; arm.lowerRest = arm.lower.localRotation; arm.handRest = arm.hand.localRotation; arm.handWorldRest = arm.hand.rotation;
-            arm.upperLength = Vector3.Distance(arm.upper.position, arm.lower.position); arm.lowerLength = Vector3.Distance(arm.lower.position, arm.hand.position);
-            arm.palm = new GameObject("PalmGrip").transform; arm.palm.SetParent(arm.hand, false);
-            arm.palm.position = Vector3.Lerp(arm.hand.position, bone("Middle2" + suffix).position, .73f) + Vector3.down * .01f;
         }
 
         private struct Vertex
@@ -193,7 +147,8 @@ namespace SashimiBoy.EditorTools
                     Vector3 shift = new Vector3(originalCenter.x - cutCenter.x, 0f, originalCenter.z - cutCenter.z);
                     for (int i = 0; i < vertices.Count; i++) vertices[i] += shift;
                 }
-                var result = new GameObject("OwnerFace_" + variantId, typeof(SkinnedMeshRenderer));
+                var previousHead = head.Find("OwnerFace_" + variantId);
+                var result = previousHead != null ? previousHead.gameObject : new GameObject("OwnerFace_" + variantId, typeof(SkinnedMeshRenderer));
                 result.transform.SetParent(head, false);
                 result.transform.position = neck.position + Vector3.up * .005f;
                 result.transform.rotation = Quaternion.identity;
@@ -204,15 +159,18 @@ namespace SashimiBoy.EditorTools
                 generated.boneWeights = weights.ToArray();
                 generated.bindposes = bones.Select(b => b.worldToLocalMatrix * result.transform.localToWorldMatrix).ToArray();
                 generated.RecalculateBounds();
+                generated.RecalculateTangents();
                 string suffix = variantId == FaceVariantId ? "" : "_" + variantId;
                 string path = Output + "/MS_OwnerHead" + suffix + ".asset";
-                var saved = AssetDatabase.LoadAssetAtPath<Mesh>(path);
-                if (saved == null) { AssetDatabase.CreateAsset(generated,path); saved = generated; }
-                else { EditorUtility.CopySerialized(generated,saved); Object.DestroyImmediate(generated); }
-                EditorUtility.SetDirty(saved); AssetDatabase.SaveAssetIfDirty(saved);
-                var mat = SaveMaterial("OwnerHead" + suffix, Color.white); mat.CopyPropertiesFromMaterial(original);
-                mat.DisableKeyword("_METALLICGLOSSMAP"); mat.SetFloat("_Metallic",0f); mat.SetFloat("_Glossiness",.15f); mat.SetFloat("_BumpScale",.2f);
-                EditorUtility.SetDirty(mat); AssetDatabase.SaveAssetIfDirty(mat);
+                var saved = KevinRiggedBodyAuthoring.SaveMesh(generated, path);
+                // Rebinding the approved faces to another body must not restyle their materials.
+                var mat = AssetDatabase.LoadAssetAtPath<Material>(Output + "/MAT_OwnerHead" + suffix + ".mat");
+                if (mat == null)
+                {
+                    mat = SaveMaterial("OwnerHead" + suffix, Color.white); mat.CopyPropertiesFromMaterial(original);
+                    mat.DisableKeyword("_METALLICGLOSSMAP"); mat.SetFloat("_Metallic",0f); mat.SetFloat("_Glossiness",.15f); mat.SetFloat("_BumpScale",.2f);
+                    EditorUtility.SetDirty(mat); AssetDatabase.SaveAssetIfDirty(mat);
+                }
                 var renderer = result.GetComponent<SkinnedMeshRenderer>();
                 renderer.sharedMesh = saved; renderer.sharedMaterial = mat; renderer.bones = bones;
                 renderer.rootBone = chest; renderer.localBounds = saved.bounds; renderer.updateWhenOffscreen = true;

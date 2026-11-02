@@ -19,6 +19,8 @@ namespace SashimiBoy
         public Transform head, eyeAnchor;
         public Transform cookingSpine;
         public Quaternion spineRest;
+        public Vector3 spineBendAxis = Vector3.right;
+        public float workingLeanDegrees = 27f;
         public Transform[] fingerBones = Array.Empty<Transform>();
         public Quaternion[] fingerRest = Array.Empty<Quaternion>();
         public Vector3[] fingerAxes = Array.Empty<Vector3>();
@@ -30,6 +32,52 @@ namespace SashimiBoy
 
         private void LateUpdate() => ApplyPose();
 
+        // Targets and palm rotations are supplied by the real tool/instrument.
+        // Fit only the grounded root's horizontal position, then solve the same
+        // attached, fixed-length arm chains. An impossible target retains error.
+        public void ApplyWorkingPoseAtRoot(Vector3 preferredWorldPosition)
+        {
+            ApplyPose();
+            if (!working) return;
+            transform.position = KevinGroundedReach.FitRootPosition(this, preferredWorldPosition);
+            ApplyPose();
+        }
+
+        // Low keyboards require a waist bend and fingers pointing over their
+        // surface, unlike the knife grip. Choose this stance once from the two
+        // lowest stroke targets so the torso does not bob on every keystroke.
+        // Only spine/arm rotations and horizontal root placement are adjusted.
+        public bool PrepareInstrumentPoseAtRoot(Vector3 preferredWorldPosition, Vector3 neutralRight, Vector3 neutralLeft)
+        {
+            rightTarget = neutralRight; leftTarget = neutralLeft;
+            rightRotation = InstrumentHandRotation(right);
+            leftRotation = InstrumentHandRotation(left);
+            for (int lean = 27; lean <= 65; lean++)
+            {
+                workingLeanDegrees = lean;
+                transform.position = preferredWorldPosition;
+                ApplyPose();
+                if (!KevinGroundedReach.TryFitRootPosition(this, preferredWorldPosition, out var fitted)) continue;
+                transform.position = fitted;
+                ApplyPose();
+                return true;
+            }
+            // Do not hide an impossible instrument with longer arms, target
+            // movement or a lowered root. Actual pose diagnostics retain it.
+            transform.position = preferredWorldPosition;
+            ApplyPose();
+            return false;
+        }
+
+        private Quaternion InstrumentHandRotation(Arm arm)
+        {
+            Quaternion rest = transform.rotation * arm.handWorldRest;
+            Vector3 restDirection = rest * arm.palm.localPosition.normalized;
+            Vector3 overSurface = (transform.forward + Vector3.down * .25f).normalized;
+            return Quaternion.LookRotation(overSurface, transform.up) *
+                Quaternion.Inverse(Quaternion.LookRotation(restDirection, transform.up)) * rest;
+        }
+
         public void SetHeadHidden(bool hidden)
         {
             foreach (var renderer in headRenderers)
@@ -38,7 +86,7 @@ namespace SashimiBoy
 
         public void ApplyPose()
         {
-            if (cookingSpine != null) cookingSpine.localRotation = spineRest * Quaternion.AngleAxis(working ? 27f : 0f, Vector3.right);
+            if (cookingSpine != null) cookingSpine.localRotation = spineRest * Quaternion.AngleAxis(working ? workingLeanDegrees : 0f, spineBendAxis);
             for (int i = 0; i < fingerBones.Length; i++)
                 fingerBones[i].localRotation = fingerRest[i] * Quaternion.AngleAxis(working ? fingerAngles[i] : fingerAngles[i] * .18f, fingerAxes[i]);
             if (working)

@@ -1,0 +1,136 @@
+{
+    "issue": 83,
+    "sourceFileCount": 12,
+    "algorithm": "Stage03NpcAssets-1",
+    "coordinateContract": "+Y up, +Z visual front after explicit calibration; positive uniform scale; feet at Y0, centered XZ. Preview height is not final world placement approval.",
+    "materialContract": "Standard metallic R=source metallic R; smoothness A=255-source roughness R. Decode scalar source file bytes linearly. Supplied rm is preserved and unbound.",
+    "geometryContract": "Complete imported hierarchy and source mesh references retained; no decimation, rigging, head cutting, animation or gameplay components generated.",
+    "characters": [
+        {
+            "character": "Junseok",
+            "sourceModelPath": "Assets/_SashimiBoy/Art/Source/DayWorld/Characters/Junseok/tripo_convert_4b828a99-2bf3-439d-b7b8-19988b8469b0.fbm/tripo_convert_4b828a99-2bf3-439d-b7b8-19988b8469b0.fbx",
+            "baseColorPath": "Assets/_SashimiBoy/Art/Source/DayWorld/Characters/Junseok/tripo_convert_4b828a99-2bf3-439d-b7b8-19988b8469b0.fbm/junseok_basecolor.JPEG",
+            "normalSourcePath": "Assets/_SashimiBoy/Art/Source/DayWorld/Characters/Junseok/tripo_convert_4b828a99-2bf3-439d-b7b8-19988b8469b0.fbm/junseok_normal.JPEG",
+            "normalCopyPath": "Assets/_SashimiBoy/Art/Generated/Stage03NpcAssets/Textures/Junseok_Normal.JPEG",
+            "metallicSourcePath": "Assets/_SashimiBoy/Art/Source/DayWorld/Characters/Junseok/tripo_convert_4b828a99-2bf3-439d-b7b8-19988b8469b0.fbm/junseok_metallic.JPEG",
+            "roughnessSourcePath": "Assets/_SashimiBoy/Art/Source/DayWorld/Characters/Junseok/tripo_convert_4b828a99-2bf3-439d-b7b8-19988b8469b0.fbm/junseok_roughness.JPEG",
+            "rmSourcePath": "Assets/_SashimiBoy/Art/Source/DayWorld/Characters/Junseok/tripo_convert_4b828a99-2bf3-439d-b7b8-19988b8469b0.fbm/junseok_rm.JPEG",
+            "materialPath": "Assets/_SashimiBoy/Art/Generated/Stage03NpcAssets/Materials/M_Junseok.mat",
+            "prefabPath": "Assets/_SashimiBoy/Art/Generated/Stage03NpcAssets/Prefabs/PF_Junseok.prefab",
+            "packedMapPath": "Assets/_SashimiBoy/Art/Generated/Stage03NpcAssets/Textures/Junseok_MetallicSmoothness.png",
+            "sourceModelSha256": "1b15ad0f6337e894ee25542124a84daa24c5f45d3697d6fbc58950cdc9a3f292",
+            "normalCopySha256": "0f23d9ed47684cf89c644a7c0c6939fc0c9bc8a80a39293f2ff64c5f0e72b816",
+            "packedMapSha256": "dc2a873a6f1a691c683dd34eef259e5e19a74fb3ccc012615dc04b98fa689daf",
+            "importedBoundsMin": {
+                "x": -0.2024231255054474,
+                "y": -2.9802322387695315e-8,
+                "z": -0.14561477303504945
+            },
+            "importedBoundsMax": {
+                "x": 0.2024689018726349,
+                "y": 0.9794923067092896,
+                "z": 0.1454925835132599
+            },
+            "normalizedBoundsMin": {
+                "x": -0.36169809103012087,
+                "y": 0.0,
+                "z": -0.26005202531814577
+            },
+            "normalizedBoundsMax": {
+                "x": 0.36169809103012087,
+                "y": 1.75,
+                "z": 0.26005202531814577
+            },
+            "yawDegrees": 0.0,
+            "uniformScale": 1.7866398096084595,
+            "previewHeight": 1.75,
+            "meshCount": 1,
+            "packedWidth": 4096,
+            "packedHeight": 4096,
+            "sourceVertices": 1323015,
+            "sourceTriangles": 1982489,
+            "sourceBytesPreserved": true,
+            "rmBound": false,
+            "runtimePerformanceVerified": false
+        },
+        {
+            "character": "Jaehoon",
+            "sourceModelPath": "Assets/_SashimiBoy/Art/Source/DayWorld/Characters/Jaehoon/tripo_convert_994f3d88-2ebb-4bd5-8313-744a6cd4fd47.fbm/tripo_convert_994f3d88-2ebb-4bd5-8313-744a6cd4fd47.fbx",
+            "baseColorPath": "Assets/_SashimiBoy/Art/Source/DayWorld/Characters/Jaehoon/tripo_convert_994f3d88-2ebb-4bd5-8313-744a6cd4fd47.fbm/jaehoon_basecolor.JPEG",
+            "normalSourcePath": "Assets/_SashimiBoy/Art/Source/DayWorld/Characters/Jaehoon/tripo_convert_994f3d88-2ebb-4bd5-8313-744a6cd4fd47.fbm/jaehoon_normal.JPEG",
+            "normalCopyPath": "Assets/_SashimiBoy/Art/Generated/Stage03NpcAssets/Textures/Jaehoon_Normal.JPEG",
+            "metallicSourcePath": "Assets/_SashimiBoy/Art/Source/DayWorld/Characters/Jaehoon/tripo_convert_994f3d88-2ebb-4bd5-8313-744a6cd4fd47.fbm/jaehoon_metallic.JPEG",
+            "roughnessSourcePath": "Assets/_SashimiBoy/Art/Source/DayWorld/Characters/Jaehoon/tripo_convert_994f3d88-2ebb-4bd5-8313-744a6cd4fd47.fbm/jaehoon_roughness.JPEG",
+            "rmSourcePath": "Assets/_SashimiBoy/Art/Source/DayWorld/Characters/Jaehoon/tripo_convert_994f3d88-2ebb-4bd5-8313-744a6cd4fd47.fbm/jaehoon_rm.JPEG",
+            "materialPath": "Assets/_SashimiBoy/Art/Generated/Stage03NpcAssets/Materials/M_Jaehoon.mat",
+            "prefabPath": "Assets/_SashimiBoy/Art/Generated/Stage03NpcAssets/Prefabs/PF_Jaehoon.prefab",
+            "packedMapPath": "Assets/_SashimiBoy/Art/Generated/Stage03NpcAssets/Textures/Jaehoon_MetallicSmoothness.png",
+            "sourceModelSha256": "087c32e19176a9ddf46f842bc0db3c7d1c4d50bafff86dce2ed08a5eea2aafc6",
+            "normalCopySha256": "4dc5280c22db589f3966017b890cc77f507a6df956b1504848fcf201ba4f604b",
+            "packedMapSha256": "c156a13516b46da230573541f7d42e8c6df1044276a8afa0d76f4d813521b092",
+            "importedBoundsMin": {
+                "x": -0.173187255859375,
+                "y": 0.0,
+                "z": -0.11225143074989319
+            },
+            "importedBoundsMax": {
+                "x": 0.173492431640625,
+                "y": 0.9801942110061646,
+                "z": 0.11261752247810364
+            },
+            "normalizedBoundsMin": {
+                "x": -0.3094741106033325,
+                "y": 0.0,
+                "z": -0.20073606073856355
+            },
+            "normalizedBoundsMax": {
+                "x": 0.3094741106033325,
+                "y": 1.75,
+                "z": 0.20073606073856355
+            },
+            "yawDegrees": 0.0,
+            "uniformScale": 1.7853604555130005,
+            "previewHeight": 1.75,
+            "meshCount": 1,
+            "packedWidth": 4096,
+            "packedHeight": 4096,
+            "sourceVertices": 1335581,
+            "sourceTriangles": 1965224,
+            "sourceBytesPreserved": true,
+            "rmBound": false,
+            "runtimePerformanceVerified": false
+        }
+    ],
+    "cameraViews": [
+        {
+            "name": "front",
+            "direction": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 1.0
+            },
+            "width": 768,
+            "height": 1024
+        },
+        {
+            "name": "side",
+            "direction": {
+                "x": 1.0,
+                "y": 0.0,
+                "z": 0.0
+            },
+            "width": 768,
+            "height": 1024
+        },
+        {
+            "name": "back",
+            "direction": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": -1.0
+            },
+            "width": 768,
+            "height": 1024
+        }
+    ]
+}

@@ -12,8 +12,11 @@ The separate current-game corrections in PR #69 are not part of this change.
 The machine-readable [manifest](STAGE03_ASSET_MANIFEST.json) records all four
 inputs and every archive entry, destination, byte length and SHA-256. ZIP files
 are delivery containers and are not duplicated in the repository. All 68 source
-files (874,143,708 bytes) retain their original bytes. Only FBX filenames are
+files (874,143,708 bytes) retained their original bytes at intake. Only FBX filenames were
 normalized from opaque Tripo export names to their supplied group names.
+The original manifest remains a frozen historical receipt. The approved music
+replacement in Issue #85 is recorded separately below; the other 67 originals
+remain unchanged.
 
 | Input | Contents | Destination |
 | --- | --- | --- |
@@ -48,7 +51,8 @@ under `Resources`, connected to a scene, or used to replace existing characters.
   size cap 1024, normal-map classification and linear roughness/metallic maps.
   Body sources use their own Unity import metadata. Final material authoring,
   character rig mapping and runtime prefab assembly belong to later work.
-- Music is PCM, stereo, 16-bit, 48,000 Hz, 7,121,280 frames / 148.36 seconds.
+- The original music received in Issue #70 was PCM, stereo, 16-bit, 48,000 Hz,
+  7,121,280 frames / 148.36 seconds.
   This states the audio-file duration, not a BPM, first beat, chart offset or
   judgement schedule. The WAV has not been re-encoded, trimmed or normalized.
 - Font name metadata identifies `첫걸음 / Cheosgeol-eum`, Regular, version 1.000,
@@ -85,6 +89,35 @@ handle one issue per run. Human play verification and merging remain with the
 Owner. The archived Stage1/2 backlog is not reactivated.
 
 ## Validation evidence
+
+### Approved music replacement — Issue #85
+
+On 2026-10-30 the Owner supplied `flounder.wav` as the version with vocals and
+[explicitly approved the full-file replacement](https://github.com/DongGyunLeeeee/sashimi-boy-unity/issues/85#issuecomment-6522789964).
+The current bytes at
+`Assets/_SashimiBoy/Audio/Music/Stage_03_Flounder/flounder1.wav` are an unmodified
+copy of that input: 44,350,480 bytes, SHA-256
+`3572605dec84991aabf1e4911eee443287da0f7e5c403b0a449aee403cf31062`, PCM16 stereo
+48,000 Hz, 11,084,160 frames / **230.92 seconds**. The existing filename,
+GUID `c4fa323b3fd58a44dbbb5f5f6b64d734`, entire `.meta` and importer settings are
+preserved. No trimming, re-encoding, normalization or metadata stripping was
+performed.
+
+The separate [audio revision manifest](STAGE03_AUDIO_REVISION_MANIFEST.json)
+binds this one replacement to the approval and the byte-exact historical
+receipt (SHA-256 `8a586c697634f95bc42dedb8ee33f9c6f1370ebcffb43104a068db2fc0f8de26`).
+It records both identities; the old audio remains in Git LFS history. Intake
+checks validate all 67 unchanged originals and this explicitly approved current
+music identity. The audit report distinguishes the historical receipt from the
+current approved music.
+
+The new file is **82.56 seconds longer** than the original. Its duration does
+not establish a matching intro, tempo, first beat, offset or chart. No Scene,
+Prefab, stage unlock, BPM, chart or judgement setting is changed. Owner listening
+and final music-sync verification remain pending; successful decoding alone is
+not a vocal or musical-alignment approval.
+
+### Original intake evidence
 
 Archive CRC/path checks and source-to-destination hashes are part of intake.
 Unity import, tests, scene/reference scans and LFS transfer results are recorded

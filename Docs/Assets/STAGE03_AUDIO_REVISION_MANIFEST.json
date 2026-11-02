@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "issue": 85,
+  "ownerDecisionUrl": "https://github.com/DongGyunLeeeee/sashimi-boy-unity/issues/85#issuecomment-6522789964",
+  "legacyReceipt": {
+    "path": "Docs/Assets/STAGE03_ASSET_MANIFEST.json",
+    "sha256": "8a586c697634f95bc42dedb8ee33f9c6f1370ebcffb43104a068db2fc0f8de26"
+  },
+  "original": {
+    "path": "Assets/_SashimiBoy/Audio/Music/Stage_03_Flounder/flounder1.wav",
+    "guid": "c4fa323b3fd58a44dbbb5f5f6b64d734",
+    "inputName": "flounder1.wav",
+    "bytes": 28485292,
+    "sha256": "3d277b2dcd67feb1bebf937460d2cd694347aa3db020ece0bd6079f5a29fb065",
+    "audio": {
+      "encoding": "PCM",
+      "channels": 2,
+      "sampleRate": 48000,
+      "bitsPerSample": 16,
+      "frames": 7121280,
+      "durationSeconds": 148.36
+    }
+  },
+  "replacement": {
+    "sourceName": "flounder.wav",
+    "path": "Assets/_SashimiBoy/Audio/Music/Stage_03_Flounder/flounder1.wav",
+    "guid": "c4fa323b3fd58a44dbbb5f5f6b64d734",
+    "bytes": 44350480,
+    "sha256": "3572605dec84991aabf1e4911eee443287da0f7e5c403b0a449aee403cf31062",
+    "audio": {
+      "encoding": "PCM",
+      "channels": 2,
+      "sampleRate": 48000,
+      "bitsPerSample": 16,
+      "frames": 11084160,
+      "durationSeconds": 230.92
+    }
+  },
+  "rawCopy": true,
+  "transformed": false
+}

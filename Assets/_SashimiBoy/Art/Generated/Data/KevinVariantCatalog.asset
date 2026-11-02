@@ -17,7 +17,7 @@ MonoBehaviour:
   - variantId: AmbiguousFace
     displayName: Ambiguous Face
     prefab: {fileID: 1344904833122410990, guid: 9528feda91a928449805e6ceff699f28, type: 3}
-    avatar: {fileID: 9000000, guid: 1a096200b0c4ff94d977d62dce9612a4, type: 3}
+    avatar: {fileID: 9000000, guid: b905555ab3206ee4e9d306ab55c16922, type: 3}
     heightMeters: 1.78
     defaultScale: 1
     isHumanoid: 1
@@ -25,7 +25,8 @@ MonoBehaviour:
     idleClip: {fileID: 0}
     walkClip: {fileID: 0}
     notes: Legacy Scene default alias of CuteFace. Owner CuteFace with a continuous
-      skinned neck and CC0 Quaternius body; connected arm/finger cooking IK is retained.
+      skinned neck and the supplied RiggedBody; connected arm/finger cooking IK is
+      retained.
   - variantId: PlainFace
     displayName: Plain Face
     prefab: {fileID: 4541657079874603286, guid: a6e76dcb757c942e0ac633d4960c2b8f, type: 3}
@@ -41,14 +42,14 @@ MonoBehaviour:
   - variantId: CuteFace
     displayName: Cute Face
     prefab: {fileID: 1344904833122410990, guid: 9528feda91a928449805e6ceff699f28, type: 3}
-    avatar: {fileID: 9000000, guid: 1a096200b0c4ff94d977d62dce9612a4, type: 3}
+    avatar: {fileID: 9000000, guid: b905555ab3206ee4e9d306ab55c16922, type: 3}
     heightMeters: 1.78
     defaultScale: 1
     isHumanoid: 1
     hasAnimationClips: 0
     idleClip: {fileID: 0}
     walkClip: {fileID: 0}
-    notes: Owner CuteFace with a continuous skinned neck and CC0 Quaternius body;
+    notes: Owner CuteFace with a continuous skinned neck and the supplied RiggedBody;
       connected arm/finger cooking IK is retained.
   - variantId: WesternFace
     displayName: Western Face

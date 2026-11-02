@@ -75,7 +75,7 @@ namespace SashimiBoy.Tests
             var body = (Component)RuntimeReflection.GetField(cooking,"body");
             Assert.That(body,Is.Not.Null);
             Assert.That(body.GetComponentInChildren<Animator>().isHuman,Is.True);
-            Assert.That(body.GetComponentsInChildren<SkinnedMeshRenderer>().Length,Is.GreaterThanOrEqualTo(3));
+            Assert.That(body.GetComponentsInChildren<SkinnedMeshRenderer>().Length,Is.GreaterThanOrEqualTo(2), "Supplied body and selected Owner face must both be skinned.");
             float gripError = (float)RuntimeReflection.Invoke(body,"get_MaximumGripError");
             if (gripError >= .045f) Debug.Log("[KevinPose] " + body.transform.position + " right target=" + RuntimeReflection.GetField(body,"rightTarget") + " left target=" + RuntimeReflection.GetField(body,"leftTarget"));
             Assert.That(gripError,Is.LessThan(.045f),"The real skinned palms must reach their tool/fish targets.");
@@ -87,7 +87,9 @@ namespace SashimiBoy.Tests
                 Assert.That(Vector3.Distance(upper.position,lower.position),Is.EqualTo((float)RuntimeReflection.GetField(arm,"upperLength")).Within(.005f));
             }
             Assert.That(Camera.main.transform.position.y-body.transform.position.y,Is.InRange(1.55f,1.72f));
-            Assert.That(Camera.main.transform.eulerAngles.x,Is.InRange(42f,54f));
+            Assert.That(Vector3.Angle(Camera.main.transform.forward,Vector3.down),Is.LessThanOrEqualTo(48.1f),"The camera uses a bounded downward look from Kevin's actual eyes.");
+            Assert.That(Camera.main.fieldOfView,Is.LessThanOrEqualTo(100f));
+            AssertWorkingFishAndHandsInFrame();
             Assert.That(((Transform)RuntimeReflection.GetField(view,"handRoot")).GetComponentsInChildren<Renderer>().Length,Is.Zero,"The old floating hand mesh must be absent.");
             Hit(0); yield return null;
             var hud = (Component)RuntimeReflection.GetField(RuntimeReflection.GetField(timing,"presentationController"),"hud");
@@ -209,6 +211,26 @@ namespace SashimiBoy.Tests
             }
         }
 
+        private void AssertWorkingFishAndHandsInFrame()
+        {
+            var cooking=RuntimeReflection.FindActiveComponent("SashimiBoy.Stage01CookingView");
+            var body=RuntimeReflection.GetField(cooking,"body");
+            var assembly=RuntimeReflection.GetField(view,"assembly");
+            int phase=Convert.ToInt32(RuntimeReflection.Invoke(view,"get_VisiblePhase"));
+            Component fish=phase<2?(Component)RuntimeReflection.GetField(assembly,"body"):
+                phase<4?(Component)RuntimeReflection.GetField(assembly,"fillet"):((GameObject)RuntimeReflection.GetField(view,"filletHalf")).transform;
+            AssertFishInFrame(fish);
+            foreach(string side in new[]{"right","left"})
+            {
+                var arm=RuntimeReflection.GetField(body,side);
+                Vector3 point=Camera.main.WorldToViewportPoint(((Transform)RuntimeReflection.GetField(arm,"palm")).position);
+                Assert.That(point.z,Is.GreaterThan(Camera.main.nearClipPlane),side+" palm crosses the near plane");
+                Assert.That(point.x,Is.InRange(.02f,.98f),side+" palm must be readable in the actual game view");
+                Assert.That(point.y,Is.InRange(.02f,.98f),side+" palm must be readable in the actual game view");
+            }
+            Assert.That(RuntimeReflection.Invoke(cooking,"get_FramingSatisfied"),Is.EqualTo(true),"The current fish, fingers and active tool must all fit without changing their targets or anatomy.");
+        }
+
         [UnityTest]
         public IEnumerator SavedChart_RealPartsPlateClearAndRetryResetTogether()
         {
@@ -235,7 +257,11 @@ namespace SashimiBoy.Tests
                 var cooking = RuntimeReflection.FindActiveComponent("SashimiBoy.Stage01CookingView");
                 var body = (Component)RuntimeReflection.GetField(cooking,"body");
                 Debug.Log("[KevinPhase] phase=" + (phase+1) + " camera=" + Camera.main.transform.position + " body=" + body.transform.position + " target=" + RuntimeReflection.GetField(body,"rightTarget") + " working=" + RuntimeReflection.GetField(body,"working") + " error=" + RuntimeReflection.Invoke(body,"get_MaximumGripError"));
-                if (phase<5) Assert.That((float)RuntimeReflection.Invoke(body,"get_MaximumGripError"),Is.LessThan(.055f),"Connected hands must reach throughout every cooking phase.");
+                if (phase<5)
+                {
+                    Assert.That((float)RuntimeReflection.Invoke(body,"get_MaximumGripError"),Is.LessThan(.055f),"Connected hands must reach throughout every cooking phase.");
+                    AssertWorkingFishAndHandsInFrame();
+                }
                 if (phase == 0)
                 {
                     Assert.That(BoolProperty(RuntimeReflection.GetField(assembly, "head"), "IsAttached"), Is.False);

@@ -70,7 +70,7 @@ namespace SashimiBoy
                     order = 3,
                     fishType = FishType.Sole,
                     hiphopGenre = "Jazz Rap",
-                    bpm = 98f,
+                    bpm = 96.53f,
                     requiredPreviousStageId = SashimiBoyConstants.StageIds.Rockfish,
                     nextStageId = SashimiBoyConstants.StageIds.Mullet,
                     rewardEquipment = EquipmentId.Plugin,
@@ -79,11 +79,7 @@ namespace SashimiBoy
                     inspirationPopup = "소리를 더 뚜렷하게 구별하길 원해?",
                     kevinShopRequest = "소리가 더 뚜렷하게 구별되길 원합니다.",
                     shopkeeperRecommendation = "겹쳐 들리는 소리를 나누려면 기본 플러그인이 필요하지.",
-                    distractionCues = new List<DistractionCue>
-                    {
-                        new DistractionCue { type = DistractionType.CameraFlip, beat = 24f, durationBeats = 4f, intensity = 1f, label = "left right confusion" },
-                        new DistractionCue { type = DistractionType.DirectionReverse, beat = 40f, durationBeats = 4f, intensity = 1f, label = "reverse visual sign" }
-                    }
+                    distractionCues = new List<DistractionCue>()
                 },
                 new StageRuntimeData
                 {

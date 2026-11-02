@@ -58,7 +58,7 @@ namespace SashimiBoy.EditorTools
         {
             string path=Root+"/MAT_Rockfish_"+name+".mat";var m=AssetDatabase.LoadAssetAtPath<Material>(path);
             if(m==null){m=new Material(Shader.Find(shader));AssetDatabase.CreateAsset(m,path);}
-            m.color=color;m.SetFloat("_Glossiness",.22f);EditorUtility.SetDirty(m);return m;
+            m.color=color;if(m.HasProperty("_Glossiness"))m.SetFloat("_Glossiness",.22f);EditorUtility.SetDirty(m);return m;
         }
         private static GameObject MeshObject(Transform parent,string name,Mesh mesh,params Material[] materials)
         {

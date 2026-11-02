@@ -1,0 +1,310 @@
+{
+    "issue": 87,
+    "algorithm": "Stage03FilletClip-3",
+    "sourceFingerprint": "SHA-256 of exact serialized asset and .meta file bytes; independent of the workspace Library import-artifact cache.",
+    "contract": "Twelve equal longitudinal cuts; immutable original coordinate frame; cut normal -Z; original skin UV/normals retained; actual 2D intersection edges split before planar face tracing; double-precision ear clipping with conserved contour area; continuous 0..1 planar cap UV; opaque cap albedo sampled from the supplied SashimiSlice flesh; source bytes/importers untouched.",
+    "capFleshReference": {
+        "materialPath": "Assets/_SashimiBoy/Art/Generated/Stage03Flounder/Materials/MAT_SashimiSlice.mat",
+        "materialSha256": "7c33ecbdb9a94b6fc6a50eb898bea8176fdf7da177318cdaef6277020fbc8ce2",
+        "materialMetaSha256": "bc8c3266a0347890759d3b9ef5a7a2311c75982a4f98c42554feab01217fe17c",
+        "texturePath": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/SashimiSlice/raw_chicken_breast_3d_model_basecolor.JPEG",
+        "textureSha256": "cb0e8d98cb31855429385fcc5c4907e630be2bcaec70de214fd2f8e2b733aa69",
+        "textureMetaSha256": "b6d212dcdfb39991e2ccecc6c1acc6fcd64a9a7454d4f8c2b561eb038324155e",
+        "colorSpace": "Gamma",
+        "sampling": "256x256 sRGB readback of the supplied SashimiSlice albedo; component medians of bright warm-flesh pixels; reject dark/neutral atlas regions; no source importer setting changes or invented fallback.",
+        "inspectedPixels": 65536,
+        "acceptedFleshPixels": 39280,
+        "capColor": {
+            "r": 0.9058823585510254,
+            "g": 0.7450980544090271,
+            "b": 0.6470588445663452,
+            "a": 1.0
+        }
+    },
+    "fillets": [
+        {
+            "role": "FrontFillet",
+            "sourceMeshPath": "Assets/_SashimiBoy/Art/Generated/Stage03Flounder/Meshes/MS_FrontWholeFillet.asset",
+            "sourceMeshSha256": "2641e705952035d35ab426b7e6ed5aec942a45d16997833e12cbd66587dd75e3",
+            "sourceMeshMetaSha256": "4ccc13d2668d520e713701c4dff58ba1301000a78ac338f38905eebf4f1e7a1f",
+            "cachePath": "Assets/_SashimiBoy/Art/Generated/Stage03FilletCuts/FrontFilletCache.asset",
+            "cutsPerFillet": 12,
+            "sourceVertices": 247680,
+            "remainingVertices": [
+                247680,
+                127002,
+                124141,
+                119814,
+                112094,
+                101814,
+                89376,
+                76091,
+                63807,
+                52345,
+                37498,
+                22726
+            ],
+            "surfaceTriangles": [
+                171275,
+                168388,
+                164698,
+                158050,
+                147565,
+                133775,
+                117030,
+                99209,
+                82296,
+                65590,
+                45924,
+                27356
+            ],
+            "capTriangles": [
+                0,
+                147,
+                176,
+                370,
+                474,
+                596,
+                795,
+                719,
+                690,
+                867,
+                778,
+                749
+            ],
+            "sectionIntersectionSplits": [
+                0,
+                0,
+                0,
+                1,
+                0,
+                0,
+                0,
+                1,
+                0,
+                0,
+                0,
+                0
+            ],
+            "cutPositions": [
+                -0.28539541363716128,
+                -0.22828327119350434,
+                -0.1711711436510086,
+                -0.11405900120735169,
+                -0.05694688484072685,
+                0.0001652538776397705,
+                0.0572773739695549,
+                0.11438953131437302,
+                0.17150165140628816,
+                0.22861376404762269,
+                0.2857259213924408,
+                0.3428380489349365
+            ],
+            "remainingSizes": [
+                {
+                    "x": 0.3891458511352539,
+                    "y": 0.1584436297416687,
+                    "z": 0.6853455901145935
+                },
+                {
+                    "x": 0.3891458511352539,
+                    "y": 0.1584436297416687,
+                    "z": 0.6282334327697754
+                },
+                {
+                    "x": 0.3891458511352539,
+                    "y": 0.1502363681793213,
+                    "z": 0.571121335029602
+                },
+                {
+                    "x": 0.3891458511352539,
+                    "y": 0.14121155440807343,
+                    "z": 0.5140091776847839
+                },
+                {
+                    "x": 0.3891458511352539,
+                    "y": 0.13506141304969788,
+                    "z": 0.4568970501422882
+                },
+                {
+                    "x": 0.3891458511352539,
+                    "y": 0.13506141304969788,
+                    "z": 0.3997849225997925
+                },
+                {
+                    "x": 0.3891458511352539,
+                    "y": 0.13506141304969788,
+                    "z": 0.34267279505729678
+                },
+                {
+                    "x": 0.3891458511352539,
+                    "y": 0.13506141304969788,
+                    "z": 0.285560667514801
+                },
+                {
+                    "x": 0.3869069814682007,
+                    "y": 0.13506141304969788,
+                    "z": 0.2284485101699829
+                },
+                {
+                    "x": 0.38635843992233279,
+                    "y": 0.13506141304969788,
+                    "z": 0.17133639752864839
+                },
+                {
+                    "x": 0.38120943307876589,
+                    "y": 0.12782178819179536,
+                    "z": 0.11422428488731384
+                },
+                {
+                    "x": 0.3608670234680176,
+                    "y": 0.1157272607088089,
+                    "z": 0.05711212754249573
+                }
+            ],
+            "generationMilliseconds": 0
+        },
+        {
+            "role": "BackFillet",
+            "sourceMeshPath": "Assets/_SashimiBoy/Art/Generated/Stage03Flounder/Meshes/MS_BackWholeFillet.asset",
+            "sourceMeshSha256": "4dd22fbb25cdd307a4af343054e7c7164bf6a6ba814509d2a00b2c2d25c6561c",
+            "sourceMeshMetaSha256": "bb69e5c98bde3aebd86abbf577044fb959dd6762781973786b9ae447c8ac905e",
+            "cachePath": "Assets/_SashimiBoy/Art/Generated/Stage03FilletCuts/BackFilletCache.asset",
+            "cutsPerFillet": 12,
+            "sourceVertices": 165427,
+            "remainingVertices": [
+                165427,
+                106168,
+                102642,
+                98163,
+                90336,
+                81038,
+                72198,
+                62262,
+                51725,
+                40882,
+                30525,
+                19415
+            ],
+            "surfaceTriangles": [
+                140019,
+                136255,
+                131750,
+                124978,
+                115411,
+                103863,
+                91912,
+                78872,
+                65645,
+                51653,
+                37351,
+                22877
+            ],
+            "capTriangles": [
+                0,
+                166,
+                226,
+                389,
+                430,
+                494,
+                579,
+                549,
+                570,
+                636,
+                582,
+                584
+            ],
+            "sectionIntersectionSplits": [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                1,
+                2,
+                0,
+                0
+            ],
+            "cutPositions": [
+                -0.2856808602809906,
+                -0.22857427597045899,
+                -0.17146769165992738,
+                -0.11436109989881516,
+                -0.05725453048944473,
+                -0.00014793872833251953,
+                0.0569586306810379,
+                0.1140652447938919,
+                0.17117181420326234,
+                0.22827838361263276,
+                0.28538498282432558,
+                0.3424915671348572
+            ],
+            "remainingSizes": [
+                {
+                    "x": 0.2890269160270691,
+                    "y": 0.10809953510761261,
+                    "z": 0.6852790117263794
+                },
+                {
+                    "x": 0.2890269160270691,
+                    "y": 0.10809953510761261,
+                    "z": 0.6281723976135254
+                },
+                {
+                    "x": 0.2890269160270691,
+                    "y": 0.10809953510761261,
+                    "z": 0.5710658431053162
+                },
+                {
+                    "x": 0.2890269160270691,
+                    "y": 0.10809953510761261,
+                    "z": 0.5139592885971069
+                },
+                {
+                    "x": 0.2890269160270691,
+                    "y": 0.10809953510761261,
+                    "z": 0.45685267448425295
+                },
+                {
+                    "x": 0.2890269160270691,
+                    "y": 0.10809953510761261,
+                    "z": 0.3997460901737213
+                },
+                {
+                    "x": 0.2890269160270691,
+                    "y": 0.10809953510761261,
+                    "z": 0.3426395058631897
+                },
+                {
+                    "x": 0.2890269160270691,
+                    "y": 0.10809953510761261,
+                    "z": 0.28553295135498049
+                },
+                {
+                    "x": 0.2890269160270691,
+                    "y": 0.10809953510761261,
+                    "z": 0.22842632234096528
+                },
+                {
+                    "x": 0.2872202396392822,
+                    "y": 0.10809953510761261,
+                    "z": 0.17131975293159486
+                },
+                {
+                    "x": 0.28024446964263918,
+                    "y": 0.10809953510761261,
+                    "z": 0.11421318352222443
+                },
+                {
+                    "x": 0.27085304260253909,
+                    "y": 0.10798805952072144,
+                    "z": 0.057106584310531619
+                }
+            ],
+            "generationMilliseconds": 0
+        }
+    ]
+}

@@ -1,0 +1,774 @@
+{
+    "issue": 73,
+    "algorithm": "Stage03Flounder-4",
+    "coordinateContract": "Head +Z, up +Y, positive scales only; shared body pivot and tail alignment. Back-work states include an authored working-face correction.",
+    "calibrationScope": "Art wrapper calibration, not source units or approved gameplay values. Visual confirmation remains required.",
+    "packedTextureContract": "Standard metallic R = supplied metallic R, smoothness A = 1 - supplied roughness R; supplied rm recorded but not guessed.",
+    "wholeFootprint": {
+        "x": 0.5546265244483948,
+        "y": 0.21923071146011353,
+        "z": 0.9796754121780396
+    },
+    "models": [
+        {
+            "role": "WholeFish",
+            "sourcePath": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/WholeFish/WholeFish.fbx",
+            "sourceDependencyHash": "8037a989e0ea17e50efc7edfa0ecea67",
+            "materialPath": "Assets/_SashimiBoy/Art/Generated/Stage03Flounder/Materials/MAT_WholeFish.mat",
+            "wrapperPath": "Assets/_SashimiBoy/Art/Generated/Stage03Flounder/Prefabs/PF_WholeFish.prefab",
+            "baseColorPath": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/WholeFish/flatfish_3d_model_basecolor.JPEG",
+            "normalSourcePath": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/WholeFish/flatfish_3d_model_normal.PNG",
+            "metallicSourcePath": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/WholeFish/flatfish_3d_model_metallic.JPEG",
+            "roughnessSourcePath": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/WholeFish/flatfish_3d_model_roughness.JPEG",
+            "suppliedPackedRmPath": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/WholeFish/flatfish_3d_model_rm.JPEG",
+            "meshPath": "Assets/_SashimiBoy/Art/Generated/Stage03Flounder/Meshes/MS_WholeFish.asset",
+            "generatedMeshSha256": "8acca4594269880cbe1051ab21eaabb7415bce75e250521501f346df3bf4ec30",
+            "algorithm": "Stage03Flounder-4",
+            "sourceVertices": 1283768,
+            "derivedVertices": 170499,
+            "sourceTriangles": 1932024,
+            "derivedTriangles": 141456,
+            "seamVertices": 74128,
+            "vertexBudget": 200000,
+            "importedSize": {
+                "x": 0.9796754121780396,
+                "y": 0.5546265244483948,
+                "z": 0.21923071146011353
+            },
+            "importedCenter": {
+                "x": -0.000091552734375,
+                "y": 0.2773132622241974,
+                "z": -0.000003859400749206543
+            },
+            "orientedSize": {
+                "x": 0.5546265244483948,
+                "y": 0.21923071146011353,
+                "z": 0.9796754121780396
+            },
+            "orientedCenter": {
+                "x": 0.2773132622241974,
+                "y": -0.000003859400749206543,
+                "z": -0.000091552734375
+            },
+            "positiveScale": {
+                "x": 1.0,
+                "y": 1.0,
+                "z": 1.0
+            },
+            "rotationEuler": {
+                "x": 270.0,
+                "y": 270.0,
+                "z": 0.0
+            },
+            "translation": {
+                "x": -0.2773132622241974,
+                "y": 0.000003859400749206543,
+                "z": 0.000091552734375
+            },
+            "derivedSize": {
+                "x": 0.5531623959541321,
+                "y": 0.21888871490955354,
+                "z": 0.9786101579666138
+            },
+            "derivedCenter": {
+                "x": -0.00047019124031066895,
+                "y": 0.000016987323760986328,
+                "z": 0.00039850175380706787
+            },
+            "clusterCell": 0.003826857078820467,
+            "maximumVertexDisplacement": 0.004387174267321825,
+            "p99VertexDisplacement": 0.0026543065905570986,
+            "rmsVertexDisplacement": 0.0015086079947650433,
+            "relativeP99Error": 0.0027093735989183189,
+            "relativeMaximumError": 0.004478191491216421,
+            "maximumBoundsDeviation": 0.0012022554874420167,
+            "sourceUnchanged": true,
+            "visualConfirmationPending": true,
+            "alignmentReason": "Independent normalized scans: shared tail/neck anchors account for the removed head, common width/height and positive calibration. Explicit working-face/yaw corrections follow the actual source probe; inspect transition captures."
+        },
+        {
+            "role": "HeadRemovedFish",
+            "sourcePath": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/HeadRemovedFish/HeadRemovedFish.fbx",
+            "sourceDependencyHash": "8ceeb2d2d89e0d2091ad072b91e38f44",
+            "materialPath": "Assets/_SashimiBoy/Art/Generated/Stage03Flounder/Materials/MAT_HeadRemovedFish.mat",
+            "wrapperPath": "Assets/_SashimiBoy/Art/Generated/Stage03Flounder/Prefabs/PF_HeadRemovedFish.prefab",
+            "baseColorPath": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/HeadRemovedFish/flatfish_3d_model_basecolor.JPEG",
+            "normalSourcePath": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/HeadRemovedFish/flatfish_3d_model_normal.PNG",
+            "metallicSourcePath": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/HeadRemovedFish/flatfish_3d_model_metallic.JPEG",
+            "roughnessSourcePath": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/HeadRemovedFish/flatfish_3d_model_roughness.JPEG",
+            "suppliedPackedRmPath": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/HeadRemovedFish/flatfish_3d_model_rm.JPEG",
+            "meshPath": "Assets/_SashimiBoy/Art/Generated/Stage03Flounder/Meshes/MS_HeadRemovedFish.asset",
+            "generatedMeshSha256": "dd5ef573d7eb5fedaadde091382ffd7d34164dbf71e0421974b02e05ea402c07",
+            "algorithm": "Stage03Flounder-4",
+            "sourceVertices": 1282247,
+            "derivedVertices": 166482,
+            "sourceTriangles": 1929858,
+            "derivedTriangles": 139358,
+            "seamVertices": 73513,
+            "vertexBudget": 200000,
+            "importedSize": {
+                "x": 0.9805909395217896,
+                "y": 0.5989075303077698,
+                "z": 0.26016244292259219
+            },
+            "importedCenter": {
+                "x": 0.0,
+                "y": 0.2994537651538849,
+                "z": -0.00028999149799346924
+            },
+            "orientedSize": {
+                "x": 0.5989075303077698,
+                "y": 0.26016244292259219,
+                "z": 0.9805909395217896
+            },
+            "orientedCenter": {
+                "x": 0.2994537651538849,
+                "y": -0.00028999149799346924,
+                "z": 0.0
+            },
+            "positiveScale": {
+                "x": 0.9260637164115906,
+                "y": 0.8426685333251953,
+                "z": 0.7992531061172485
+            },
+            "rotationEuler": {
+                "x": 270.0,
+                "y": 270.0,
+                "z": 0.0
+            },
+            "translation": {
+                "x": -0.2773132622241974,
+                "y": 0.0002443667035549879,
+                "z": 0.0
+            },
+            "derivedSize": {
+                "x": 0.5536447763442993,
+                "y": 0.21903787553310395,
+                "z": 0.7816663384437561
+            },
+            "derivedCenter": {
+                "x": -0.000028118491172790527,
+                "y": -0.00006454437971115112,
+                "z": 0.0000744163990020752
+            },
+            "clusterCell": 0.003826854284852743,
+            "maximumVertexDisplacement": 0.004164429381489754,
+            "p99VertexDisplacement": 0.0026665276382118465,
+            "rmsVertexDisplacement": 0.0015033106319606305,
+            "relativeP99Error": 0.003402312519028783,
+            "relativeMaximumError": 0.005313536152243614,
+            "maximumBoundsDeviation": 0.0011114180088043213,
+            "sourceUnchanged": true,
+            "visualConfirmationPending": true,
+            "alignmentReason": "Independent normalized scans: shared tail/neck anchors account for the removed head, common width/height and positive calibration. Explicit working-face/yaw corrections follow the actual source probe; inspect transition captures."
+        },
+        {
+            "role": "FilletRemoved1",
+            "sourcePath": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/FilletRemoved1/FilletRemoved1.fbx",
+            "sourceDependencyHash": "2686ee956a357d5cdb3b26790185fed4",
+            "materialPath": "Assets/_SashimiBoy/Art/Generated/Stage03Flounder/Materials/MAT_FilletRemoved1.mat",
+            "wrapperPath": "Assets/_SashimiBoy/Art/Generated/Stage03Flounder/Prefabs/PF_FilletRemoved1.prefab",
+            "baseColorPath": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/FilletRemoved1/1flatfish_3d_model_basecolor.JPEG",
+            "normalSourcePath": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/FilletRemoved1/1flatfish_3d_model_normal.PNG",
+            "metallicSourcePath": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/FilletRemoved1/1flatfish_3d_model_metallic.JPEG",
+            "roughnessSourcePath": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/FilletRemoved1/1flatfish_3d_model_roughness.JPEG",
+            "suppliedPackedRmPath": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/FilletRemoved1/1flatfish_3d_model_rm.JPEG",
+            "meshPath": "Assets/_SashimiBoy/Art/Generated/Stage03Flounder/Meshes/MS_FilletRemoved1.asset",
+            "generatedMeshSha256": "2425fa6005a7b78a1f04c9ced70047f1bb557ec739c963780835a649c02a86bf",
+            "algorithm": "Stage03Flounder-4",
+            "sourceVertices": 1360608,
+            "derivedVertices": 179117,
+            "sourceTriangles": 1982960,
+            "derivedTriangles": 141909,
+            "seamVertices": 85734,
+            "vertexBudget": 200000,
+            "importedSize": {
+                "x": 0.9802857637405396,
+                "y": 0.6094360947608948,
+                "z": 0.21659091114997865
+            },
+            "importedCenter": {
+                "x": -0.0008544921875,
+                "y": 0.3047180473804474,
+                "z": -0.00015648454427719116
+            },
+            "orientedSize": {
+                "x": 0.6094360947608948,
+                "y": 0.21659091114997865,
+                "z": 0.9802857637405396
+            },
+            "orientedCenter": {
+                "x": 0.3047180473804474,
+                "y": -0.00015648454427719116,
+                "z": -0.0008544921875
+            },
+            "positiveScale": {
+                "x": 0.9100651144981384,
+                "y": 1.0121879577636719,
+                "z": 0.799501895904541
+            },
+            "rotationEuler": {
+                "x": 270.0,
+                "y": 270.0,
+                "z": 0.0
+            },
+            "translation": {
+                "x": -0.2773132622241974,
+                "y": 0.00015839177649468184,
+                "z": 0.0006831681239418685
+            },
+            "derivedSize": {
+                "x": 0.5531587600708008,
+                "y": 0.21917831897735597,
+                "z": 0.7821950316429138
+            },
+            "derivedCenter": {
+                "x": 0.00022333860397338867,
+                "y": 0.000012699514627456665,
+                "z": 0.0006395876407623291
+            },
+            "clusterCell": 0.003826854517683387,
+            "maximumVertexDisplacement": 0.0041710748337209229,
+            "p99VertexDisplacement": 0.002666277578100562,
+            "rmsVertexDisplacement": 0.0015027177287265659,
+            "relativeP99Error": 0.0034019933082163336,
+            "relativeMaximumError": 0.0053220149129629139,
+            "maximumBoundsDeviation": 0.0014122426509857178,
+            "sourceUnchanged": true,
+            "visualConfirmationPending": true,
+            "alignmentReason": "Independent normalized scans: shared tail/neck anchors account for the removed head, common width/height and positive calibration. Explicit working-face/yaw corrections follow the actual source probe; inspect transition captures."
+        },
+        {
+            "role": "FilletRemoved2",
+            "sourcePath": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/FilletRemoved2/FilletRemoved2.fbx",
+            "sourceDependencyHash": "8233ed7407b497452cac9d3acee6cecb",
+            "materialPath": "Assets/_SashimiBoy/Art/Generated/Stage03Flounder/Materials/MAT_FilletRemoved2.mat",
+            "wrapperPath": "Assets/_SashimiBoy/Art/Generated/Stage03Flounder/Prefabs/PF_FilletRemoved2.prefab",
+            "baseColorPath": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/FilletRemoved2/2flatfish_3d_model_basecolor.JPEG",
+            "normalSourcePath": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/FilletRemoved2/2flatfish_3d_model_normal.PNG",
+            "metallicSourcePath": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/FilletRemoved2/2flatfish_3d_model_metallic.JPEG",
+            "roughnessSourcePath": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/FilletRemoved2/2flatfish_3d_model_roughness.JPEG",
+            "suppliedPackedRmPath": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/FilletRemoved2/2flatfish_3d_model_rm.JPEG",
+            "meshPath": "Assets/_SashimiBoy/Art/Generated/Stage03Flounder/Meshes/MS_FilletRemoved2.asset",
+            "generatedMeshSha256": "836da2f75d0c3032d20f5b68770abe19708c5c7ab9691e37b1414abe8664e312",
+            "algorithm": "Stage03Flounder-4",
+            "sourceVertices": 1239117,
+            "derivedVertices": 186687,
+            "sourceTriangles": 1955760,
+            "derivedTriangles": 53212,
+            "seamVertices": 115927,
+            "vertexBudget": 200000,
+            "importedSize": {
+                "x": 0.9832459688186646,
+                "y": 0.6881409287452698,
+                "z": 0.1284179985523224
+            },
+            "importedCenter": {
+                "x": -0.0018157958984375,
+                "y": 0.3440704643726349,
+                "z": -0.0004349946975708008
+            },
+            "orientedSize": {
+                "x": 0.6881409287452698,
+                "y": 0.1284179985523224,
+                "z": 0.9832459688186646
+            },
+            "orientedCenter": {
+                "x": 0.3440704643726349,
+                "y": -0.0004349946975708008,
+                "z": -0.0018157958984375
+            },
+            "positiveScale": {
+                "x": 0.8059781193733215,
+                "y": 1.707165002822876,
+                "z": 0.7970948815345764
+            },
+            "rotationEuler": {
+                "x": 270.0,
+                "y": 270.0,
+                "z": 0.0
+            },
+            "translation": {
+                "x": -0.2773132622241974,
+                "y": 0.0007426077499985695,
+                "z": 0.0014473616611212493
+            },
+            "derivedSize": {
+                "x": 0.5531160831451416,
+                "y": 0.2180669903755188,
+                "z": 0.7806617617607117
+            },
+            "derivedCenter": {
+                "x": -0.0002649277448654175,
+                "y": 0.000015463680028915405,
+                "z": 0.0005380213260650635
+            },
+            "clusterCell": 0.00747432466596365,
+            "maximumVertexDisplacement": 0.00958038866519928,
+            "p99VertexDisplacement": 0.005421482492238283,
+            "rmsVertexDisplacement": 0.0030245878733694555,
+            "relativeP99Error": 0.006917451974004507,
+            "relativeMaximumError": 0.012223940342664719,
+            "maximumBoundsDeviation": 0.0020773112773895265,
+            "sourceUnchanged": true,
+            "visualConfirmationPending": true,
+            "alignmentReason": "Independent normalized scans: shared tail/neck anchors account for the removed head, common width/height and positive calibration. Explicit working-face/yaw corrections follow the actual source probe; inspect transition captures."
+        },
+        {
+            "role": "FilletRemoved3",
+            "sourcePath": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/FilletRemoved3/FilletRemoved3.fbx",
+            "sourceDependencyHash": "2a5055ef1a0291061a57b37fa6198f3e",
+            "materialPath": "Assets/_SashimiBoy/Art/Generated/Stage03Flounder/Materials/MAT_FilletRemoved3.mat",
+            "wrapperPath": "Assets/_SashimiBoy/Art/Generated/Stage03Flounder/Prefabs/PF_FilletRemoved3.prefab",
+            "baseColorPath": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/FilletRemoved3/3flatfish_3d_model_basecolor.JPEG",
+            "normalSourcePath": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/FilletRemoved3/3flatfish_3d_model_normal.PNG",
+            "metallicSourcePath": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/FilletRemoved3/3flatfish_3d_model_metallic.JPEG",
+            "roughnessSourcePath": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/FilletRemoved3/3flatfish_3d_model_roughness.JPEG",
+            "suppliedPackedRmPath": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/FilletRemoved3/3flatfish_3d_model_rm.JPEG",
+            "meshPath": "Assets/_SashimiBoy/Art/Generated/Stage03Flounder/Meshes/MS_FilletRemoved3.asset",
+            "generatedMeshSha256": "ee2c5361f9c33720bdda062d76be19626f385ebb7f14e3bb3e5e552c1c80e0f4",
+            "algorithm": "Stage03Flounder-4",
+            "sourceVertices": 1231031,
+            "derivedVertices": 193518,
+            "sourceTriangles": 1974606,
+            "derivedTriangles": 109274,
+            "seamVertices": 86947,
+            "vertexBudget": 200000,
+            "importedSize": {
+                "x": 0.9745802879333496,
+                "y": 0.6745606064796448,
+                "z": 0.17367996275424958
+            },
+            "importedCenter": {
+                "x": 0.000044405460357666016,
+                "y": 0.3372803032398224,
+                "z": -0.026495590806007386
+            },
+            "orientedSize": {
+                "x": 0.6745606064796448,
+                "y": 0.17367997765541078,
+                "z": 0.9745802879333496
+            },
+            "orientedCenter": {
+                "x": 0.3372803032398224,
+                "y": 0.026495613157749177,
+                "z": -0.000044405460357666016
+            },
+            "positiveScale": {
+                "x": 0.8222041130065918,
+                "y": 1.2622681856155396,
+                "z": 0.8041824102401733
+            },
+            "rotationEuler": {
+                "x": 90.0,
+                "y": 90.0,
+                "z": 0.0
+            },
+            "translation": {
+                "x": -0.2773132622241974,
+                "y": -0.033444568514823917,
+                "z": 0.00003571009074221365
+            },
+            "derivedSize": {
+                "x": 0.5541675090789795,
+                "y": 0.21771025657653809,
+                "z": 0.78254234790802
+            },
+            "derivedCenter": {
+                "x": -0.00000973045825958252,
+                "y": -0.0001833699643611908,
+                "z": 0.00028179585933685303
+            },
+            "clusterCell": 0.004783567041158676,
+            "maximumVertexDisplacement": 0.005601986311376095,
+            "p99VertexDisplacement": 0.0034134392626583578,
+            "rmsVertexDisplacement": 0.0019010371761396528,
+            "relativeP99Error": 0.004355322569608688,
+            "relativeMaximumError": 0.007147763855755329,
+            "maximumBoundsDeviation": 0.0009435713291168213,
+            "sourceUnchanged": true,
+            "visualConfirmationPending": true,
+            "alignmentReason": "Independent normalized scans: shared tail/neck anchors account for the removed head, common width/height and positive calibration. Explicit working-face/yaw corrections follow the actual source probe; inspect transition captures."
+        },
+        {
+            "role": "FilletRemoved4",
+            "sourcePath": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/FilletRemoved4/FilletRemoved4.fbx",
+            "sourceDependencyHash": "21d1fa0706ff738a8680f4a62f498366",
+            "materialPath": "Assets/_SashimiBoy/Art/Generated/Stage03Flounder/Materials/MAT_FilletRemoved4.mat",
+            "wrapperPath": "Assets/_SashimiBoy/Art/Generated/Stage03Flounder/Prefabs/PF_FilletRemoved4.prefab",
+            "baseColorPath": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/FilletRemoved4/4flatfish_3d_model_basecolor.JPEG",
+            "normalSourcePath": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/FilletRemoved4/4flatfish_3d_model_normal.PNG",
+            "metallicSourcePath": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/FilletRemoved4/4flatfish_3d_model_metallic.JPEG",
+            "roughnessSourcePath": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/FilletRemoved4/4flatfish_3d_model_roughness.JPEG",
+            "suppliedPackedRmPath": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/FilletRemoved4/4flatfish_3d_model_rm.JPEG",
+            "meshPath": "Assets/_SashimiBoy/Art/Generated/Stage03Flounder/Meshes/MS_FilletRemoved4.asset",
+            "generatedMeshSha256": "8685abfb73e6b436ed249ca38bc411c198d60a3dc296c07dc2e75762ddd3dd42",
+            "algorithm": "Stage03Flounder-4",
+            "sourceVertices": 1147191,
+            "derivedVertices": 397790,
+            "sourceTriangles": 1915412,
+            "derivedTriangles": 35772,
+            "seamVertices": 321550,
+            "vertexBudget": 400000,
+            "importedSize": {
+                "x": 0.48797479271888735,
+                "y": 0.6820984482765198,
+                "z": 0.14371022582054139
+            },
+            "importedCenter": {
+                "x": -0.00039668381214141846,
+                "y": 0.3410492241382599,
+                "z": -0.01794011890888214
+            },
+            "orientedSize": {
+                "x": 0.5941980481147766,
+                "y": 0.14371027052402497,
+                "z": 0.5927910804748535
+            },
+            "orientedCenter": {
+                "x": 0.2843714654445648,
+                "y": 0.01794010028243065,
+                "z": -0.19891589879989625
+            },
+            "positiveScale": {
+                "x": 0.4200315475463867,
+                "y": 1.3221189975738526,
+                "z": 1.3221189975738526
+            },
+            "rotationEuler": {
+                "x": 90.0,
+                "y": 134.99998474121095,
+                "z": 0.0
+            },
+            "translation": {
+                "x": -0.11944498866796494,
+                "y": -0.023718947544693948,
+                "z": 0.26299047470092776
+            },
+            "derivedSize": {
+                "x": 0.24863693118095399,
+                "y": 0.1884196400642395,
+                "z": 0.7793500423431397
+            },
+            "derivedCenter": {
+                "x": 0.00014207512140274048,
+                "y": -0.00012046843767166138,
+                "z": 0.0003349035978317261
+            },
+            "clusterCell": 0.007474335841834545,
+            "maximumVertexDisplacement": 0.010154708288609982,
+            "p99VertexDisplacement": 0.00547075318172574,
+            "rmsVertexDisplacement": 0.0030866158194839956,
+            "relativeP99Error": 0.006980308797210455,
+            "relativeMaximumError": 0.012956716120243073,
+            "maximumBoundsDeviation": 0.002530127763748169,
+            "sourceUnchanged": true,
+            "visualConfirmationPending": true,
+            "alignmentReason": "Final remaining spine: common longitudinal extent and pivot; narrower width, no enlargement beyond WholeFish. Thin-axis detail retains source ratio."
+        },
+        {
+            "role": "FishHead",
+            "sourcePath": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/FishHead/FishHead.fbx",
+            "sourceDependencyHash": "fde9e3472ee3e2fb57e16145e739716b",
+            "materialPath": "Assets/_SashimiBoy/Art/Generated/Stage03Flounder/Materials/MAT_FishHead.mat",
+            "wrapperPath": "Assets/_SashimiBoy/Art/Generated/Stage03Flounder/Prefabs/PF_FishHead.prefab",
+            "baseColorPath": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/FishHead/dead_fish_3d_model_basecolor.JPEG",
+            "normalSourcePath": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/FishHead/dead_fish_3d_model_normal.PNG",
+            "metallicSourcePath": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/FishHead/dead_fish_3d_model_metallic.JPEG",
+            "roughnessSourcePath": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/FishHead/dead_fish_3d_model_roughness.JPEG",
+            "suppliedPackedRmPath": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/FishHead/dead_fish_3d_model_rm.JPEG",
+            "meshPath": "Assets/_SashimiBoy/Art/Generated/Stage03Flounder/Meshes/MS_FishHead.asset",
+            "generatedMeshSha256": "272aeb1ced63b83127fbc5e866346eed2b6b6f011f89c1cd24a6ba6bcd9bb02a",
+            "algorithm": "Stage03Flounder-4",
+            "sourceVertices": 1319985,
+            "derivedVertices": 195315,
+            "sourceTriangles": 1984522,
+            "derivedTriangles": 168281,
+            "seamVertices": 82850,
+            "vertexBudget": 200000,
+            "importedSize": {
+                "x": 0.9795228242874146,
+                "y": 0.9237977266311646,
+                "z": 0.5563967227935791
+            },
+            "importedCenter": {
+                "x": 0.0000457763671875,
+                "y": 0.4618988633155823,
+                "z": 0.0001221001148223877
+            },
+            "orientedSize": {
+                "x": 0.9237977266311646,
+                "y": 0.5563967227935791,
+                "z": 0.9795228242874146
+            },
+            "orientedCenter": {
+                "x": 0.4618988633155823,
+                "y": 0.0001221001148223877,
+                "z": 0.0000457763671875
+            },
+            "positiveScale": {
+                "x": 0.20003116130828858,
+                "y": 0.20003116130828858,
+                "z": 0.20003116130828858
+            },
+            "rotationEuler": {
+                "x": 270.0,
+                "y": 270.0,
+                "z": 0.0
+            },
+            "translation": {
+                "x": -0.09239416569471359,
+                "y": -0.000024423827198916115,
+                "z": -0.00000915669988899026
+            },
+            "derivedSize": {
+                "x": 0.18440961837768556,
+                "y": 0.11125917732715607,
+                "z": 0.19577059149742127
+            },
+            "derivedCenter": {
+                "x": -0.00012300536036491394,
+                "y": 4.302710294723511e-7,
+                "z": 0.00003151223063468933
+            },
+            "clusterCell": 0.0011958945542573929,
+            "maximumVertexDisplacement": 0.00141032668761909,
+            "p99VertexDisplacement": 0.0008444910636171699,
+            "rmsVertexDisplacement": 0.0004687292966991663,
+            "relativeP99Error": 0.004310049116611481,
+            "relativeMaximumError": 0.007197917904704809,
+            "maximumBoundsDeviation": 0.00031238049268722534,
+            "sourceUnchanged": true,
+            "visualConfirmationPending": true,
+            "alignmentReason": "Independent source part: rigid canonical axes, uniform positive scale; artist calibration length ratio recorded in generator. No cut count/timing inferred."
+        },
+        {
+            "role": "FrontFillet",
+            "sourcePath": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/FrontFillet/FrontFillet.fbx",
+            "sourceDependencyHash": "952564d31900fd0453c3f2a048f2fbb7",
+            "materialPath": "Assets/_SashimiBoy/Art/Generated/Stage03Flounder/Materials/MAT_FrontFillet.mat",
+            "wrapperPath": "Assets/_SashimiBoy/Art/Generated/Stage03Flounder/Prefabs/PF_FrontFillet.prefab",
+            "baseColorPath": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/FrontFillet/flatfish_3d_model_basecolor.JPEG",
+            "normalSourcePath": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/FrontFillet/flatfish_3d_model_normal.PNG",
+            "metallicSourcePath": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/FrontFillet/flatfish_3d_model_metallic.JPEG",
+            "roughnessSourcePath": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/FrontFillet/flatfish_3d_model_roughness.JPEG",
+            "suppliedPackedRmPath": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/FrontFillet/flatfish_3d_model_rm.JPEG",
+            "meshPath": "Assets/_SashimiBoy/Art/Generated/Stage03Flounder/Meshes/MS_FrontFillet.asset",
+            "generatedMeshSha256": "ef5f6c2df41cc8f1d71d9431d02d4b4965cfc069be85309ed7011170a35060cf",
+            "algorithm": "Stage03Flounder-4",
+            "sourceVertices": 1325777,
+            "derivedVertices": 184316,
+            "sourceTriangles": 1944510,
+            "derivedTriangles": 171275,
+            "seamVertices": 77545,
+            "vertexBudget": 200000,
+            "importedSize": {
+                "x": 0.9797364473342896,
+                "y": 0.5565186142921448,
+                "z": 0.22667691111564637
+            },
+            "importedCenter": {
+                "x": 0.000091552734375,
+                "y": 0.2782593071460724,
+                "z": -0.00007251650094985962
+            },
+            "orientedSize": {
+                "x": 0.5565186142921448,
+                "y": 0.22667691111564637,
+                "z": 0.9797364473342896
+            },
+            "orientedCenter": {
+                "x": 0.2782593071460724,
+                "y": -0.00007251650094985962,
+                "z": 0.000091552734375
+            },
+            "positiveScale": {
+                "x": 0.6999563574790955,
+                "y": 0.6999563574790955,
+                "z": 0.6999563574790955
+            },
+            "rotationEuler": {
+                "x": 270.0,
+                "y": 270.0,
+                "z": 0.0
+            },
+            "translation": {
+                "x": -0.19476936757564546,
+                "y": 0.000050758386350935325,
+                "z": -0.00006408291665138677
+            },
+            "derivedSize": {
+                "x": 0.3891458511352539,
+                "y": 0.1584436297416687,
+                "z": 0.6853455901145935
+            },
+            "derivedCenter": {
+                "x": -0.00007361918687820435,
+                "y": 0.000024225562810897827,
+                "z": 0.0001652538776397705
+            },
+            "clusterCell": 0.002678799908608198,
+            "maximumVertexDisplacement": 0.0029863384552299978,
+            "p99VertexDisplacement": 0.0018646212993189693,
+            "rmsVertexDisplacement": 0.0010456647723913193,
+            "relativeP99Error": 0.002719007432460785,
+            "relativeMaximumError": 0.004354705568403006,
+            "maximumBoundsDeviation": 0.0003788471221923828,
+            "sourceUnchanged": true,
+            "visualConfirmationPending": true,
+            "alignmentReason": "Independent source part: rigid canonical axes, uniform positive scale; artist calibration length ratio recorded in generator. No cut count/timing inferred."
+        },
+        {
+            "role": "BackFillet",
+            "sourcePath": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/BackFillet/BackFillet.fbx",
+            "sourceDependencyHash": "85414ee45ed1fe2eff8413da312c4d37",
+            "materialPath": "Assets/_SashimiBoy/Art/Generated/Stage03Flounder/Materials/MAT_BackFillet.mat",
+            "wrapperPath": "Assets/_SashimiBoy/Art/Generated/Stage03Flounder/Prefabs/PF_BackFillet.prefab",
+            "baseColorPath": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/BackFillet/raw_fish_fillet_3d_model_basecolor.JPEG",
+            "normalSourcePath": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/BackFillet/raw_fish_fillet_3d_model_normal.PNG",
+            "metallicSourcePath": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/BackFillet/raw_fish_fillet_3d_model_metallic.JPEG",
+            "roughnessSourcePath": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/BackFillet/raw_fish_fillet_3d_model_roughness.JPEG",
+            "suppliedPackedRmPath": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/BackFillet/raw_fish_fillet_3d_model_rm.JPEG",
+            "meshPath": "Assets/_SashimiBoy/Art/Generated/Stage03Flounder/Meshes/MS_BackFillet.asset",
+            "generatedMeshSha256": "94b581ab5348831bc9f0cec3942c1773482505f343e03a23d1b0a4565104fbc4",
+            "algorithm": "Stage03Flounder-4",
+            "sourceVertices": 1283230,
+            "derivedVertices": 165427,
+            "sourceTriangles": 1978146,
+            "derivedTriangles": 140019,
+            "seamVertices": 68888,
+            "vertexBudget": 200000,
+            "importedSize": {
+                "x": 0.9797974824905396,
+                "y": 0.4132538437843323,
+                "z": 0.15493017435073853
+            },
+            "importedCenter": {
+                "x": 0.000030517578125,
+                "y": 0.20662692189216615,
+                "z": -0.00017938017845153809
+            },
+            "orientedSize": {
+                "x": 0.4132538437843323,
+                "y": 0.15493017435073853,
+                "z": 0.9797974824905396
+            },
+            "orientedCenter": {
+                "x": 0.20662692189216615,
+                "y": -0.00017938017845153809,
+                "z": 0.000030517578125
+            },
+            "positiveScale": {
+                "x": 0.6999127864837647,
+                "y": 0.6999127864837647,
+                "z": 0.6999127864837647
+            },
+            "rotationEuler": {
+                "x": 270.0,
+                "y": 270.0,
+                "z": 0.0
+            },
+            "translation": {
+                "x": -0.14462082087993623,
+                "y": 0.00012555047578644007,
+                "z": -0.000021359643142204732
+            },
+            "derivedSize": {
+                "x": 0.2890269160270691,
+                "y": 0.10809953510761261,
+                "z": 0.6852790117263794
+            },
+            "derivedCenter": {
+                "x": 0.00006832927465438843,
+                "y": 0.00013550929725170135,
+                "z": -0.00014792382717132568
+            },
+            "clusterCell": 0.0026787961833178999,
+            "maximumVertexDisplacement": 0.003100947942584753,
+            "p99VertexDisplacement": 0.0018618004396557809,
+            "rmsVertexDisplacement": 0.0010555109474807978,
+            "relativeP99Error": 0.0027148977387696506,
+            "relativeMaximumError": 0.004521836526691914,
+            "maximumBoundsDeviation": 0.00039386749267578125,
+            "sourceUnchanged": true,
+            "visualConfirmationPending": true,
+            "alignmentReason": "Independent source part: rigid canonical axes, uniform positive scale; artist calibration length ratio recorded in generator. No cut count/timing inferred."
+        },
+        {
+            "role": "SashimiSlice",
+            "sourcePath": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/SashimiSlice/SashimiSlice.fbx",
+            "sourceDependencyHash": "5ab6f130a4e618c70187de2dcbe37916",
+            "materialPath": "Assets/_SashimiBoy/Art/Generated/Stage03Flounder/Materials/MAT_SashimiSlice.mat",
+            "wrapperPath": "Assets/_SashimiBoy/Art/Generated/Stage03Flounder/Prefabs/PF_SashimiSlice.prefab",
+            "baseColorPath": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/SashimiSlice/raw_chicken_breast_3d_model_basecolor.JPEG",
+            "normalSourcePath": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/SashimiSlice/raw_chicken_breast_3d_model_normal.PNG",
+            "metallicSourcePath": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/SashimiSlice/raw_chicken_breast_3d_model_metallic.JPEG",
+            "roughnessSourcePath": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/SashimiSlice/raw_chicken_breast_3d_model_roughness.JPEG",
+            "suppliedPackedRmPath": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/SashimiSlice/raw_chicken_breast_3d_model_rm.JPEG",
+            "meshPath": "Assets/_SashimiBoy/Art/Generated/Stage03Flounder/Meshes/MS_SashimiSlice.asset",
+            "generatedMeshSha256": "d2f70ae25b7040e585e7c9060d25bd2a3d46106c89c25c029d58f36ac3c9c0b8",
+            "algorithm": "Stage03Flounder-4",
+            "sourceVertices": 1329365,
+            "derivedVertices": 181262,
+            "sourceTriangles": 1986720,
+            "derivedTriangles": 168507,
+            "seamVertices": 67995,
+            "vertexBudget": 200000,
+            "importedSize": {
+                "x": 0.9802857637405396,
+                "y": 0.3054352402687073,
+                "z": 0.38447582721710207
+            },
+            "importedCenter": {
+                "x": 0.000091552734375,
+                "y": 0.15271763503551484,
+                "z": 0.000038117170333862305
+            },
+            "orientedSize": {
+                "x": 0.3844758868217468,
+                "y": 0.3054352402687073,
+                "z": 0.9802857637405396
+            },
+            "orientedCenter": {
+                "x": -0.000038117170333862305,
+                "y": 0.15271763503551484,
+                "z": 0.00009149312973022461
+            },
+            "positiveScale": {
+                "x": 0.11992528289556503,
+                "y": 0.11992528289556503,
+                "z": 0.11992528289556503
+            },
+            "rotationEuler": {
+                "x": 0.0,
+                "y": 270.0,
+                "z": 0.0
+            },
+            "translation": {
+                "x": 0.000004571212230075616,
+                "y": -0.018314706161618234,
+                "z": -0.000010972339623549487
+            },
+            "derivedSize": {
+                "x": 0.046095602214336398,
+                "y": 0.03660900890827179,
+                "z": 0.11750137805938721
+            },
+            "derivedCenter": {
+                "x": -2.0489096641540528e-8,
+                "y": 0.0000040549784898757938,
+                "z": -0.000008370727300643921
+            },
+            "clusterCell": 0.00045922293793410063,
+            "maximumVertexDisplacement": 0.0004858439206145704,
+            "p99VertexDisplacement": 0.00031821418087929487,
+            "rmsVertexDisplacement": 0.00017985598242376,
+            "relativeP99Error": 0.0027067989576607944,
+            "relativeMaximumError": 0.004132693633437157,
+            "maximumBoundsDeviation": 0.00003822892904281616,
+            "sourceUnchanged": true,
+            "visualConfirmationPending": true,
+            "alignmentReason": "Independent source part: rigid canonical axes, uniform positive scale; artist calibration length ratio recorded in generator. No cut count/timing inferred."
+        }
+    ]
+}

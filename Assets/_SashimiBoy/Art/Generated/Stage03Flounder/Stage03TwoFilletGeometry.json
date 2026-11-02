@@ -1,0 +1,242 @@
+{
+    "algorithm": "Stage03TwoFillet-2",
+    "sourceRoles": [
+        "HeadRemovedFish",
+        "FilletRemoved2",
+        "FrontFillet",
+        "BackFillet"
+    ],
+    "sourceUVObservation": "Actual source UV/triangle-area audit: Front +Y is pigmented skin, -Y is flesh; Back both faces are flesh. Original flesh triangles retain their original UV interpolation. Continuous planar flesh albedo is rasterized from actual flesh-facing triangles with barycentric source-UV sampling, never nearest-vertex UV transfer across atlas islands. No source texture is recolored.",
+    "coordinateContract": "Head +Z; front +Y; back -Y before the longitudinal 180-degree roll. Two discarded skins, exactly two edible source-backed single meshes. Positive scales only.",
+    "sourceScope": "Original ten FBX/texture/importer/meta and original generated mesh/material/wrapper assets remain unchanged. Adaptation is in separately named generated meshes and prefabs.",
+    "models": [
+        {
+            "role": "FrontWholeFillet",
+            "sourceRole": "FrontFillet",
+            "sourcePath": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/FrontFillet/FrontFillet.fbx",
+            "sourceDependencyHash": "952564d31900fd0453c3f2a048f2fbb7",
+            "sourceMeshPath": "Assets/_SashimiBoy/Art/Generated/Stage03Flounder/Meshes/MS_FrontFillet.asset",
+            "generatedMeshPath": "Assets/_SashimiBoy/Art/Generated/Stage03Flounder/Meshes/MS_FrontWholeFillet.asset",
+            "wrapperPath": "Assets/_SashimiBoy/Art/Generated/Stage03Flounder/Prefabs/PF_FrontWholeFillet.prefab",
+            "operation": "Rigid longitudinal 180-degree rotation; source shape/aspect retained. Original flesh triangle UVs retain their interpolation on the source-albedo atlas page; former skin underside uses a separately baked continuous flesh page. Page-boundary vertices are split, so no triangle interpolates across the two atlas pages.",
+            "fleshUvSourceRole": "FrontFillet",
+            "sourceAlbedoPath": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/FrontFillet/flatfish_3d_model_basecolor.JPEG",
+            "sourceAlbedoSha256": "af5bd397ef68c18efa8e4a5c1f9c0588fd16dbf426aa35e93e07bba031863d70",
+            "bakedAlbedoPath": "Assets/_SashimiBoy/Art/Generated/Stage03Flounder/Textures/T_FrontWholeFilletAtlas.png",
+            "bakeMethod": "1024px actual flesh-facing triangle XZ rasterization; per-pixel barycentric interpolation of each triangle's original source UV, frontmost surface depth test, nearest-valid surface-texel extension outside the donor silhouette. Continuous planar UVs; derived material excludes incompatible tangent-space source maps and uses the median supplied flesh-facing packed smoothness alpha. Front atlas pages have 4px clamp gutters and texel-centered UV affine transforms; atlas mipmaps are disabled to prevent page bleeding.",
+            "sourcePackedMapPath": "Assets/_SashimiBoy/Art/Generated/Stage03Flounder/Textures/MS_FrontFillet.png",
+            "sampledSmoothness": 0.9333333373069763,
+            "sourceVertices": 184316,
+            "generatedVertices": 247680,
+            "generatedTriangles": 171275,
+            "selectedSurfaceTriangles": 0,
+            "preservedOriginalFleshTriangles": 86626,
+            "sourceSize": {
+                "x": 0.3891458511352539,
+                "y": 0.1584436297416687,
+                "z": 0.6853455901145935
+            },
+            "generatedSize": {
+                "x": 0.3891458511352539,
+                "y": 0.1584436297416687,
+                "z": 0.6853455901145935
+            },
+            "rotationEuler": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 180.0
+            },
+            "sourceUnchanged": true
+        },
+        {
+            "role": "BackWholeFillet",
+            "sourceRole": "BackFillet",
+            "sourcePath": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/BackFillet/BackFillet.fbx",
+            "sourceDependencyHash": "85414ee45ed1fe2eff8413da312c4d37",
+            "sourceMeshPath": "Assets/_SashimiBoy/Art/Generated/Stage03Flounder/Meshes/MS_BackFillet.asset",
+            "generatedMeshPath": "Assets/_SashimiBoy/Art/Generated/Stage03Flounder/Meshes/MS_BackWholeFillet.asset",
+            "wrapperPath": "Assets/_SashimiBoy/Art/Generated/Stage03Flounder/Prefabs/PF_BackWholeFillet.prefab",
+            "operation": "Existing single flesh fillet, source aspect ratio and surface retained; no duplicate/composite or negative scale.",
+            "fleshUvSourceRole": "BackFillet",
+            "sourceAlbedoPath": "",
+            "sourceAlbedoSha256": "",
+            "bakedAlbedoPath": "",
+            "bakeMethod": "",
+            "sourcePackedMapPath": "",
+            "sampledSmoothness": 0.0,
+            "sourceVertices": 165427,
+            "generatedVertices": 165427,
+            "generatedTriangles": 140019,
+            "selectedSurfaceTriangles": 0,
+            "preservedOriginalFleshTriangles": 0,
+            "sourceSize": {
+                "x": 0.2890269160270691,
+                "y": 0.10809953510761261,
+                "z": 0.6852790117263794
+            },
+            "generatedSize": {
+                "x": 0.2890269160270691,
+                "y": 0.10809953510761261,
+                "z": 0.6852790117263794
+            },
+            "rotationEuler": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+            },
+            "sourceUnchanged": true
+        },
+        {
+            "role": "FrontSkinnedBody",
+            "sourceRole": "HeadRemovedFish",
+            "sourcePath": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/HeadRemovedFish/HeadRemovedFish.fbx",
+            "sourceDependencyHash": "8ceeb2d2d89e0d2091ad072b91e38f44",
+            "sourceMeshPath": "Assets/_SashimiBoy/Art/Generated/Stage03Flounder/Meshes/MS_HeadRemovedFish.asset",
+            "generatedMeshPath": "Assets/_SashimiBoy/Art/Generated/Stage03Flounder/Meshes/MS_FrontSkinnedBody.asset",
+            "wrapperPath": "Assets/_SashimiBoy/Art/Generated/Stage03Flounder/Prefabs/PF_FrontSkinnedBody.prefab",
+            "operation": "Original complete body geometry retained. The working hemisphere uses continuous XZ UVs and an albedo rasterized from the supplied flesh-facing triangles; the opposite physical side retains its original material/UVs. No UV coordinates are transferred between unrelated atlas islands.",
+            "fleshUvSourceRole": "FrontFillet",
+            "sourceAlbedoPath": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/FrontFillet/flatfish_3d_model_basecolor.JPEG",
+            "sourceAlbedoSha256": "af5bd397ef68c18efa8e4a5c1f9c0588fd16dbf426aa35e93e07bba031863d70",
+            "bakedAlbedoPath": "Assets/_SashimiBoy/Art/Generated/Stage03Flounder/Textures/T_FrontContinuousFlesh.png",
+            "bakeMethod": "1024px actual flesh-facing triangle XZ rasterization; per-pixel barycentric interpolation of each triangle's original source UV, frontmost surface depth test, nearest-valid surface-texel extension outside the donor silhouette. Continuous planar UVs; derived material excludes incompatible tangent-space source maps and uses the median supplied flesh-facing packed smoothness alpha. Front atlas pages have 4px clamp gutters and texel-centered UV affine transforms; atlas mipmaps are disabled to prevent page bleeding.",
+            "sourcePackedMapPath": "Assets/_SashimiBoy/Art/Generated/Stage03Flounder/Textures/MS_FrontFillet.png",
+            "sampledSmoothness": 0.9333333373069763,
+            "sourceVertices": 166482,
+            "generatedVertices": 218801,
+            "generatedTriangles": 139358,
+            "selectedSurfaceTriangles": 66772,
+            "preservedOriginalFleshTriangles": 0,
+            "sourceSize": {
+                "x": 0.5536447763442993,
+                "y": 0.21903787553310395,
+                "z": 0.7816663384437561
+            },
+            "generatedSize": {
+                "x": 0.5536447763442993,
+                "y": 0.21903787553310395,
+                "z": 0.7816663384437561
+            },
+            "rotationEuler": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+            },
+            "sourceUnchanged": true
+        },
+        {
+            "role": "FrontSkin",
+            "sourceRole": "HeadRemovedFish",
+            "sourcePath": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/HeadRemovedFish/HeadRemovedFish.fbx",
+            "sourceDependencyHash": "8ceeb2d2d89e0d2091ad072b91e38f44",
+            "sourceMeshPath": "Assets/_SashimiBoy/Art/Generated/Stage03Flounder/Meshes/MS_HeadRemovedFish.asset",
+            "generatedMeshPath": "Assets/_SashimiBoy/Art/Generated/Stage03Flounder/Meshes/MS_FrontSkin.asset",
+            "wrapperPath": "Assets/_SashimiBoy/Art/Generated/Stage03Flounder/Prefabs/PF_FrontSkin.prefab",
+            "operation": "Actual working-hemisphere surface extracted from the supplied body, with a 2mm inward shell and boundary walls. Separate discarded part, never an edible fillet.",
+            "fleshUvSourceRole": "",
+            "sourceAlbedoPath": "",
+            "sourceAlbedoSha256": "",
+            "bakedAlbedoPath": "",
+            "bakeMethod": "",
+            "sourcePackedMapPath": "",
+            "sampledSmoothness": 0.0,
+            "sourceVertices": 166482,
+            "generatedVertices": 104638,
+            "generatedTriangles": 135350,
+            "selectedSurfaceTriangles": 66772,
+            "preservedOriginalFleshTriangles": 0,
+            "sourceSize": {
+                "x": 0.5536447763442993,
+                "y": 0.21903787553310395,
+                "z": 0.7816663384437561
+            },
+            "generatedSize": {
+                "x": 0.5524197816848755,
+                "y": 0.11291363835334778,
+                "z": 0.7816663384437561
+            },
+            "rotationEuler": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+            },
+            "sourceUnchanged": true
+        },
+        {
+            "role": "BackSkinnedBody",
+            "sourceRole": "FilletRemoved2",
+            "sourcePath": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/FilletRemoved2/FilletRemoved2.fbx",
+            "sourceDependencyHash": "8233ed7407b497452cac9d3acee6cecb",
+            "sourceMeshPath": "Assets/_SashimiBoy/Art/Generated/Stage03Flounder/Meshes/MS_FilletRemoved2.asset",
+            "generatedMeshPath": "Assets/_SashimiBoy/Art/Generated/Stage03Flounder/Meshes/MS_BackSkinnedBody.asset",
+            "wrapperPath": "Assets/_SashimiBoy/Art/Generated/Stage03Flounder/Prefabs/PF_BackSkinnedBody.prefab",
+            "operation": "Original complete body geometry retained. The working hemisphere uses continuous XZ UVs and an albedo rasterized from the supplied flesh-facing triangles; the opposite physical side retains its original material/UVs. No UV coordinates are transferred between unrelated atlas islands.",
+            "fleshUvSourceRole": "BackFillet",
+            "sourceAlbedoPath": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/BackFillet/raw_fish_fillet_3d_model_basecolor.JPEG",
+            "sourceAlbedoSha256": "ddc2a66a5758e23247cd21818cf1a942de02317900cabc5bd98d086d5a4af620",
+            "bakedAlbedoPath": "Assets/_SashimiBoy/Art/Generated/Stage03Flounder/Textures/T_BackContinuousFlesh.png",
+            "bakeMethod": "1024px actual flesh-facing triangle XZ rasterization; per-pixel barycentric interpolation of each triangle's original source UV, frontmost surface depth test, nearest-valid surface-texel extension outside the donor silhouette. Continuous planar UVs; derived material excludes incompatible tangent-space source maps and uses the median supplied flesh-facing packed smoothness alpha. Front atlas pages have 4px clamp gutters and texel-centered UV affine transforms; atlas mipmaps are disabled to prevent page bleeding.",
+            "sourcePackedMapPath": "Assets/_SashimiBoy/Art/Generated/Stage03Flounder/Textures/MS_BackFillet.png",
+            "sampledSmoothness": 0.7333333492279053,
+            "sourceVertices": 186687,
+            "generatedVertices": 209729,
+            "generatedTriangles": 53212,
+            "selectedSurfaceTriangles": 21698,
+            "preservedOriginalFleshTriangles": 0,
+            "sourceSize": {
+                "x": 0.5531160831451416,
+                "y": 0.2180669903755188,
+                "z": 0.7806617617607117
+            },
+            "generatedSize": {
+                "x": 0.5531160831451416,
+                "y": 0.2180669903755188,
+                "z": 0.7806617617607117
+            },
+            "rotationEuler": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+            },
+            "sourceUnchanged": true
+        },
+        {
+            "role": "BackSkin",
+            "sourceRole": "FilletRemoved2",
+            "sourcePath": "Assets/_SashimiBoy/Art/Source/DayWorld/Fish/Stage03/FilletRemoved2/FilletRemoved2.fbx",
+            "sourceDependencyHash": "8233ed7407b497452cac9d3acee6cecb",
+            "sourceMeshPath": "Assets/_SashimiBoy/Art/Generated/Stage03Flounder/Meshes/MS_FilletRemoved2.asset",
+            "generatedMeshPath": "Assets/_SashimiBoy/Art/Generated/Stage03Flounder/Meshes/MS_BackSkin.asset",
+            "wrapperPath": "Assets/_SashimiBoy/Art/Generated/Stage03Flounder/Prefabs/PF_BackSkin.prefab",
+            "operation": "Actual working-hemisphere surface extracted from the supplied body, with a 2mm inward shell and boundary walls. Separate discarded part, never an edible fillet.",
+            "fleshUvSourceRole": "",
+            "sourceAlbedoPath": "",
+            "sourceAlbedoSha256": "",
+            "bakedAlbedoPath": "",
+            "bakeMethod": "",
+            "sourcePackedMapPath": "",
+            "sampledSmoothness": 0.0,
+            "sourceVertices": 186687,
+            "generatedVertices": 46084,
+            "generatedTriangles": 44408,
+            "selectedSurfaceTriangles": 21698,
+            "preservedOriginalFleshTriangles": 0,
+            "sourceSize": {
+                "x": 0.5531160831451416,
+                "y": 0.2180669903755188,
+                "z": 0.7806617617607117
+            },
+            "generatedSize": {
+                "x": 0.4874190092086792,
+                "y": 0.11329160630702973,
+                "z": 0.7802480459213257
+            },
+            "rotationEuler": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+            },
+            "sourceUnchanged": true
+        }
+    ]
+}

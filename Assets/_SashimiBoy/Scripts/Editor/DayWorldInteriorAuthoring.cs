@@ -51,7 +51,7 @@ namespace SashimiBoy.EditorTools
             var shell = previous != null ? previous : new GameObject("InteriorShell").transform;
             shell.SetParent(worldRoot, false);
             bool home = room == "KevinHome", fish = room == "FishShopDialogue", club = room == "Club";
-            if (home) DayWorldHomeAuthoring.ApplyCompactLayout(scene, worldRoot);
+            if (home) DayWorldHomeAuthoring.ApplyRoomLayout(scene, worldRoot);
             float w = home ? DayWorldHomeAuthoring.HalfWidth : fish ? 6f : club ? 8f : 6.5f;
             float d = home ? DayWorldHomeAuthoring.HalfDepth : club ? 6f : 4f;
             float h = home ? DayWorldHomeAuthoring.RoomHeight : fish ? 3.6f : club ? 4.3f : 3.7f;
@@ -59,7 +59,7 @@ namespace SashimiBoy.EditorTools
                 .Single(t => t.name == "Door_To_Street");
             CenterEntry(scene, door, d);
             float doorX = door.position.x, entryZ = -d;
-            float opening = home ? .625f : .80f;
+            float opening = home ? .625f : .75f;
             Color plaster = home ? new Color(.79f,.76f,.66f) : fish ? new Color(.79f,.87f,.85f)
                 : club ? new Color(.09f,.065f,.12f) : new Color(.20f,.23f,.25f);
             Color lower = home ? new Color(.34f,.42f,.35f) : fish ? new Color(.13f,.42f,.42f)
@@ -100,7 +100,7 @@ namespace SashimiBoy.EditorTools
                         new Vector3(Mathf.Max(.65f,size.x+.16f),Mathf.Max(.19f,size.y+.08f),.035f),plaque,false);
                     backing.transform.rotation=label.transform.rotation;
                 }
-                for(int i=0;i<6;i++) Box(shell,"TimberCeilingJoint",new Vector3(-2f+i*.8f,h-.013f,0),new Vector3(.025f,.028f,d*2f-.2f),trim,false);
+                for(int i=0;i<Mathf.CeilToInt(w*2f/.8f);i++) Box(shell,"TimberCeilingJoint",new Vector3(-w+.4f+i*.8f,h-.013f,0),new Vector3(.025f,.028f,d*2f-.2f),trim,false);
             }
             else if (fish)
             {
@@ -200,12 +200,12 @@ namespace SashimiBoy.EditorTools
         {
             var sky=Material("Home_WindowGlass",new Color(.40f,.58f,.62f),.65f,new Color(.28f,.41f,.43f)*.45f);
             var linen=Material("Home_Curtain",new Color(.63f,.51f,.35f),0f);
-            Box(root,"WindowFrame",new Vector3(-.25f,1.90f,2.16f),new Vector3(1.25f,.90f,.13f),wood,false);
-            Box(root,"WindowGlass",new Vector3(-.25f,1.90f,2.08f),new Vector3(1.10f,.76f,.025f),sky,false);
-            Box(root,"WindowMullion",new Vector3(-.25f,1.90f,2.05f),new Vector3(.045f,.76f,.05f),wood,false);
-            Box(root,"WindowCrossbar",new Vector3(-.25f,1.90f,2.05f),new Vector3(1.10f,.045f,.05f),wood,false);
-            foreach(float x in new[]{-1.02f,.52f}) Box(root,"LinenCurtain",new Vector3(x,1.90f,2.03f),new Vector3(.28f,1.05f,.08f),linen,false);
-            Box(root,"CurtainRail",new Vector3(-.25f,2.43f,2.03f),new Vector3(1.9f,.065f,.07f),wood,false);
+            Box(root,"WindowFrame",new Vector3(-.25f,1.90f,DayWorldHomeAuthoring.HalfDepth-.14f),new Vector3(1.25f,.90f,.13f),wood,false);
+            Box(root,"WindowGlass",new Vector3(-.25f,1.90f,DayWorldHomeAuthoring.HalfDepth-.22f),new Vector3(1.10f,.76f,.025f),sky,false);
+            Box(root,"WindowMullion",new Vector3(-.25f,1.90f,DayWorldHomeAuthoring.HalfDepth-.25f),new Vector3(.045f,.76f,.05f),wood,false);
+            Box(root,"WindowCrossbar",new Vector3(-.25f,1.90f,DayWorldHomeAuthoring.HalfDepth-.25f),new Vector3(1.10f,.045f,.05f),wood,false);
+            foreach(float x in new[]{-1.02f,.52f}) Box(root,"LinenCurtain",new Vector3(x,1.90f,DayWorldHomeAuthoring.HalfDepth-.27f),new Vector3(.28f,1.05f,.08f),linen,false);
+            Box(root,"CurtainRail",new Vector3(-.25f,2.43f,DayWorldHomeAuthoring.HalfDepth-.27f),new Vector3(1.9f,.065f,.07f),wood,false);
         }
         static GameObject Box(Transform parent,string name,Vector3 position,Vector3 size,Material material,bool solid=true)
         {
@@ -232,7 +232,12 @@ namespace SashimiBoy.EditorTools
             var material=AssetDatabase.LoadAssetAtPath<Material>(path);
             if(material==null){material=new Material(Shader.Find("Standard"));AssetDatabase.CreateAsset(material,path);}
             material.color=color;material.SetFloat("_Glossiness",smoothness);
-            if(emission.maxColorComponent>0f){material.EnableKeyword("_EMISSION");material.SetColor("_EmissionColor",emission);}
+            // Retain Unity-normalized keywords when reapplying the same existing colour.
+            if(emission.maxColorComponent>0f)
+            {
+                if(material.GetColor("_EmissionColor")!=emission) material.EnableKeyword("_EMISSION");
+                material.SetColor("_EmissionColor",emission);
+            }
             EditorUtility.SetDirty(material);return material;
         }
     }

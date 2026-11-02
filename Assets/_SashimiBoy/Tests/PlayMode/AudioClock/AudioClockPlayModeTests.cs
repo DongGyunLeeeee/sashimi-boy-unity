@@ -138,9 +138,12 @@ namespace SashimiBoy.Tests
                     Time.realtimeSinceStartup + timeoutSeconds;
                 while ((AudioSettings.dspTime < controlStartDspTime ||
                     !source.isPlaying ||
-                    source.timeSamples <= 0) &&
+                    source.timeSamples <= 0 ||
+                    StateName(clock) != "Playing") &&
                     Time.realtimeSinceStartup < controlTimeout)
                 {
+                    // The audio thread can cross its deadline after this frame's
+                    // AudioClock.Update. Observe both clocks in the same ready state.
                     yield return null;
                 }
 

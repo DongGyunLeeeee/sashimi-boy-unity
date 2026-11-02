@@ -31,7 +31,7 @@ namespace SashimiBoy
         {
             if (!IsAvailable || DayWorldFlow.InputSuppressed || inConversation || runner == null || runner.IsRunning) return;
             var save = SaveManager.Instance.Current;
-            if (save.dayWorld.day != day || DayWorldRules.RequiredNpc(save) != npcId)
+            if (!DayWorldRules.NpcAvailable(save, day, npcId))
             { DayWorldFlow.Instance.Notice(DayWorldRules.Objective(save)); return; }
             playerRig = actor.GetComponent<KevinFirstPersonCameraRig>();
             view = playerRig != null ? playerRig.controlledCamera : Camera.main;
@@ -61,7 +61,8 @@ namespace SashimiBoy
             runner.OnDialogueFinished += Finished;
             runner.OnDialogueCancelled += Cancelled;
             runner.OnLineShown += LineShown;
-            runner.Play(DayWorldScenario.Lines(npcId));
+            string encounterId = save.dayWorld.day == 3 && npcId == "cheolsu" ? "cheolsu_day3" : npcId;
+            runner.Play(DayWorldScenario.Lines(encounterId));
         }
         private bool TryConversationPosition(GameObject actor, KevinBodyRig body, out Vector3 position)
         {
@@ -105,6 +106,21 @@ namespace SashimiBoy
             if (line.kind != DialogueLineKind.Action) return;
             if (line.actionId == "motorcycle_stop" && motorcycle != null) StartCoroutine(StopMotorcycle());
             else if (line.actionId == "kevin_flinch") StartCoroutine(Flinch());
+            else if (line.actionId == "handshake") StartCoroutine(HandshakeBeat(line.text));
+        }
+        private IEnumerator HandshakeBeat(string caption)
+        {
+            // Supplied Jaehoon is a static mesh. Preserve the stage direction as an action caption,
+            // with a short camera beat, rather than inventing skeletal animation or spoken dialogue.
+            DayWorldFlow.Instance?.Notice(caption);
+            float elapsed = 0f;
+            while (elapsed < 1f && inConversation)
+            {
+                elapsed += Time.unscaledDeltaTime;
+                flinchPitch = Mathf.Sin(Mathf.Clamp01(elapsed) * Mathf.PI) * 2.5f;
+                yield return null;
+            }
+            flinchPitch = 0f;
         }
         private IEnumerator StopMotorcycle()
         {

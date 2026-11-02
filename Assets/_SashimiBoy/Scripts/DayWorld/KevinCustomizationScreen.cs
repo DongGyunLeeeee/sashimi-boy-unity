@@ -56,6 +56,10 @@ namespace SashimiBoy
             if (index < 0 || index >= catalog.choices.Length || starting) return;
             selected = index;
             preview.ApplyFace(SelectedFaceId);
+            // Newly generated prefab children do not inherit the old Scene's
+            // per-child layer overrides. Keep the full replacement body in the
+            // existing portrait camera's dedicated layer without rebuilding it.
+            foreach (var child in preview.GetComponentsInChildren<Transform>(true)) child.gameObject.layer = 31;
             selectedName.text = catalog.choices[index].displayName;
             for (int i = 0; i < choiceButtons.Length; i++)
                 choiceButtons[i].GetComponent<Image>().color = i == index
